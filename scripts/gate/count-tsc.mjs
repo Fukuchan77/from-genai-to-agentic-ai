@@ -1,6 +1,5 @@
-import { readFileSync } from "node:fs";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
-import { isMainModule } from "../lib/cli.mjs";
+import { runIfMain } from "../lib/cli.mjs";
 
 const GROUP_PREFIX = "::tsconfig::";
 // biome-ignore lint/suspicious/noControlCharactersInRegex: strips ANSI colour codes from tsc output.
@@ -70,16 +69,15 @@ export function evaluateTscOutput(output, options) {
 	return groups.map(({ config, count }) => `TypeScript ${config}: ${count} files`).join("\n");
 }
 
-function run() {
+export function main({ cwd, readStdin, stdout, stderr }) {
 	try {
-		process.stdout.write(`${evaluateTscOutput(readFileSync(0, "utf8"))}\n`);
+		stdout.write(`${evaluateTscOutput(readStdin(), { cwd })}\n`);
+		return 0;
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
-		process.stderr.write(`count-tsc: ${message}\n`);
-		process.exitCode = 1;
+		stderr.write(`count-tsc: ${message}\n`);
+		return 1;
 	}
 }
 
-if (isMainModule(import.meta.url)) {
-	run();
-}
+await runIfMain(import.meta.url, main);

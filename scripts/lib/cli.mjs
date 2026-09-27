@@ -1,4 +1,4 @@
-import { realpathSync } from "node:fs";
+import { readFileSync, realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 function physicalPath(path) {
@@ -17,4 +17,29 @@ export function isMainModule(moduleUrl, entryPath = process.argv[1]) {
 	if (!entryPath) return false;
 	const entry = physicalPath(entryPath);
 	return entry !== undefined && entry === physicalPath(fileURLToPath(moduleUrl));
+}
+
+function processIo(proc) {
+	return {
+		argv: proc.argv.slice(2),
+		cwd: proc.cwd(),
+		readStdin: () => readFileSync(0, "utf8"),
+		stderr: proc.stderr,
+		stdout: proc.stdout,
+	};
+}
+
+/**
+ * Runs a script's `main(io)` when `moduleUrl` is the entry point, and sets the exit code to the
+ * value `main` returns. A thrown error is reported on stderr and exits 1. Scripts keep all process
+ * access here so that `main` can be tested in-process with `memoryIo`.
+ */
+export async function runIfMain(moduleUrl, main, proc = process) {
+	if (!isMainModule(moduleUrl, proc.argv[1])) return;
+	try {
+		proc.exitCode = await main(processIo(proc));
+	} catch (error) {
+		proc.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+		proc.exitCode = 1;
+	}
 }

@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { isMainModule } from "./lib/cli.mjs";
+import { runIfMain } from "./lib/cli.mjs";
 
 const REGISTRY_URL = "https://registry.npmjs.org";
 const MINIMUM_RELEASE_AGE_MS = 24 * 60 * 60 * 1000;
@@ -194,18 +194,24 @@ export function formatUpdateReport(result) {
 	return `${typescriptLine}\n${stableLine}\n${watsonxLine}`;
 }
 
-async function main() {
+async function pinnedTypescriptVersion() {
 	const packageJson = JSON.parse(
 		await readFile(new URL("../package.json", import.meta.url), { encoding: "utf8" }),
 	);
-	const typescriptVersion = packageJson.devDependencies?.typescript;
-	const result = await checkRegistryUpdates({ typescriptVersion });
-	console.log(formatUpdateReport(result));
+	return packageJson.devDependencies?.typescript;
 }
 
-if (isMainModule(import.meta.url)) {
-	main().catch((error) => {
-		console.error(error instanceof Error ? error.message : String(error));
-		process.exitCode = 1;
-	});
+/** `options` is forwarded to `checkRegistryUpdates`; the pinned version defaults to package.json. */
+export async function main({ stdout, stderr }, options = {}) {
+	try {
+		const typescriptVersion = options.typescriptVersion ?? (await pinnedTypescriptVersion());
+		const result = await checkRegistryUpdates({ ...options, typescriptVersion });
+		stdout.write(`${formatUpdateReport(result)}\n`);
+		return 0;
+	} catch (error) {
+		stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+		return 1;
+	}
 }
+
+await runIfMain(import.meta.url, main);

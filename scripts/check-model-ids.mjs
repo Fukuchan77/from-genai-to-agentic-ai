@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { basename, join, relative, resolve, sep } from "node:path";
-import { isMainModule } from "./lib/cli.mjs";
+import { runIfMain } from "./lib/cli.mjs";
 import { isGeneratedDirectory } from "./lib/scan-exclusions.mjs";
 
 const CODE_EXTENSIONS = new Set([".mjs", ".ts", ".tsx"]);
@@ -234,20 +234,20 @@ export function checkModelIds(root = process.cwd()) {
 	};
 }
 
-function runCli() {
+export function main({ argv, cwd, stdout, stderr }) {
 	try {
-		const result = checkModelIds(process.argv[2] ?? process.cwd());
-		process.stdout.write(`Model ID check: scanned ${result.scannedFiles} files.\n`);
+		const result = checkModelIds(argv[0] ?? cwd);
+		stdout.write(`Model ID check: scanned ${result.scannedFiles} files.\n`);
 		for (const violation of result.violations) {
-			process.stderr.write(
+			stderr.write(
 				`${violation.file}:${violation.line}: model ID literal "${violation.modelId}" is not allowed.\n`,
 			);
 		}
-		if (result.violations.length > 0) process.exitCode = 1;
+		return result.violations.length > 0 ? 1 : 0;
 	} catch (error) {
-		process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
-		process.exitCode = 1;
+		stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+		return 1;
 	}
 }
 
-if (isMainModule(import.meta.url)) runCli();
+await runIfMain(import.meta.url, main);

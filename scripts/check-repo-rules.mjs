@@ -1,6 +1,6 @@
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
-import { isMainModule } from "./lib/cli.mjs";
+import { runIfMain } from "./lib/cli.mjs";
 import { isGeneratedDirectory } from "./lib/scan-exclusions.mjs";
 
 const CHECKER_FILES = new Set([
@@ -1056,16 +1056,15 @@ export async function checkRepoRules({ root = process.cwd(), only = RULE_NAMES }
 	return result;
 }
 
-async function main() {
+export async function main({ argv, cwd, stdout, stderr }) {
 	try {
-		const result = await checkRepoRules({ only: parseArgs(process.argv.slice(2)).only });
-		console.log(result.output);
+		const result = await checkRepoRules({ root: cwd, only: parseArgs(argv).only });
+		stdout.write(`${result.output}\n`);
+		return 0;
 	} catch (error) {
-		console.error(error.message);
-		process.exitCode = 1;
+		stderr.write(`${error.message}\n`);
+		return 1;
 	}
 }
 
-if (isMainModule(import.meta.url)) {
-	await main();
-}
+await runIfMain(import.meta.url, main);

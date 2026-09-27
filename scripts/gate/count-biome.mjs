@@ -1,5 +1,4 @@
-import { readFileSync } from "node:fs";
-import { isMainModule } from "../lib/cli.mjs";
+import { runIfMain } from "../lib/cli.mjs";
 
 function parseBiomeJson(output) {
 	const start = output.indexOf("{");
@@ -34,16 +33,15 @@ export function evaluateBiomeOutput(output) {
 	return `Biome: ${count} files`;
 }
 
-function run() {
+export function main({ readStdin, stdout, stderr }) {
 	try {
-		process.stdout.write(`${evaluateBiomeOutput(readFileSync(0, "utf8"))}\n`);
+		stdout.write(`${evaluateBiomeOutput(readStdin())}\n`);
+		return 0;
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
-		process.stderr.write(`count-biome: ${message}\n`);
-		process.exitCode = 1;
+		stderr.write(`count-biome: ${message}\n`);
+		return 1;
 	}
 }
 
-if (isMainModule(import.meta.url)) {
-	run();
-}
+await runIfMain(import.meta.url, main);

@@ -1,6 +1,12 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
-import { checkRegistryUpdates, formatUpdateReport, isAiV7Compatible } from "./check-updates.mjs";
+import {
+	checkRegistryUpdates,
+	formatUpdateReport,
+	isAiV7Compatible,
+	main,
+} from "./check-updates.mjs";
+import { memoryIo } from "./lib/memory-io.mjs";
 
 const NOW = new Date("2026-09-27T12:00:00.000Z");
 const PINNED_TYPESCRIPT = "7.1.0-dev.20260926.1";
@@ -201,11 +207,57 @@ describe("checkRegistryUpdates", () => {
 	});
 });
 
-describe("check-updates CLI entry point", () => {
-	it("decides whether to run via isMainModule, not an argv[1] string match", () => {
+describe("check-updates CLI", () => {
+	const fixtures = {
+		typescript: typescriptFixture({ [PINNED_TYPESCRIPT]: "2026-09-26T09:00:00.000Z" }),
+		"watsonx-ai-provider": watsonxFixture({ "1.0.0": { ai: "^6.0.0" } }),
+	};
+
+	it("exits 0 and prints the report for the pinned TypeScript version", async () => {
+		const io = memoryIo();
+
+		await expect(
+			main(io, {
+				fetchImpl: registryFetch(fixtures),
+				now: NOW,
+				typescriptVersion: PINNED_TYPESCRIPT,
+			}),
+		).resolves.toBe(0);
+		expect(io.stdoutText()).toContain(
+			"watsonx-ai-provider: no release declares compatibility with ai@^7.",
+		);
+		expect(io.stderrText()).toBe("");
+	});
+
+	it("exits 1 and reports the error when the registry lookup fails", async () => {
+		const io = memoryIo();
+
+		await expect(
+			main(io, {
+				fetchImpl: registryFetch({}),
+				now: NOW,
+				typescriptVersion: PINNED_TYPESCRIPT,
+			}),
+		).resolves.toBe(1);
+		expect(io.stdoutText()).toBe("");
+		expect(io.stderrText()).toMatch(/typescript/u);
+	});
+
+	it("reads the pinned TypeScript version from the root package.json by default", async () => {
+		const pinned = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"))
+			.devDependencies.typescript;
+		const fetchImpl = registryFetch({
+			...fixtures,
+			typescript: typescriptFixture({ [pinned]: "2026-09-26T09:00:00.000Z" }),
+		});
+
+		await expect(main(memoryIo(), { fetchImpl, now: NOW })).resolves.toBe(0);
+	});
+
+	it("runs main through runIfMain instead of reading process state itself", () => {
 		const source = readFileSync(new URL("check-updates.mjs", import.meta.url), "utf8");
 
-		expect(source).toContain("if (isMainModule(import.meta.url))");
-		expect(source).not.toContain("process.argv[1]");
+		expect(source).toContain("await runIfMain(import.meta.url, main);");
+		expect(source).not.toMatch(/process\.(argv|exitCode)/u);
 	});
 });

@@ -1,8 +1,10 @@
+import { readFileSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
-import { checkRepoRules, parseArgs } from "./check-repo-rules.mjs";
+import { checkRepoRules, main, parseArgs } from "./check-repo-rules.mjs";
+import { memoryIo } from "./lib/memory-io.mjs";
 
 const roots = [];
 
@@ -21,9 +23,18 @@ async function run(root, rule) {
 	return checkRepoRules({ root, only: [rule] });
 }
 
+// The error message always contains `<rule>: scanned N FILES`, so a bare `toThrow(message)` also
+// passes on a zero-scan rejection. Assert on the structured report instead.
 async function expectViolation(rule, files, message) {
 	const root = await fixture(files);
-	await expect(run(root, rule)).rejects.toThrow(message);
+	const error = await run(root, rule).then(
+		() => expect.unreachable(`${rule} accepted the fixture`),
+		(rejection) => rejection,
+	);
+	const [report] = error.result.reports;
+	expect(report.rule).toBe(rule);
+	expect(report.fileCount).toBeGreaterThan(0);
+	expect(report.violations).toEqual(expect.arrayContaining([expect.stringContaining(message)]));
 }
 
 afterEach(async () => {
@@ -50,11 +61,15 @@ describe("repository rule violations", () => {
 			},
 			"react",
 		],
-		["no-dynamic-eval", { "scripts/unsafe.mjs": "const result = eval(source);\n" }, "eval"],
+		[
+			"no-dynamic-eval",
+			{ "scripts/unsafe.mjs": "const result = eval(source);\n" },
+			"dynamic eval is forbidden",
+		],
 		[
 			"tool-risk-declared",
 			{ "packages/ai-core/src/aci/tool.ts": "defineAciTool({ description: 'safe' });\n" },
-			"risk",
+			"defineAciTool call must declare risk",
 		],
 		[
 			"actions-pinned",
@@ -102,7 +117,7 @@ describe("repository rule violations", () => {
 			{
 				"packages/ai-core/src/aci/tool.ts": 'defineAciTool({ metadata: { risk: "read-only" } });\n',
 			},
-			"risk",
+			"defineAciTool call must declare risk",
 		);
 	});
 
@@ -137,13 +152,21 @@ describe("scan semantics", () => {
 				"const template = `new Function(source) $" + "{safeValue}`;",
 				"// eval(source)",
 				"/* console.log(messages) */",
+				// After `;` a `/` lexes as a regex, which would hide a broken block-comment scan; a
+				// multi-line comment and one after an operand exercise the comment path itself.
+				"/*",
+				"console.log(messages)",
+				"*/",
+				"const total = 1 /* eval(source) */;",
 				"const pattern = /new ToolLoopAgent\\(.*\\)/;",
-				"export { text, template, pattern };",
+				"export { text, template, pattern, total };",
 			].join("\n"),
 		});
-		await expect(run(root, "no-dynamic-eval")).resolves.toBeDefined();
-		await expect(run(root, "guarded-agent-only")).resolves.toBeDefined();
-		await expect(run(root, "no-sensitive-logging")).resolves.toBeDefined();
+		for (const rule of ["no-dynamic-eval", "guarded-agent-only", "no-sensitive-logging"]) {
+			await expect(run(root, rule)).resolves.toMatchObject({
+				reports: [{ rule, fileCount: 1, violations: [] }],
+			});
+		}
 	});
 
 	test("excludes the checker and its test from every code scan", async () => {
@@ -611,5 +634,47 @@ describe("generated directories (L-4)", () => {
 		await expect(run(root, "no-dynamic-eval")).resolves.toMatchObject({
 			reports: [{ fileCount: 1, violations: [] }],
 		});
+	});
+});
+
+describe("check-repo-rules CLI", () => {
+	test("exits 0 and prints the per-rule scan counts", async () => {
+		const root = await fixture({ "scripts/safe.mjs": "export {};\n" });
+		const io = memoryIo({ argv: ["--only", "no-dynamic-eval"], cwd: root });
+
+		await expect(main(io)).resolves.toBe(0);
+		expect(io.stdoutText()).toBe("no-dynamic-eval: scanned 1 FILES\n");
+		expect(io.stderrText()).toBe("");
+	});
+
+	test("exits 1 and reports the violation", async () => {
+		const root = await fixture({ "scripts/unsafe.mjs": "eval(source);\n" });
+		const io = memoryIo({ argv: ["--only", "no-dynamic-eval"], cwd: root });
+
+		await expect(main(io)).resolves.toBe(1);
+		expect(io.stdoutText()).toBe("");
+		expect(io.stderrText()).toContain("scripts/unsafe.mjs:1: dynamic eval is forbidden");
+	});
+
+	test("exits 1 when a selected rule scans zero files", async () => {
+		const root = await fixture({ "README.md": "empty\n" });
+		const io = memoryIo({ argv: ["--only", "tool-risk-declared"], cwd: root });
+
+		await expect(main(io)).resolves.toBe(1);
+		expect(io.stderrText()).toContain("tool-risk-declared: scanned 0 FILES");
+	});
+
+	test("exits 1 on invalid arguments", async () => {
+		const io = memoryIo({ argv: ["--only"], cwd: await fixture({}) });
+
+		await expect(main(io)).resolves.toBe(1);
+		expect(io.stderrText()).toContain("Usage: node scripts/check-repo-rules.mjs");
+	});
+
+	test("runs main through runIfMain instead of reading process state itself", () => {
+		const source = readFileSync(new URL("check-repo-rules.mjs", import.meta.url), "utf8");
+
+		expect(source).toContain("await runIfMain(import.meta.url, main);");
+		expect(source).not.toMatch(/process\.(argv|exitCode)/u);
 	});
 });

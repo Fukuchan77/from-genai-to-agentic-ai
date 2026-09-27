@@ -2,8 +2,9 @@ import { readFileSync } from "node:fs";
 
 import { describe, expect, it } from "vitest";
 
-import { evaluateBiomeOutput, parseBiomeFileCount } from "./count-biome.mjs";
-import { evaluateTscOutput, parseTscFileCounts } from "./count-tsc.mjs";
+import { memoryIo } from "../lib/memory-io.mjs";
+import { main as biomeMain, evaluateBiomeOutput, parseBiomeFileCount } from "./count-biome.mjs";
+import { evaluateTscOutput, parseTscFileCounts, main as tscMain } from "./count-tsc.mjs";
 
 const biomeOutput = JSON.stringify({
 	summary: {
@@ -130,14 +131,52 @@ describe("TypeScript file counter", () => {
 	});
 });
 
-describe("counter CLI entry points", () => {
+describe("counter CLIs", () => {
+	it("count-biome exits 0 and prints the count read from stdin", () => {
+		const io = memoryIo({ stdin: biomeOutput });
+
+		expect(biomeMain(io)).toBe(0);
+		expect(io.stdoutText()).toBe("Biome: 5 files\n");
+	});
+
+	it.each([
+		[JSON.stringify({ summary: { changed: 0, unchanged: 0 } }), "Biome scanned 0 files"],
+		["not json", "Biome output did not contain JSON"],
+	])("count-biome exits 1 for %s", (stdin, message) => {
+		const io = memoryIo({ stdin });
+
+		expect(biomeMain(io)).toBe(1);
+		expect(io.stdoutText()).toBe("");
+		expect(io.stderrText()).toBe(`count-biome: ${message}\n`);
+	});
+
+	it("count-tsc exits 0 and counts files relative to the working directory", () => {
+		const io = memoryIo({ cwd: CWD, stdin: tscOutput });
+
+		expect(tscMain(io)).toBe(0);
+		expect(io.stdoutText()).toContain("TypeScript tsconfig.json: 2 files\n");
+	});
+
+	it("count-tsc exits 1 when a tsconfig scanned zero files", () => {
+		const stdin = [
+			"::tsconfig::tsconfig.json",
+			"/repo/node_modules/typescript/lib/lib.es5.d.ts",
+			"",
+		].join("\n");
+		const io = memoryIo({ cwd: CWD, stdin });
+
+		expect(tscMain(io)).toBe(1);
+		expect(io.stdoutText()).toBe("");
+		expect(io.stderrText()).toBe("count-tsc: TypeScript tsconfig.json scanned 0 files\n");
+	});
+
 	it.each(["count-biome.mjs", "count-tsc.mjs"])(
-		"%s decides whether to run via isMainModule, not an argv[1] string match",
+		"%s runs main through runIfMain instead of reading process state itself",
 		(fileName) => {
 			const source = readFileSync(new URL(fileName, import.meta.url), "utf8");
 
-			expect(source).toContain("if (isMainModule(import.meta.url))");
-			expect(source).not.toContain("process.argv[1]");
+			expect(source).toContain("await runIfMain(import.meta.url, main);");
+			expect(source).not.toMatch(/process\.(argv|exitCode)|readFileSync\(0/u);
 		},
 	);
 });

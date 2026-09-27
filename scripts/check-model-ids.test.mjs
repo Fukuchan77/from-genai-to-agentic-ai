@@ -2,7 +2,8 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { checkModelIds, MODEL_ID_PREFIXES } from "./check-model-ids.mjs";
+import { checkModelIds, MODEL_ID_PREFIXES, main } from "./check-model-ids.mjs";
+import { memoryIo } from "./lib/memory-io.mjs";
 
 const temporaryRoots = [];
 
@@ -265,11 +266,40 @@ describe("checkModelIds", () => {
 
 		expect(checkModelIds(root)).toEqual({ scannedFiles: 1, violations: [] });
 	});
+});
 
-	it("decides whether to run via isMainModule, not an argv[1] string match", () => {
+describe("check-model-ids CLI", () => {
+	it("exits 1 and reports each violation", () => {
+		const root = createRoot();
+		writeFixture(root, "apps/web/chat.ts", 'const model = "gpt-5";\n');
+		const io = memoryIo({ argv: [root] });
+
+		expect(main(io)).toBe(1);
+		expect(io.stdoutText()).toBe("Model ID check: scanned 1 files.\n");
+		expect(io.stderrText()).toBe('apps/web/chat.ts:1: model ID literal "gpt-5" is not allowed.\n');
+	});
+
+	it("exits 0 when the scanned files have no model ID literal", () => {
+		const root = createRoot();
+		writeFixture(root, "apps/web/chat.ts", "export {};\n");
+		const io = memoryIo({ cwd: root });
+
+		expect(main(io)).toBe(0);
+		expect(io.stdoutText()).toBe("Model ID check: scanned 1 files.\n");
+		expect(io.stderrText()).toBe("");
+	});
+
+	it("exits 1 when no eligible file is scanned", () => {
+		const io = memoryIo({ argv: [createRoot()] });
+
+		expect(main(io)).toBe(1);
+		expect(io.stderrText()).toBe("Model ID check scanned 0 files.\n");
+	});
+
+	it("runs main through runIfMain instead of reading process state itself", () => {
 		const source = readFileSync(new URL("check-model-ids.mjs", import.meta.url), "utf8");
 
-		expect(source).toContain("if (isMainModule(import.meta.url))");
-		expect(source).not.toContain("process.argv[1]");
+		expect(source).toContain("await runIfMain(import.meta.url, main);");
+		expect(source).not.toMatch(/process\.(argv|exitCode)/u);
 	});
 });
