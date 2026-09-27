@@ -1,0 +1,25 @@
+{
+  "feature_name": "harness-evals-safety",
+  "language": "ja",
+  "phase": "requirements-generated",
+  "milestone": "M4",
+  "depends_on": [
+    "001-agentic-ai-platform"
+  ],
+  "created_at": "2026-09-27T00:27:52Z",
+  "updated_at": "2026-09-27T01:06:18Z",
+  "approvals": {
+    "requirements": {
+      "generated": true,
+      "approved": false
+    },
+    "design": {
+      "generated": false,
+      "approved": false
+    },
+    "tasks": {
+      "generated": false,
+      "approved": false
+    }
+  }
+}
