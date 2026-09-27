@@ -1,0 +1,24 @@
+{
+	"name": "from-genai-to-agentic-ai",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"packageManager": "pnpm@12.6.0",
+	"engines": {
+		"node": "26.10.0",
+		"pnpm": "12.6.0"
+	},
+	"scripts": {
+		"test": "vitest run --config vitest.config.ts",
+		"typecheck": "tsc -p tsconfig.json --noEmit"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "2.5.14",
+		"@stryker-mutator/core": "10.0.0",
+		"@stryker-mutator/vitest-runner": "10.0.0",
+		"@vitest/coverage-v8": "5.0.1",
+		"turbo": "2.11.4",
+		"typescript": "7.1.0-dev.20260923.1",
+		"vitest": "5.0.1"
+	}
+}

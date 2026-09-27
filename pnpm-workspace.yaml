@@ -1,0 +1,10 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+# Do not resolve releases published less than 24 hours ago.
+minimumReleaseAge: 1440
+
+allowBuilds:
+  # Biome 2.5.14 ships prebuilt platform packages and requires no lifecycle script.
+  "@biomejs/biome": false

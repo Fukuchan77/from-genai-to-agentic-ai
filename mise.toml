@@ -1,3 +1,115 @@
 [tools]
-node = "26.10"
-pnpm = "12.6"
+node = "26.10.0"
+pnpm = "12.6.0"
+gitleaks = "8.30.1"
+
+[tasks.setup]
+description = "Install dependencies and configure repository hooks"
+run = [
+  "pnpm install --frozen-lockfile",
+  "git config core.hooksPath .githooks",
+]
+
+[tasks.lint]
+description = "Check formatting and lint rules with Biome"
+run = "pnpm exec biome ci ."
+
+[tasks."lint:fix"]
+description = "Apply safe formatting and lint fixes with Biome"
+run = "pnpm exec biome check --write ."
+
+[tasks.typecheck]
+description = "Type-check all workspaces"
+run = "pnpm exec turbo run typecheck"
+
+[tasks.test]
+description = "Run deterministic mock-mode tests"
+env = { AI_TEST_RUN_MODE = "mock" }
+run = "pnpm exec turbo run test"
+
+[tasks."test:local"]
+description = "Run local-model comparison and quality tests"
+env = { AI_TEST_RUN_MODE = "local" }
+run = 'pnpm exec turbo run test -- --run ".local.test.ts"'
+
+[tasks."test:db"]
+description = "Start Postgres and run Docker-backed database tests"
+depends = ["services:up:db"]
+env = { AI_TEST_RUN_MODE = "mock" }
+run = 'pnpm exec turbo run test -- --run ".pg.test.ts"'
+
+[tasks."test:e2e"]
+description = "Run Playwright tests in Chromium, Firefox, and WebKit"
+run = "pnpm --filter web exec playwright test"
+
+[tasks."test:mutation"]
+description = "Run mutation tests"
+run = "pnpm exec stryker run"
+
+[tasks."test:coverage"]
+description = "Generate workspace coverage reports"
+env = { AI_TEST_RUN_MODE = "mock" }
+run = "pnpm exec turbo run test:coverage"
+
+[tasks.gate]
+description = "Run the deterministic quality gate"
+depends = ["lint"]
+
+[tasks."gate:repeat"]
+description = "Run the quality gate ten times to check determinism"
+run = '''
+for run_number in $(seq 1 10); do
+  echo "gate run ${run_number}/10"
+  mise run gate
+done
+'''
+
+[tasks."secret-scan"]
+description = "Scan repository history for secrets"
+run = "gitleaks git --redact"
+
+[tasks."secret-scan:staged"]
+description = "Scan staged changes for secrets"
+run = "gitleaks git --staged --redact"
+
+[tasks.audit]
+description = "Audit dependencies for moderate-or-higher vulnerabilities"
+run = "pnpm audit --audit-level=moderate"
+
+[tasks.outdated]
+description = "Report outdated dependencies and prerelease updates"
+run = '''
+status=0
+pnpm outdated || status=$?
+node scripts/check-updates.mjs || status=$?
+exit "$status"
+'''
+
+[tasks."services:up"]
+description = "Start database and tracing services"
+run = "docker compose --profile db --profile trace up -d"
+
+[tasks."services:up:db"]
+description = "Start the database service"
+run = "docker compose --profile db up -d"
+
+[tasks."services:down"]
+description = "Stop local dependency services"
+run = "docker compose --profile db --profile trace down"
+
+[tasks.record]
+description = "Run the web app with cassette recording enabled"
+env = { AI_RECORD = "1" }
+run = "pnpm --filter web dev"
+
+[tasks."docs:check"]
+description = "Validate curriculum module documentation"
+run = "node scripts/check-docs.mjs"
+
+[tasks."check:model-ids"]
+description = "Validate model ID centralization rules"
+run = "node scripts/check-model-ids.mjs"
+
+[tasks."check:repo-rules"]
+description = "Validate repository governance rules"
+run = "node scripts/check-repo-rules.mjs"
