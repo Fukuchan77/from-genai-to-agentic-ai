@@ -155,7 +155,7 @@ _Traces:_ REQ-001, REQ-002, C18
 設定では表現できないリポジトリ規約（モデルID一元管理、9つの constitution 規則、先行版監視）を
 機械的に検査し、W1 の締めとして gate を結線する。
 
-_Boundary:_ `scripts/check-model-ids.mjs`, `scripts/check-model-ids.test.mjs`, `scripts/check-repo-rules.mjs`, `scripts/check-repo-rules.test.mjs`, `scripts/check-updates.mjs`, `scripts/check-updates.test.mjs`, `scripts/gate/count-biome.mjs`, `scripts/gate/count-tsc.mjs`, `scripts/gate/count.test.mjs`, `mise.toml`, `.githooks/pre-commit`, `scripts/lib/cli.mjs`, `scripts/lib/cli.test.mjs`, `scripts/lib/scan-exclusions.mjs`
+_Boundary:_ `scripts/check-model-ids.mjs`, `scripts/check-model-ids.test.mjs`, `scripts/check-repo-rules.mjs`, `scripts/check-repo-rules.test.mjs`, `scripts/check-updates.mjs`, `scripts/check-updates.test.mjs`, `scripts/gate/count-biome.mjs`, `scripts/gate/count-tsc.mjs`, `scripts/gate/count.test.mjs`, `mise.toml`, `.githooks/pre-commit`, `scripts/lib/cli.mjs`, `scripts/lib/cli.test.mjs`, `scripts/lib/scan-exclusions.mjs`, `scripts/lib/memory-io.mjs`
 _Depends:_ 1（5.5 は 2、3、4 にも依存する）
 _Requirements:_ 1.4, 1.15, 2.10, 2.18
 _Traces:_ REQ-001, REQ-002, C20, C1

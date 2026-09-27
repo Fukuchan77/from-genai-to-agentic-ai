@@ -1640,3 +1640,21 @@ $ (echo ::tsconfig::tsconfig.json; pnpm exec tsc -p tsconfig.json --listFilesOnl
 - 警告: `9418a09` は Task 2 の作業中に Task 1 の境界のファイル（`pnpm-workspace.yaml`、`pnpm-lock.yaml`）を変更した（W1 の境界の中で、do.md に記録済み）。
 - C-2 の解消: PR #7（`001-agentic-ai-platform` → `main`）の CI run `36324116904` で `Quality gate`・`Secret scan`・`Dependency audit`・`CI status` がすべて成功した（head `fbd6ef2`）。
 - 最終判定: **GO**（C-1・C-2 とも解消）。
+
+### 2026-09-27 W1 Non-Vacuous Audit Follow-ups (MEDIUM 1–3)
+
+監査報告 `.sdd/reviews/001-agentic-ai-platform-impl-w1-vacuous-audit-2026-09-27.md` の MEDIUM 3件への対応。変異はすべて一時的に1か所を置き換えて対象テストファイルを実行し、復元後に `cmp` で一致を確認した。
+
+- MEDIUM 1（`toThrow` の部分一致）: `check-repo-rules.test.mjs` の `expectViolation` を、拒否の `result.reports[0]` について `rule` の一致・`fileCount > 0`・期待文言を含む違反の存在を確かめる形にした。`eval`・`risk` の期待文言を `dynamic eval is forbidden`・`defineAciTool call must declare risk` に具体化。scan semantics の `resolves.toBeDefined()` 3件も `{ rule, fileCount: 1, violations: [] }` に固定した。
+  - RED（偽の合格の実証）: `no-dynamic-eval` の走査対象から `scripts` を外す変異で、変更前の `detects no-dynamic-eval` は **合格** した（`Tests 1 passed`）。
+  - PROVE: 同じ変異で変更後は `detects no-dynamic-eval` が `AssertionError: expected 0 to be greater than 0` で失敗。`tool-risk-declared` の走査対象を存在しないディレクトリに変える変異で `detects tool-risk-declared`・`requires risk to be a top-level defineAciTool option` ほか計4件が同じメッセージで失敗。
+- MEDIUM 2（CLI の終了コードの経路）: `scripts/lib/cli.mjs` に `runIfMain(moduleUrl, main, proc)` を加え、プロセスへのアクセス（`argv`・`cwd`・stdin・`exitCode`）をここに集めた。5つの CLI（`check-model-ids`・`check-repo-rules`・`check-updates`・`count-biome`・`count-tsc`）は `main(io)` を export し、終了コードを返す。テストは `scripts/lib/memory-io.mjs` でプロセス内から実行する（`no-dynamic-eval` が `scripts/` の `child_process` を禁じるため）。`check-repo-rules` は `io.cwd`、`count-tsc` は `io.cwd` を検査の起点に渡す。
+  - RED: `Cannot find module './memory-io.mjs'`、実装後に `main` がない20件が失敗。GREEN: scripts 167 passed。
+  - PROVE（10件、すべて検出）: `check-model-ids` の違反時 `return 0` → `exits 1 and reports each violation`、例外時 `return 0` → `exits 1 when no eligible file is scanned`、`check-repo-rules` の失敗時 `return 0` → `exits 1 and reports the violation` ほか3件、`count-biome` → `count-biome exits 1 for ...` 2件、`count-tsc` → `count-tsc exits 1 when a tsconfig scanned zero files`、`check-updates` → `exits 1 and reports the error when the registry lookup fails`、`runIfMain` が戻り値を捨てる → `sets the process exit code to the {0,1} that main returns` 2件、例外で `exitCode` を設定しない → `exits 1 and reports the message when main throws`、`check-repo-rules` が `cwd` を無視 → CLI の2件、`count-tsc` が `cwd` を無視 → `count-tsc exits 0 and counts files relative to the working directory`。
+  - 実プロセス: 空ディレクトリへの `check-model-ids` exit 1、0件の Biome JSON を渡した `count-biome` exit 1、`check-repo-rules --only nope` exit 1、`--only no-dynamic-eval` exit 0。
+  - 残る制約: 各スクリプト末尾の `await runIfMain(import.meta.url, main);` の1行だけはソース文字列で検査する（`process.argv`・`process.exitCode` を直接使わないことも同じテストで確認）。
+- MEDIUM 3（`check-repo-rules` の PROVE の欠落）: 11件の変異を実行した。
+  - 検出: 走査0件の失敗を削除 → `fails a selected rule when it scans zero files`、`CHECKER_FILES` を空に → `excludes the checker and its test from every code scan`、`ai-core-no-ui-deps` の package.json 検査を無効化 → `detects ai-core-no-ui-deps`、ソースの import 検査を無効化 → `checks ai-core source imports as well as package dependencies`、`guarded-agent-only` が全ファイルを除外 → `detects guarded-agent-only` ほか計3件、許可パスを削除 → `allows the guarded agent constructor only in its declared file`、行コメント・文字列・テンプレート・正規表現をコードとして走査 → `ignores matches in strings, template contents, comments, and regex literals`（文字列は計20件、正規表現は計6件）。
+  - 生存1件を修正: ブロックコメントをコードとして走査する変異が生き残った。fixture の `/* console.log(messages) */` は `;` の直後にあり、変異後も正規表現リテラルとして読み飛ばされていた。複数行のブロックコメントと、式の後のブロックコメント（`1 /* eval(source) */`）を fixture に加え、同じ変異で scan semantics のテストが失敗することを確認した。
+- 境界: 新規の `scripts/lib/memory-io.mjs` を Task 5 の `_Boundary:_` に追記した（共有ヘルパの扱いは W1 レビュー対応と同じ）。
+- Final: `mise run gate` → Biome 29 files → Model ID 21 files → W1 規則（no-dynamic-eval 20、actions-pinned 1、frozen-lockfile 2、allow-builds-reasoned 1 files）→ `executed=234 passed=234 failed=0 skipped=0`（212 → 234、+22）。`tsc -p tsconfig.json --noEmit` exit 0。

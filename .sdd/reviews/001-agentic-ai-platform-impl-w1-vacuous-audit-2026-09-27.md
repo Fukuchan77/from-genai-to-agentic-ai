@@ -154,3 +154,10 @@ APPROVE_WITH_NOTES
 
 ## Hallucination Signal
 forced: false
+
+## 対応状況（2026-09-27）
+
+- MEDIUM「Substring message assertions also match the zero-scan rejection」: 対応済み。`expectViolation` が構造化された report（`fileCount > 0`、違反の文言）を確かめる。走査0件の変異で変更前は合格、変更後は失敗することを確認。
+- MEDIUM「Gate CLI exit-code paths have no automated test」: 対応済み。`runIfMain` + `main(io)` に分け、終了コードの経路をプロセス内でテストする。監査が挙げた変異（違反時の終了コード設定の削除）を含む10件がすべて検出される。
+- MEDIUM「PROVE gaps in check-repo-rules」: 対応済み。11件の変異を記録。ブロックコメントの変異が生き残っていたため fixture を補強した。
+- 記録: `specs/001-agentic-ai-platform/pdca/do.md`「W1 Non-Vacuous Audit Follow-ups (MEDIUM 1–3)」。LOW は未対応（該当箇所を次に変更するときに扱う）。
