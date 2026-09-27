@@ -200,20 +200,24 @@ _Depends:_ 1
 _Requirements:_ 1.8
 _Traces:_ REQ-001, C3
 
-- [ ] 3.1 (P) `compose.yaml`: `db` プロファイル（`pgvector/pgvector:pg17`、healthcheck）と `trace` プロファイル（`langfuse-web`/`langfuse-worker`/`clickhouse`/`redis`/`minio`。Langfuse の DB は `postgres` サービスに同居）
+- [x] 3.1 (P) `compose.yaml`: `db` プロファイル（`pgvector/pgvector:pg17`、healthcheck）と `trace` プロファイル（`langfuse-web`/`langfuse-worker`/`clickhouse`/`redis`/`minio`。Langfuse の DB は `postgres` サービスに同居）
   _Boundary:_ `compose.yaml`
   _Depends:_ 1
   _Requirements:_ 1.8
   _Traces:_ REQ-001, C3
   _Verify:_ gate の対象外（Docker が必要）。`mise run services:up` で全サービスが healthy になり、Langfuse の Web UI に到達できることを確認する
-- [ ] 3.2 `infra/postgres/init/01-extensions.sql`: pgvector 拡張の有効化と Langfuse 用データベースの作成
-  _Boundary:_ `infra/postgres/init/01-extensions.sql`
+- [x] 3.2 `infra/postgres/init/01-extensions.sql`: pgvector 拡張の有効化と Langfuse 用データベースの作成
+  _Boundary:_ `compose.yaml`, `infra/postgres/init/01-extensions.sql`
   _Depends:_ 3.1
   _Requirements:_ 1.8
   _Traces:_ REQ-001, C3
   _Verify:_ `mise run services:up:db` の後、`CREATE EXTENSION` 済みであることと Langfuse 用 DB の存在を `psql` で確認する
 
 ### Implementation Notes
+
+- `db` / `trace` profileを分離し、全6サービスへhealthcheckを設け、公開ポートをlocalhostへ限定した。
+- Postgresのfile-backed configでinit SQLを自動実行し、`vector`拡張と`LANGFUSE_DB_NAME`で指定したDBを冪等に作成する。
+- Rancher Desktopの`/Users/Shared`共有設定は端末ローカルの`.serena` memoryへ記録し、Git追跡対象外とした。
 
 ---
 

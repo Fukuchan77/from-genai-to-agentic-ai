@@ -27,7 +27,7 @@ ID 規約は `tasks.md` の「ID 対応表」を参照する（この spec の p
 | 1.5 | C1, C18 | T-4.1, T-29.2 |  |  |
 | 1.6 | C1 | T-1.3 | unused-import 負例、`tsc --noEmit`、`mise run gate` | T-1.3: `10c3b48` |
 | 1.7 | C2 | T-2.1, T-19.3, T-29.1 | T-2.1: CI構造検査、`ci-status` 成功/失敗シミュレーション | T-2.1: `f9e7aca`、修正（T-2.1）: `956b3df` |
-| 1.8 | C3, C22 | T-3.1, T-3.2, T-28.5 |  |  |
+| 1.8 | C3, C22 | T-3.1, T-3.2, T-28.5 | T-3.1: Compose構造34 assertion・6/6 healthy・Langfuse health/UI、T-3.2: 新規volumeでentrypoint自動実行・`vector`・カスタムDB・wiring PROVE |  |
 | 1.9 | C4, C13 | T-12.2, T-12.4, T-20.2 |  |  |
 | 1.10 | C2, C13, C14, C16, C20 | T-20.1, T-21.1, T-25.2, T-29.1 |  |  |
 | 1.11 | C1 | T-1.1, T-29.2 | T-1.1: offline lint-only gate（Docker/API key 不要） | T-1.1: `10c3b48` |
@@ -158,6 +158,7 @@ Task 列に記載する。
 
 ## Gaps
 
+- 2026-09-27 の `/sdd-ship`（T-3.1〜T-3.2）では、新しい要件・設計ギャップは検出しなかった。Composeは6サービスのhealthy状態とLangfuse UI/health、Postgresは新規volumeからのinit SQL自動実行・`vector`・カスタムLangfuse DBを実測した。Rancher Desktopの`/Users/Shared` mount手順は端末ローカルのGit除外memoryにのみ保存した。
 - 2026-09-27 の `/sdd-ship`（T-2.1〜T-2.2）では、新しい要件・設計ギャップは検出しなかった。PR の `ci-status` と GitHub Insights の Dependabot 設定確認は、設定を push した後のホスト側検証として残る。
 - 2026-09-27 の `/sdd-ship`（T-1.1〜T-1.3）では、新しい要件・設計ギャップは検出しなかった。`pnpm-lock.yaml` は T-1.2 の frozen install を成立させる派生成物として追跡する（2026-09-27 の `/sdd-validate-impl` で境界外と判定し、T-1・T-1.2 の `_Boundary:_` と plan のルートの表に加えた）。
 - 2026-09-27 の `/sdd-ship`（T-1.4〜T-1.5）でも新しい要件・設計ギャップは検出しなかった。Vitest hook と mutation の実行検証は、承認済みタスクどおり T-4.1/T-4.3/T-29.3 へ引き継ぐ。

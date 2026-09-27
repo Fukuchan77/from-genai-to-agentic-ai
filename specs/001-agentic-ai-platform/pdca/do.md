@@ -553,3 +553,304 @@
 - Structure: YAML parses; jobs `gate`/`secret-scan`/`audit`/`ci-status`; `ci-status.needs` lists all three; workflow `permissions` is `contents: read` only; both action pins (3 uses each) match the official `v6.0.2` / `v4.2.4` tag SHAs via the GitHub API. Dependabot declares `npm` and `github-actions`.
 - Boundary: unchanged from the prior validation (`f9e7aca`, `956b3df` touch only `.github/workflows/ci.yml` / `.github/dependabot.yml`).
 - W-1: `956b3df` (checkout credential hardening, timeouts, concurrency) and `c3c8c1f` are not yet pushed; PR #2's last green run (`36309720286`) is on `a00f581`. Push and confirm `ci-status` succeeds on the new head.
+
+### 2026-09-27 Task 3.1 Started
+
+- Objective: `db` / `trace` プロファイルで Postgres + pgvector と Langfuse v4 一式を起動できる `compose.yaml` を追加する。
+- Success criteria:
+  1. `db` は `postgres` のみ、`trace` は `postgres` と Langfuse の5サービスを解決する。
+  2. Postgres は `pgvector/pgvector:pg17`、Langfuse は web / worker、補助サービスは ClickHouse 25.12 / Redis 7 / MinIO を使う。
+  3. 6サービスすべてが healthcheck を持ち、Langfuse web / worker は4依存サービスの healthy を待つ。
+  4. 公開ポートは `127.0.0.1` に限定し、Postgres の初期化ディレクトリをマウントする。
+  5. `mise run services:up` で全サービスが healthy になり、Langfuse Web UI に到達できる。
+
+### 2026-09-27 Task 3.1 Test Evidence
+
+**RED evidence**（実装前）:
+
+- Verification: `docker compose --profile db --profile trace config`
+- Failure: `no configuration file provided: not found`（exit 1）。
+
+**SCAN evidence**:
+
+- `rg` で Compose / Docker の既存テストを検索したが、Task 3.1 の境界に影響する既存テストはなかった。
+- 既存の `mise.toml` の `services:up` / `services:up:db` / `services:down` が `compose.yaml` を公開インターフェースとして参照していることを確認した。
+
+**GREEN evidence**:
+
+- `docker compose --profile db --profile trace config --quiet` → exit 0。
+- `docker compose config --profiles` → `db`, `trace`。
+- `docker compose --profile db --profile trace config --services` → `clickhouse`, `minio`, `postgres`, `redis`, `langfuse-web`, `langfuse-worker`。
+- Node の静的受け入れ検査 → `Task 3.1 compose acceptance checks: 29 assertions passed`。
+
+**PROVE evidence**:
+
+- Break applied: `postgres` image を一時的に `pgvector/pgvector:pg17` から `postgres:17` に変更した。
+- Failure observed: `AssertionError [ERR_ASSERTION]: postgres image`（actual `postgres:17`, expected `pgvector/pgvector:pg17`）。
+- Restored: yes。trap で `compose.yaml` を復元した。
+
+### 2026-09-27 ❌ Error Encountered
+
+**Error**: RED 証跡取得用の zsh スクリプトで `status` へ代入し、`read-only variable: status` になった。
+
+**Context**: `docker compose config` の終了コードと標準エラーを同時に記録しようとした。
+
+**Root Cause Investigation**:
+
+1. zsh では `status` が直前の終了コードを表す特殊な読み取り専用パラメータである。
+2. Compose やリポジトリ設定の問題ではなく、検証スクリプトの変数名衝突だった。
+3. 同じコマンドを盲目的に再実行せず、汎用名ではない `exit_code` に変更した。
+
+**Solution Design**:
+
+- Approach: 終了コード格納変数を `exit_code` にする。
+- Rationale: zsh の特殊パラメータとの衝突を除去し、検証対象の Compose エラーを正しく取得できる。
+
+**Execution**: 変数名を変更して RED 検査を実行した。
+
+**Result**: `exit=1` と `no configuration file provided: not found` を取得した。
+
+**Learning**: zsh の検証用スクリプトでは `status` をローカル変数名に使わない。
+
+### 2026-09-27 ❌ Task 3.1 External Verification Blocked
+
+**Error**: `mise run services:up` が Docker API に接続できず失敗した。
+
+**Exact failure**: `failed to connect to the docker API at unix:///Users/k-fukuda/.rd/docker.sock ... no such file or directory`。
+
+**Root Cause Investigation**:
+
+1. `docker --version` と `docker compose version` は成功し、CLI はインストール済みである。
+2. エラーはイメージ解決前に Rancher Desktop の Docker socket が存在しないとして発生した。
+3. したがって Compose 定義ではなく、Docker daemon が起動していないことが原因である。
+
+**Solution Design**:
+
+- Required external action: 学習者が Docker daemon（現在の context では Rancher Desktop）を起動する。
+- After recovery: `mise run services:up`、`docker compose ps`、Langfuse health endpoint / Web UI 到達性を検証する。
+- Constraint: `/sdd-impl` の No Infrastructure Provisioning 規則に従い、エージェントから GUI や daemon を起動しない。
+
+**Result**: BLOCKED。静的受け入れ検査は green だが、Task 3.1 の `_Verify:` を満たしていないため `tasks.md` は未チェックのままにする。
+
+### 2026-09-27 Task 3.1 External Verification Resumed
+
+- Docker daemon: Rancher Desktop / Docker Server `29.5.3` に接続できた。
+- `mise run services:up`: exit 0。必要なイメージ、network、volume、6コンテナを作成・起動した。
+- Health verification: `clickhouse`, `langfuse-web`, `langfuse-worker`, `minio`, `postgres`, `redis` の全6サービスが `running` / `healthy`。
+- Langfuse UI: Chrome で `http://127.0.0.1:3000` を開き、`Sign in | Langfuse` とサインインフォームを確認した。
+
+### 2026-09-27 ❌ Verification Script Error
+
+**Error**: Compose の JSONL を pipe しながら Node スクリプトを heredoc でも標準入力へ渡したため、JSON が JavaScript として評価され `SyntaxError: Unexpected token ':'` になった。
+
+**Root Cause Investigation**:
+
+1. pipe と heredoc が同じ Node プロセスの標準入力を競合していた。
+2. Compose サービスは起動済みであり、サービス障害ではなく検証スクリプトの入出力設計が原因だった。
+3. JSONL を `/tmp/task-3.1-ps.jsonl` へ保存し、Node はファイルから読む方式なら入力が衝突しない。
+
+**Solution Design**:
+
+- Approach: Compose 状態を一時ファイルへ書き、Node スクリプトは heredoc のコード内からそのファイルを読む。
+- Rationale: コード用 stdin と検証データを分離する。
+
+**Result**: 1回目のポーリングで6サービスすべて `running` / `healthy` を確認した。
+
+**Learning**: `node --input-type=module` の heredoc と検証データの pipe を併用しない。
+
+### 2026-09-27 Task 3.1 Verification Complete
+
+- Static acceptance: 29 assertions passed。
+- Runtime verification: `mise run services:up` → exit 0、6/6 services healthy。
+- UI verification: Langfuse sign-in page reachable at `http://127.0.0.1:3000`。
+- Verification gate: `mise run gate` → exit 0、Biome `Checked 7 files ... No fixes applied.`。
+- Status: Task 3.1 を `[x]` に更新した。
+
+### 2026-09-27 Task 3.1 Adversarial Review
+
+- Report: `.sdd/reviews/agentic-ai-platform-3.1.md`
+- Verdict: `APPROVE_WITH_NOTES`。
+- Independent runtime verification: 6/6 services healthy、Langfuse Web / health endpoint / authenticated OTLP path reachable、`mise run gate` green。
+- Notes:
+  - 計画が指定する major / calendar タグは可変であるため、将来 digest 固定を検討する。
+  - 開発用fallback秘密値と補助ポートは localhost 限定だが、別タスクで攻撃面縮小を検討する。
+  - 静的29 assertionはTask境界内にスクリプトを追加できないためPDCA証跡のみ。レビュー側で主要条件を独立再検証済み。
+  - Task 3.1で作成済みのPostgres volumeにはTask 3.2のinit SQLが自動適用されない。Task 3.2の検証前に対象volumeを限定して再作成する必要がある。
+
+### 2026-09-27 Task 3.2 Started
+
+- Objective: Postgres初期化時に`vector`拡張を有効化し、Langfuse用データベースを冪等に作成する。
+- Success criteria:
+  1. `CREATE EXTENSION IF NOT EXISTS vector`がメインDBで成功する。
+  2. `langfuse` DBが存在しない場合だけ作成される。
+  3. SQLを複数回実行しても失敗しない。
+  4. `mise run services:up:db`後に`psql`で拡張とDBを確認できる。
+  5. 既存のTask 3.1サービス構成とgateに回帰を起こさない。
+
+### 2026-09-27 Task 3.2 Preflight
+
+- Docker server: `29.5.3`。
+- Postgres service: `running` / `healthy`。
+- Required environment variables: none（Compose defaultsでdb laneを実行可能）。
+- Verdict: `PREFLIGHT OK — Task 3.2 db lane`。
+
+### 2026-09-27 Task 3.2 Test Evidence
+
+**RED evidence**（実装前）:
+
+- Check: 稼働中Postgresで`pg_extension.extname = 'vector'`と`pg_database.datname = 'langfuse'`を検査。
+- Failure: `RED exit=1`、`ASSERTION FAILED: expected vector extension`。
+- Observed: `vector extension: missing`、`langfuse database: langfuse`（Langfuse v4がTask 3.1起動時に自身のDBを作成済み）。
+
+**SCAN evidence**:
+
+- `infra/postgres/init/`に既存SQLはなく、`rg`で同じ`CREATE EXTENSION` / `CREATE DATABASE`実装も見つからなかった。
+- 影響する既存自動テストはなく、公開入口は`mise run services:up:db`であることを確認した。
+
+**GREEN evidence**:
+
+- Added: `infra/postgres/init/01-extensions.sql`。
+- SQL: `CREATE EXTENSION IF NOT EXISTS vector`と、`SELECT format(...) ... \gexec`による条件付き`CREATE DATABASE langfuse`。
+- Existing DBへの適用: `CREATE EXTENSION`。
+- `mise run services:up:db`: exit 0。
+- Verification output: `vector`, `langfuse`。
+- Idempotence: SQLを連続2回実行し、`extension "vector" already exists, skipping`で両方exit 0。
+
+**PROVE evidence**:
+
+- Extension break: `CREATE EXTENSION`を一時的に`SELECT 1`へ置換し、新規テストDBへ適用。
+- Failure: `PROVE extension exit=1, observed=missing`。
+- Database break: 条件付きDB作成を一時的に`WHERE FALSE AND NOT EXISTS`へ変更し、テスト用DB名で適用。
+- Failure: `PROVE database exit=1, observed=missing`。
+- Restored: yes。trapで元SQLを復元し、一時テストDB4個を削除した。
+
+### 2026-09-27 ❌ Task 3.2 Mount Error
+
+**Error**: 既存Postgresコンテナ内の`/docker-entrypoint-initdb.d/01-extensions.sql`が見つからなかった。
+
+**Root Cause Investigation**:
+
+1. Task 3.1でホスト側`infra/postgres/init`が存在しない状態でコンテナを作成していた。
+2. Postgresコンテナを再作成しても、Docker inspectはbind mountを示す一方、コンテナ内では対象が空のread-only tmpfsだった。
+3. ホスト側にはSQLが存在するため、SQL内容やPostgres権限ではなく、このRancher Desktop環境における`/Users/Shared` bind共有の挙動が原因である。
+
+**Solution Design**:
+
+- Approach: SQLをホストから`docker compose exec -T postgres psql ...`の標準入力へ渡して内容を検証する。
+- Rationale: volumeを削除せず、bind共有の環境差を迂回してSQL自体の構文、効果、冪等性を検証できる。
+- Scope: プロジェクト設定を環境固有の回避策へ変更しない。
+
+**Result**: SQL適用後、指定の`mise run services:up:db`を実行し、`psql`で`vector`と`langfuse`を確認した。
+
+**Learning**: 初期化ディレクトリがコンテナ作成後に追加された場合は、Docker metadataだけでなくコンテナ内からmount内容を確認する。Rancher Desktopの共有対象外パスではbindが空になる場合がある。
+
+### 2026-09-27 Task 3.2 Verification Complete
+
+- Task verification: `mise run services:up:db` → exit 0。
+- Database verification: `vector` extension and `langfuse` database present。
+- Idempotence: 2 consecutive SQL applications passed。
+- Status: Task 3.2を`[x]`に更新した。
+
+### 2026-09-27 Task 3.2 Adversarial Review: REQUEST_CHANGES
+
+- Report: `.sdd/reviews/agentic-ai-platform-3.2.md`。
+- HIGH: SQL標準入力による検証はCompose → Postgres entrypoint → init SQLのクリーン初期化経路を検証していない。
+- MEDIUM: SQLの固定`langfuse`名とComposeの`LANGFUSE_DB_NAME` overrideが一致しない。
+- LOW: PROVEがinit wiring破損を検出できない。
+
+### 2026-09-27 Task 3.2 Remediation Attempt
+
+- `compose.yaml`のPostgresへ`LANGFUSE_DB_NAME`を注入した。
+- SQLは`\getenv langfuse_db_name LANGFUSE_DB_NAME`とpsql変数のidentifier quotingを使い、任意のLangfuse DB名を安全に作成する形へ修正した。
+- ディレクトリbindをCompose `configs`の単一ファイルmountへ変更し、静的wiring検査3件を通過した。
+- クリーン初期化検査は、別project `agentic-ai-task-3-2`、別port `55432`、新規一時volume、カスタムDB名`task_3_2_langfuse`で実行した。
+
+### 2026-09-27 ❌ Task 3.2 Clean Initialization Blocked
+
+**Error**: 新規Postgresコンテナ作成時にDocker daemonがinit SQLのsource pathを認識できなかった。
+
+**Exact failure**: `invalid mount config for type "bind": bind source path does not exist: /Users/Shared/codes/from-genai-to-agentic-ai/infra/postgres/init/01-extensions.sql`。
+
+**Root Cause Investigation**:
+
+1. ホスト側の同パスにはSQLファイルが存在し、通常のシェルとCompose config解決では読める。
+2. Task 3.1のディレクトリbindではDocker inspectがbindを示しても、コンテナ内では空のread-only tmpfsだった。
+3. Compose `configs.file`へ変更しても、Rancher Desktop daemonは最終的なbind sourceを同じく「存在しない」と判定した。
+4. したがってSQL構文やCompose相対パスではなく、Rancher Desktop VMから`/Users/Shared/codes/from-genai-to-agentic-ai`が共有されていないことが原因である。
+
+**Required external action**:
+
+- Rancher Desktopのfile sharing / mount設定で`/Users/Shared`（またはこのリポジトリの絶対パス）をVMへ共有する。
+- 共有後、別project・新規volumeによるクリーン初期化検査を再実行する。
+
+**Constraint**: エージェントはRancher Desktop VM設定を変更せず、別パスへのコピーやSQL標準入力で必須統合経路を迂回しない。
+
+**Result**: BLOCKED。Task 3.2を`[ ]`へ戻した。修正済みSQLとCompose wiringは残し、外部環境復旧後に統合検証と再レビューを行う。
+
+### 2026-09-27 Task 3.2 Environment Recovery and Re-verification
+
+- User added `/Users/Shared` to Rancher Desktop Lima mounts through the local `override.yaml` and restarted Rancher Desktop.
+- VM visibility: `rdctl shell` could read `infra/postgres/init/01-extensions.sql` from the repository path.
+- Container visibility: an ephemeral pgvector container could bind and read the same SQL file.
+- Local-only runbook saved to `.serena/memories/local/rancher-desktop-users-shared-mount.md`; `.gitignore` rule `.serena/` excludes it from Git tracking.
+
+**Clean initialization integration verification**:
+
+- Isolated project: `agentic-ai-task-3-2`。
+- Isolated port: `55432`。
+- Fresh volume: `agentic-ai-task-3-2_postgres-data`。
+- Custom main DB: `task_3_2_main`。
+- Custom Langfuse DB: `task_3_2_langfuse`。
+- Result: Postgres became `running/healthy` on attempt 4。
+- Mount assertion: `/docker-entrypoint-initdb.d/01-extensions.sql` existed。
+- Data assertions: `vector extension: vector`; `custom Langfuse database: task_3_2_langfuse`。
+- Entrypoint log: `running /docker-entrypoint-initdb.d/01-extensions.sql`, `CREATE EXTENSION`, `CREATE DATABASE`。
+- Cleanup: isolated project, container, network, and volume removed by trap。
+
+**Integration PROVE evidence**:
+
+- Break applied: changed the config target from `/docker-entrypoint-initdb.d/01-extensions.sql` to `/tmp/01-extensions.sql` and initialized a separate fresh volume/project.
+- Failure observed: `PROVE wiring exit=1, vector=missing database=missing`。
+- Restored: yes。`compose.yaml` restored by trap; isolated resources removed。
+
+**Task-specified verification**:
+
+- `mise run services:up:db`: exit 0。
+- Mounted init SQL: readable。
+- `vector extension: vector`。
+- `langfuse database: langfuse`。
+- `mise run gate`: exit 0、Biome `Checked 7 files ... No fixes applied.`。
+
+**Warning remediation**:
+
+- Compose warned that file-backed config `mode` is unsupported and ignored.
+- Removed the ineffective `mode: 0444`; configs remain read-only by Compose semantics.
+- Re-ran Compose config validation and `mise run services:up:db` without the warning。
+
+- Status: Task 3.2を`[x]`に更新した。再レビュー待ち。
+
+### 2026-09-27 Task 3.2 Re-review: Boundary Correction
+
+- Re-review verdict: `REQUEST_CHANGES`（実装・統合検証・PROVEの指摘はすべて解消済み）。
+- Remaining issue: Task 3.2の個別boundaryがSQLのみで、必要となったCompose init wiringと`LANGFUSE_DB_NAME`注入を含んでいなかった。
+- Correction: 個別boundaryを`compose.yaml`, `infra/postgres/init/01-extensions.sql`へ更新した。
+- Rationale: 親Task 3の既存boundary、plan C3のowns、実際のクリーン初期化契約に一致させるメタデータ修正であり、機能スコープは拡張していない。
+
+### 2026-09-27 Task 3.2 Final Adversarial Review
+
+- Report: `.sdd/reviews/agentic-ai-platform-3.2.md`。
+- Verdict: `APPROVE`。
+- Confirmed: boundary alignment、clean initialization、custom DB name、integration PROVE、`mise run gate`、`git diff --check`。
+- Remaining findings: none。
+
+### 2026-09-27 Ship Validation: Tasks 3.1–3.2
+
+- Target: `agentic-ai-platform` T-3.1 / T-3.2。
+- Preflight: Docker server reachable、Rancher Desktopからinit SQL readable、6/6 Compose services `running/healthy`。
+- Runtime acceptance: Compose profiles/services/images/healthchecks/dependencies/localhost ports、Postgres state、Langfuse health/UIの34 assertions passed。
+- Clean initialization: isolated project / port / fresh volumeでentrypointがinit SQLを自動実行し、`vector`と`ship_task_3_langfuse`を作成。ログの`CREATE EXTENSION` / `CREATE DATABASE`も確認した。
+- Non-vacuous evidence: T-3.1 image mutation、T-3.2 SQL mutations、T-3.2 init-target wiring mutationがそれぞれ期待する失敗を生成した。
+- Design/requirements: Req 1.8、C3、ADR-12、Task boundariesに整合。新しい要件・設計ギャップなし。
+- Adversarial reviews: T-3.1 `APPROVE_WITH_NOTES`、T-3.2最終`APPROVE`。
+- Auto-remediation: Task 3 Implementation Notes、Req 1.8 Test列、traceability Gapsを補完した。
+- Commit列は実装コミット作成後にSHAを記録する。
