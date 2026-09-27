@@ -1,0 +1,10 @@
+#!/usr/bin/env sh
+set -eu
+
+pnpm exec biome check --staged --no-errors-on-unmatched
+gitleaks git --staged --redact
+if [ -f scripts/check-model-ids.mjs ]; then
+	mise run check:model-ids
+else
+	echo "check:model-ids deferred until Task 5.1"
+fi
