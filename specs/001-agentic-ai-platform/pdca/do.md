@@ -1173,3 +1173,9 @@
 - Final gate after remediation: `mise run test` 16/16 passed、`mise run typecheck` 1/1 successful、`mise run gate` Biome 12 files / no fixes、`git diff --check` exit 0。
 - Supplemental execution proof: verbose 20/20 passed（恒久16 + T-4.2 ship probe 4）、touched source lines coverage 93.56%。
 - Staging note: sandbox内の`git add`は`.git/index.lock`作成権限で拒否されたため、同一の明示的file listを承認付きGit操作でstageする。
+
+### 2026-09-27 Ship Commit: Tasks 4.1–4.3
+
+- `2085577 test(platform): add hermetic Vitest harness`
+- Pre-commit protection: IBM Vault Radar、staged Biome、gitleaks、Task 5.1-aware model-ID deferral all passed。
+- Traceability の関連Test/Commit列とGapsを更新した。
