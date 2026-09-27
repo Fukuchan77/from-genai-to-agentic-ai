@@ -388,3 +388,22 @@
 - `d9cec30 chore(platform): add local security scaffolding` — staged pre-commit protection, names-only env example, ignores, and setup documentation.
 - Both commits passed IBM Vault Radar, the repository pre-commit hook, staged gitleaks, and the Task 5.1-aware model-ID deferral.
 - Traceability Commit cells were updated with the scoped implementation hashes.
+
+### 2026-09-27 Validation Remediation: Task 1 (`/sdd-validate-impl`)
+
+- Trigger: `/sdd-validate-impl agentic-ai-platform Task1` returned NO-GO (1 CRITICAL, 2 HIGH, 4 WARNING).
+- C-1 boundary: `pnpm-lock.yaml` added to the `_Boundary:_` of Task 1 and 1.2, to plan C1 Owns, and to the plan's root file table.
+- H-1 suite selection: Vitest source (`globTestFiles` → `filterFiles`) confirms CLI filters only narrow the post-`exclude` set, so `test:local` / `test:db` could never collect `*.local.test.ts` / `*.pg.test.ts`; 19.3's Verify also expects gate to collect local tests as reasoned skips. Replaced the CLI filters with `AI_TEST_SUITE` (`gate` default / `local` / `pg`) selected in `vitest.config.ts`; `passWithNoTests` stays false only for `gate`; unknown values throw at config load. Plan C18 and tasks 4.3, 6.2, 7.2, 8.3 now state the same rule.
+- H-2 env: `turbo run test --dry=json` showed `envMode: strict` with only `AI_TEST_RUN_MODE` passed. Added `AI_TEST_SUITE` and `OLLAMA_BASE_URL` to `env` of `test` and `//#test`; the dry run now lists all three.
+- W-1: `.githooks/pre-commit` added to the Task 5 / 5.5 boundary, and 5.5 now removes the model-ID deferral branch.
+- W-2: removed the `package.json` placeholder from the root `tsconfig.json` include. This exposed a missing root `@types/node`: `process` was unresolved. Task 4.1 also needs Node types but cannot edit the root `package.json`, so `@types/node@26.6.3` (exact; newest 26.x older than 24h) was added and `types: ["node"]` set in the root tsconfig (TypeScript 6+ defaults `types` to `[]`). The lockfile diff contains only the new package and optional-peer suffixes; no versions moved.
+- W-3: `.env.example` now has per-variable descriptions and plan defaults; 38 keys, all values blank.
+- PROVE (config selection): each `AI_TEST_SUITE` value was evaluated through the real config module. `gate`, unset, and empty all resolve to gate (`passWithNoTests: false`); `local` / `pg` narrow `include`; `bogus` throws `Unknown AI_TEST_SUITE "bogus"`. The first probe caught `AI_TEST_SUITE=` (empty) throwing under `??`, which was fixed to `||`.
+- Verification: `mise run setup` (frozen, supply-chain policy passed) → `mise run gate` (`Checked 7 files`, exit 0) → `tsc -p tsconfig.json --noEmit` exit 0 → `mise run typecheck` → `mise run gate` exit 0 → `mise tasks validate` (23 tasks).
+
+### 2026-09-27 Re-validation: Task 1 (`/sdd-validate-impl`)
+
+- Verdict: GO with warnings; the prior C-1, H-1, H-2, W-1〜W-3 were independently re-verified (suite selection per `AI_TEST_SUITE` value, `turbo run test --dry=json` env list, boundaries).
+- W-1 (new): `mise run test:coverage` called `turbo run test:coverage`, which failed with `Could not find task 'test:coverage' in project`; Task 1 is the only owner of `turbo.json`, so no later task would have fixed it.
+- Fix: added a `test:coverage` task to `turbo.json` with the same `env` and `outputs` as `test`. `mise run test:coverage` now resolves the task graph (0 tasks until a workspace defines a `test:coverage` script) and exits 0; `mise run gate` still passes (`Checked 7 files`).
+- Remaining gap: no task in W2〜W5 adds a workspace `test:coverage` script yet; recorded in traceability Gaps.

@@ -98,7 +98,7 @@ flowchart LR
 - **Responsibility**: ワークスペース構成、版の固定、lint / format / typecheck / test を1コマンドにまとめる品質ゲートを提供する。
 - **Public interface**: mise タスク `setup`、`gate`、`lint`、`lint:fix`、`typecheck`、`test`、`test:local`、`test:db`、`test:e2e`、`test:mutation`、`test:coverage`、`outdated`、`secret-scan`、`secret-scan:staged`、`audit`、`services:up`、`services:up:db`、`services:down`、`gate:repeat`、`docs:check`、`check:model-ids`、`check:repo-rules`。`gate` は `lint` → `check:model-ids` → `check:repo-rules` → `typecheck` → `test` → `docs:check` の順に実行し、1段でも失敗すれば非ゼロで終了する。
 - **gate と CI の段階的な結線**（2026-09-27、`/sdd-analyze` H-3。CI のジョブは2回目の `/sdd-analyze` H-1 で追加）: 各段は「走査0件で失敗」するため、検査対象がまだない段を最初から入れると、実装の途中で gate が必ず失敗する。CI のジョブ（C2）も同じで、対象のないジョブを最初から入れると `ci-status` が最終統合まで失敗し続ける。そこで tasks.md の実装の波（W1〜W5）ごとに、その波の締めのタスクが、対象が揃った段、`check:repo-rules` の規則、CI のジョブを加える（どの波で何を加えるかは tasks.md の「gate と CI の段階的な結線」表が正本）。波の途中では、直前の波の締めで確定した構成を使う。一度加えた段・規則・ジョブは外さない。W5 の締め（最終統合）で、上記の全段・全規則・全ジョブの構成になる。
-- **Owns**: `mise.toml`、ルートの `package.json`、`pnpm-workspace.yaml`（`minimumReleaseAge: 1440`、`allowBuilds`。各エントリの直前に許可理由のコメントを必ず書く（constitution 原則 7）。コメントのないエントリは `check:repo-rules` が失敗させる）、`turbo.json`（ルートタスク `//#test`・`//#typecheck` を含む）、`biome.json`（ADR-3）、`tsconfig.base.json`、ルートの `tsconfig.json`（どのワークスペースにも属さない `tooling/**/*.ts` とルートの設定ファイルを型検査の対象にする）、`vitest.config.ts`（ルート直下の `tooling/`・`scripts/` のテストだけを対象にする。ワークスペースは集約しない。C18「テストの実行単位」）、`.githooks/`、`scripts/gate/*`。
+- **Owns**: `mise.toml`、ルートの `package.json`、`pnpm-lock.yaml`、`pnpm-workspace.yaml`（`minimumReleaseAge: 1440`、`allowBuilds`。各エントリの直前に許可理由のコメントを必ず書く（constitution 原則 7）。コメントのないエントリは `check:repo-rules` が失敗させる）、`turbo.json`（ルートタスク `//#test`・`//#typecheck` を含む）、`biome.json`（ADR-3）、`tsconfig.base.json`、ルートの `tsconfig.json`（どのワークスペースにも属さない `tooling/**/*.ts` とルートの設定ファイルを型検査の対象にする）、`vitest.config.ts`（ルート直下の `tooling/`・`scripts/` のテストだけを対象にする。ワークスペースは集約しない。C18「テストの実行単位」）、`.githooks/`、`scripts/gate/*`。
 - **Does NOT own**: 各ワークスペースのソースとテストの中身、CI ワークフロー（C2）、Compose 定義（C3）。
 - **Requirements**: 1.1, 1.3, 1.4, 1.5, 1.6, 1.11, 1.12, 1.15, 2.18, NFR（検証速度、決定性、オフライン動作、型安全性、サプライチェーン）
 
@@ -296,7 +296,7 @@ flowchart LR
   - `tooling/vitest/global-setup-local.ts`: `AI_TEST_RUN_MODE=local` のときだけ Ollama の到達性と必要モデルを確認し、結果を `provide("localAvailability", ...)` で渡す。
   - `@platform/ai-core/testing`: `describeLocal(name, fn)`、`itLocal(name, fn)`（`localAvailability` が不可なら理由付きでスキップする）、`createTextStreamModel`、`createToolCallingModel`、`createObjectModel`（`MockLanguageModelV4` + `simulateReadableStream`）、`createFakeClock`。
   - `tooling/vitest/gate-reporter.ts`: 実行・成功・失敗・スキップ（理由別）の件数と、DB 依存で未実行の件数（`*.pg.test.ts` のファイル数）を表示する。実行件数が 0 なら終了コードを非ゼロにする。
-  - **テストの実行単位**（2026-09-27、3回目の `/sdd-analyze` H-1）: gate の `test` 段は `turbo run test` で、`test` スクリプトを持つ各ワークスペースと、ルートタスク `//#test`（ルートの `vitest.config.ts`。対象は `tooling/`・`scripts/` のテストだけ）を、それぞれ独立した Vitest プロセスで1回ずつ実行する。ルートの設定は `projects` でワークスペースを集約しない（同じテストを2回実行しないため）。ルートと各ワークスペースの `vitest.config.ts` は、`setup-hermetic` と `gate-reporter` を共通に登録する。`gate-reporter` は実行単位ごとに件数を表示し、その単位の実行件数が 0 なら失敗する。ワークスペースの `test` スクリプトは最初のテストと同時に加える（`ai-core` は 6.3、`eval-suite` は 19.1、`apps/web` は 21.1。スクリプトのないワークスペースは turbo の実行対象にならない）。
+  - **テストの実行単位**（2026-09-27、3回目の `/sdd-analyze` H-1）: gate の `test` 段は `turbo run test` で、`test` スクリプトを持つ各ワークスペースと、ルートタスク `//#test`（ルートの `vitest.config.ts`。対象は `tooling/`・`scripts/` のテストだけ）を、それぞれ独立した Vitest プロセスで1回ずつ実行する。ルートの設定は `projects` でワークスペースを集約しない（同じテストを2回実行しないため）。ルートと各ワークスペースの `vitest.config.ts` は、`setup-hermetic` と `gate-reporter` を共通に登録する。`gate-reporter` は実行単位ごとに件数を表示し、その単位の実行件数が 0 なら失敗する。テストの選択は CLI のファイル名フィルタではなく、mise タスクが設定する `AI_TEST_SUITE` で行う（2026-09-27、Task 1 の実装検証。Vitest の CLI フィルタは `exclude` で外したファイルを戻せないため）。ルートと各ワークスペースの `vitest.config.ts` は同じ規則に従う: `gate`（既定。`test`・`test:coverage`）は `*.pg.test.*` 以外のすべてを収集し、`*.local.test.*` は `local` が使えなければ理由付きでスキップされる。`local`（`test:local`）は `*.local.test.*` だけ、`pg`（`test:db`）は `*.pg.test.*` だけを収集する。0件での失敗（`passWithNoTests: false` と `gate-reporter`）は `gate` だけに適用し、`local`・`pg` では対象のない実行単位を許す。未知の値は設定の読み込み時に失敗する。`turbo.json` の `test` と `//#test` は、strict env モードでも値が渡りキャッシュキーに入るよう、`AI_TEST_RUN_MODE`・`AI_TEST_SUITE`・`OLLAMA_BASE_URL` を `env` に宣言する。ワークスペースの `test` スクリプトは最初のテストと同時に加える（`ai-core` は 6.3、`eval-suite` は 19.1、`apps/web` は 21.1。スクリプトのないワークスペースは turbo の実行対象にならない）。
   - カバレッジ（NFR テストカバレッジ）: `packages/ai-core/vitest.config.ts` はカバレッジを常に有効にし（`coverage.enabled: true`、`thresholds.lines: 80`）、gate の `test` 段で閾値を下回れば失敗させる。`mise run test:coverage` は全ワークスペースの HTML レポートを作るだけのタスクで、閾値の強制は gate が担う（2026-09-27、`/sdd-analyze` M-6）。
   - `stryker.config.mjs`: 対象は制御ロジック（`agents/stop-conditions.ts`、`agents/stop-reason.ts`、`aci/define-tool.ts`、`config/run-mode.ts`、`mock/resolve.ts`、`summarize/plan.ts`、`summarize/retry.ts`）に限る。`typescript-checker` は使わない。変異対象はすべて `packages/ai-core` にあるため、`vitest.configFile` は `packages/ai-core/vitest.config.ts` とする。閾値 `break: 70`。
 - **Owns**: テストファイルの命名規約: `*.test.ts`（gate で実行）、`*.local.test.ts`（比較・品質評価。`local` のときだけ実行）、`*.db.test.ts`（インプロセス DB で gate に含める）、`*.pg.test.ts`（Docker の Postgres が必要。`mise run test:db` だけで実行）。
@@ -491,8 +491,8 @@ erDiagram
 | `setup` | `pnpm install --frozen-lockfile`、`git config core.hooksPath .githooks` | 不要 | 要（依存取得） |
 | `gate` | `lint`（`biome ci`）→ `check:model-ids` → `check:repo-rules` → `typecheck`（`turbo run typecheck`。ルートの `//#typecheck` を含む。続けて `count-tsc` がルートと各ワークスペースの tsconfig の走査件数を検査する）→ `test`（`turbo run test`。各ワークスペースと `//#test` の Vitest を `mock` で1回ずつ実行し、実行単位ごとの `gate-reporter` が件数を検査する。C18）→ `docs:check`。各段で走査件数が 0 なら失敗 | 不要 | 不要 |
 | `check:model-ids` / `check:repo-rules` | C20 のリポジトリ規約の検査（gate の一段。単独でも実行できる） | 不要 | 不要 |
-| `test:local` | `AI_TEST_RUN_MODE=local` で `*.local.test.ts` を実行 | 不要 | Ollama のみ |
-| `test:db` | `services:up:db` の後に `*.pg.test.ts` を実行 | 要 | ローカルのみ |
+| `test:local` | `AI_TEST_RUN_MODE=local`・`AI_TEST_SUITE=local` で `*.local.test.ts` だけを実行 | 不要 | Ollama のみ |
+| `test:db` | `services:up:db` の後に `AI_TEST_SUITE=pg` で `*.pg.test.ts` だけを実行 | 要 | ローカルのみ |
 | `test:e2e` | `pnpm --filter web exec playwright test`（3エンジン） | 不要 | 不要 |
 | `test:mutation` | `pnpm exec stryker run` | 不要 | 不要 |
 | `test:coverage` | 全ワークスペースのカバレッジの HTML レポート（閾値の強制は gate の `test` 段。C18） | 不要 | 不要 |
@@ -529,6 +529,7 @@ erDiagram
 | `mise.toml` | Modify | ツール（node、pnpm、gitleaks）の版固定と、[mise タスク](#mise-タスク学習者と-ci-の入口)の定義。 |
 | `package.json` | Create | ルートの開発依存（typescript、turbo、biome、vitest、stryker）を完全一致で固定し、`packageManager` と `engines` を宣言する。 |
 | `pnpm-workspace.yaml` | Create | `apps/*`、`packages/*` の宣言、`minimumReleaseAge: 1440`、監査済みの `allowBuilds`。 |
+| `pnpm-lock.yaml` | Create | pnpm が生成するロックファイル。`--frozen-lockfile` によるクリーンな clone での再現（Req 1.3）の前提。 |
 | `turbo.json` | Create | `typecheck`、`test`、`build` のタスクグラフと入出力（キャッシュ対象）の定義。 |
 | `biome.json` | Create | リポジトリ全体の lint / format 規約（ADR-3）。 |
 | `tsconfig.base.json` | Create | 全ワークスペース共通の strict な TypeScript 設定。 |

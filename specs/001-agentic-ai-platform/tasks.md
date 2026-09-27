@@ -114,7 +114,7 @@ PR のステータス（Req 1.7）が信号として機能しない。そこで�
 pnpm workspaces + Turborepo の骨格、版固定、Biome、strict な TypeScript 設定、品質ゲートの
 入口となるルート設定一式を用意する。
 
-_Boundary:_ `mise.toml`, `package.json`, `pnpm-workspace.yaml`, `turbo.json`, `biome.json`, `tsconfig.base.json`, `tsconfig.json`, `vitest.config.ts`, `stryker.config.mjs`, `.gitignore`, `.gitleaksignore`, `.githooks/pre-commit`, `.env.example`, `AGENTS.md`, `README.md`
+_Boundary:_ `mise.toml`, `package.json`, `pnpm-workspace.yaml`, `pnpm-lock.yaml`, `turbo.json`, `biome.json`, `tsconfig.base.json`, `tsconfig.json`, `vitest.config.ts`, `stryker.config.mjs`, `.gitignore`, `.gitleaksignore`, `.githooks/pre-commit`, `.env.example`, `AGENTS.md`, `README.md`
 _Depends:_ none
 _Requirements:_ 1.1, 1.3, 1.4, 1.6, 1.11, 1.12, 1.15, 1.16, 1.18, 2.18, NFR-05, NFR-07, NFR-11
 _Traces:_ REQ-001, C1
@@ -126,7 +126,7 @@ _Traces:_ REQ-001, C1
   _Traces:_ REQ-001, C1
   _Verify:_ `mise tasks` に全タスクが列挙され、`mise run gate` が初期構成で成功する
 - [x] 1.2 pnpm workspace 宣言（`minimumReleaseAge`、理由付き `allowBuilds`）とルート `package.json`、Turborepo のタスクグラフ（ルートの `tooling/`・`scripts/` のテストはルートタスク `//#test`（ルートの `vitest.config.ts` だけを使い、ワークスペースのテストは含めない。plan C18「テストの実行単位」）、ルートの型検査はルートタスク `//#typecheck`（`tsc -p tsconfig.json --noEmit`））を定義する。ADR-1 の確認（Turborepo 2.11 が pnpm 12 のワークスペースとロックファイルを解決できるか）を行い、失敗したら mise + `pnpm -r` へ後退して理由を `package.json` のコメントに記録する
-  _Boundary:_ `pnpm-workspace.yaml`, `package.json`, `turbo.json`
+  _Boundary:_ `pnpm-workspace.yaml`, `package.json`, `pnpm-lock.yaml`, `turbo.json`
   _Depends:_ 1.1
   _Requirements:_ 1.1, 1.3, NFR-11
   _Traces:_ REQ-001, C1
@@ -233,7 +233,7 @@ _Traces:_ REQ-001, REQ-002, C18
   _Requirements:_ 1.13, 1.14
   _Traces:_ REQ-001, C18
   _Verify:_ 受け取り側のスキップ判定は 11.2 の `local-only.test.ts` が検証する。本体は、Ollama を止めた状態の `mise run test:local` で `*.local.test.ts` が理由付きでスキップされることを 29.2 で確認する
-- [ ] 4.3 `gate-reporter.ts`: 実行・成功・失敗・スキップ（理由別）の件数と DB 依存の未実行件数を表示し、実行件数0件で非ゼロ終了する + テスト
+- [ ] 4.3 `gate-reporter.ts`: 実行・成功・失敗・スキップ（理由別）の件数と DB 依存の未実行件数を表示し、実行件数0件で非ゼロ終了する。0件での失敗は `AI_TEST_SUITE=gate`（既定）のときだけ適用し、`local`・`pg` では対象のない実行単位を許す（plan C18「テストの実行単位」）+ テスト
   _Boundary:_ `tooling/vitest/gate-reporter.ts`, `tooling/vitest/gate-reporter.test.ts`
   _Depends:_ 4.1
   _Requirements:_ 1.12, 1.14, 1.15, 1.16
@@ -248,7 +248,7 @@ _Traces:_ REQ-001, REQ-002, C18
 設定では表現できないリポジトリ規約（モデルID一元管理、9つの constitution 規則、先行版監視）を
 機械的に検査し、W1 の締めとして gate を結線する。
 
-_Boundary:_ `scripts/check-model-ids.mjs`, `scripts/check-model-ids.test.mjs`, `scripts/check-repo-rules.mjs`, `scripts/check-repo-rules.test.mjs`, `scripts/check-updates.mjs`, `scripts/check-updates.test.mjs`, `scripts/gate/count-biome.mjs`, `scripts/gate/count-tsc.mjs`, `scripts/gate/count.test.mjs`, `mise.toml`
+_Boundary:_ `scripts/check-model-ids.mjs`, `scripts/check-model-ids.test.mjs`, `scripts/check-repo-rules.mjs`, `scripts/check-repo-rules.test.mjs`, `scripts/check-updates.mjs`, `scripts/check-updates.test.mjs`, `scripts/gate/count-biome.mjs`, `scripts/gate/count-tsc.mjs`, `scripts/gate/count.test.mjs`, `mise.toml`, `.githooks/pre-commit`
 _Depends:_ 1（5.5 は 2、3、4 にも依存する）
 _Requirements:_ 1.4, 1.15, 2.10, 2.18
 _Traces:_ REQ-001, REQ-002, C20, C1
@@ -273,8 +273,8 @@ _Traces:_ REQ-001, REQ-002, C20, C1
   _Depends:_ 1
   _Requirements:_ 1.15
   _Traces:_ REQ-001, C20
-- [ ] 5.5 W1 の締め: `mise.toml` の `gate` に W1 の段と規則（上記「gate と CI の段階的な結線」）を加える
-  _Boundary:_ `mise.toml`
+- [ ] 5.5 W1 の締め: `mise.toml` の `gate` に W1 の段と規則（上記「gate と CI の段階的な結線」）を加える。`.githooks/pre-commit` から `check:model-ids` の暫定の延期分岐（スクリプトがなければスキップ）を外し、常に `mise run check:model-ids` を実行する
+  _Boundary:_ `mise.toml`, `.githooks/pre-commit`
   _Depends:_ 2, 3, 4, 5.1, 5.2, 5.3, 5.4
   _Requirements:_ 1.4, 1.15
   _Traces:_ REQ-001, C1

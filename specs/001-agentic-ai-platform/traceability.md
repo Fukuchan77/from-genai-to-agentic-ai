@@ -158,7 +158,7 @@ Task 列に記載する。
 
 ## Gaps
 
-- 2026-09-27 の `/sdd-ship`（T-1.1〜T-1.3）では、新しい要件・設計ギャップは検出しなかった。`pnpm-lock.yaml` は T-1.2 の frozen install を成立させる派生成物として追跡する。
+- 2026-09-27 の `/sdd-ship`（T-1.1〜T-1.3）では、新しい要件・設計ギャップは検出しなかった。`pnpm-lock.yaml` は T-1.2 の frozen install を成立させる派生成物として追跡する（2026-09-27 の `/sdd-validate-impl` で境界外と判定し、T-1・T-1.2 の `_Boundary:_` と plan のルートの表に加えた）。
 - 2026-09-27 の `/sdd-ship`（T-1.4〜T-1.5）でも新しい要件・設計ギャップは検出しなかった。Vitest hook と mutation の実行検証は、承認済みタスクどおり T-4.1/T-4.3/T-29.3 へ引き継ぐ。
 - **NFR-08（隔離実行）は M1 に意図的な未割当**: plan.md の Requirements Traceability が明記する
   とおり「M1には該当する機能がない（003、004で適用）」。M1 には LLM 生成コードを実行する機能
@@ -181,3 +181,5 @@ Task 列に記載する。
   `createGuardedAgent` の `tools` を `buildToolSet` の戻り値 `GuardedToolSet` に限った（M-3。T-15.1、T-15.2、
   T-16.3。constitution 原則 6 の手続きのため、本表の行は変えていない）。T-8.1 に `babel-plugin-react-compiler`
   と `jsdom` を加えた（M-1）。NFR-10・NFR-12 の割り当てを大タスクからサブタスクに改めた（L-2）。
+- 2026-09-27 の `/sdd-validate-impl`（Task 1）: Vitest の CLI フィルタが `exclude` を戻せないため `test:local`・`test:db` が対象を実行できない欠陥と、Turborepo の strict env モードで `OLLAMA_BASE_URL` がテストに渡らない欠陥を検出した。`AI_TEST_SUITE` によるテストの選択（plan C18）と `turbo.json` の `env` で解消した。影響するタスクの記述（T-4.3、T-5.5、T-6.2、T-7.2、T-8.3）も更新した。
+- 2026-09-27 の `/sdd-validate-impl`（Task 1 の再検証）: `turbo.json` に `test:coverage` がなく `mise run test:coverage` が失敗する欠陥を検出し、T-1 の境界内で追加した。各ワークスペースの `test:coverage` スクリプトを加えるタスクは W2〜W5 にまだないため、6.1・7.1・8.1 のいずれかで担当を決める必要がある。

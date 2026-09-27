@@ -23,7 +23,7 @@ _Traces:_ REQ-001, C1, C18
   _Requirements:_ 1.2
   _Traces:_ REQ-001, C1
   _Verify:_ `mise run setup` がロックファイルを更新して成功する。UI 依存がないことは 13.7 で gate に入る `ai-core-no-ui-deps` が検査する
-- [ ] 6.2 `vitest.config.ts`（node 環境、`setup-hermetic` と `gate-reporter` の登録、カバレッジを常に有効にした行カバレッジ80%の閾値。Stryker もこの設定を使う。plan C18）
+- [ ] 6.2 `vitest.config.ts`（node 環境、`setup-hermetic` と `gate-reporter` の登録、`AI_TEST_SUITE` によるテストの選択、カバレッジを常に有効にした行カバレッジ80%の閾値。Stryker もこの設定を使う。plan C18）
   _Boundary:_ `packages/ai-core/vitest.config.ts`
   _Depends:_ 6.1, 4
   _Requirements:_ NFR-06
@@ -54,7 +54,7 @@ _Traces:_ REQ-001, C21
   _Requirements:_ 1.1
   _Traces:_ REQ-001, C21
   _Verify:_ `mise run setup` と `mise run typecheck` が成功する
-- [ ] 7.2 `vitest.config.ts`（`setup-hermetic`/`global-setup-local`/`gate-reporter` の登録。ルートからは集約しない。plan C18「テストの実行単位」）
+- [ ] 7.2 `vitest.config.ts`（`setup-hermetic`/`global-setup-local`/`gate-reporter` の登録、`AI_TEST_SUITE` によるテストの選択。ルートからは集約しない。plan C18「テストの実行単位」）
   _Boundary:_ `packages/eval-suite/vitest.config.ts`
   _Depends:_ 7.1, 4
   _Requirements:_ 1.13, 1.14
@@ -92,7 +92,7 @@ _Traces:_ REQ-001, C13
   _Requirements:_ 1.1
   _Traces:_ REQ-001, C13
   _Verify:_ `mise run typecheck` が成功する。`next build` の成功は 25.2 で確認する
-- [ ] 8.3 `vitest.config.ts`（jsdom 環境のコンポーネントテストと node 環境の Route Handler テストの2プロジェクト。両方に `setup-hermetic` と `gate-reporter` を登録する。`@vitejs/plugin-react`、`vite-tsconfig-paths`、`server-only` の空モジュールへの別名解決）、`components.json`（shadcn/ui 生成設定）、`app/globals.css`（Tailwind CSS v4、`tw-animate-css`、WCAG 2.2 AA のコントラスト）
+- [ ] 8.3 `vitest.config.ts`（jsdom 環境のコンポーネントテストと node 環境の Route Handler テストの2プロジェクト。両方に `setup-hermetic` と `gate-reporter` を登録し、`AI_TEST_SUITE` によるテストの選択（plan C18「テストの実行単位」）を適用する。`@vitejs/plugin-react`、`vite-tsconfig-paths`、`server-only` の空モジュールへの別名解決）、`components.json`（shadcn/ui 生成設定）、`app/globals.css`（Tailwind CSS v4、`tw-animate-css`、WCAG 2.2 AA のコントラスト）
   _Boundary:_ `apps/web/vitest.config.ts`, `apps/web/components.json`, `apps/web/app/globals.css`
   _Depends:_ 8.1
   _Requirements:_ 1.1, NFR-09
