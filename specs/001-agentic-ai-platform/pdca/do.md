@@ -1638,3 +1638,5 @@ $ (echo ::tsconfig::tsconfig.json; pnpm exec tsc -p tsconfig.json --listFilesOnl
   - C-1: `7ac44e3` で加えた7ファイルが Task 4・5 の `_Boundary:_` に宣言されていなかった（Implementation Notes と承認済みの plan には記録あり）。ユーザーの指示により、`tasks-comp-w1.md` の Task 4（大タスク、4.1、4.2）と Task 5（大タスク。共有ヘルパは 5.1〜5.4 のすべてが使う）の `_Boundary:_` に追記した。
   - C-2: W1 の締めの状態で CI の `ci-status` が一度も実行されていなかった（最後の成功は `5bb0b47`）。push して `ci-status` を確認する。
 - 警告: `9418a09` は Task 2 の作業中に Task 1 の境界のファイル（`pnpm-workspace.yaml`、`pnpm-lock.yaml`）を変更した（W1 の境界の中で、do.md に記録済み）。
+- C-2 の解消: PR #7（`001-agentic-ai-platform` → `main`）の CI run `36324116904` で `Quality gate`・`Secret scan`・`Dependency audit`・`CI status` がすべて成功した（head `fbd6ef2`）。
+- 最終判定: **GO**（C-1・C-2 とも解消）。
