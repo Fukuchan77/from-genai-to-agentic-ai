@@ -27,7 +27,7 @@ ID 規約は `tasks.md` の「ID 対応表」を参照する（この spec の p
 | 1.5 | C1, C18 | T-4.1, T-29.2 |  |  |
 | 1.6 | C1 | T-1.3 | unused-import 負例、`tsc --noEmit`、`mise run gate` | T-1.3: `10c3b48` |
 | 1.7 | C2 | T-2.1, T-19.3, T-29.1 | T-2.1: CI構造検査、`ci-status` 成功/失敗シミュレーション | T-2.1: `f9e7aca`、修正（T-2.1）: `956b3df` |
-| 1.8 | C3, C22 | T-3.1, T-3.2, T-28.5 | T-3.1: Compose構造34 assertion・6/6 healthy・Langfuse health/UI、T-3.2: 新規volumeでentrypoint自動実行・`vector`・カスタムDB・wiring PROVE |  |
+| 1.8 | C3, C22 | T-3.1, T-3.2, T-28.5 | T-3.1: Compose構造34 assertion・6/6 healthy・Langfuse health/UI、T-3.2: 新規volumeでentrypoint自動実行・`vector`・カスタムDB・wiring PROVE | T-3.1/T-3.2: `dbf1300` |
 | 1.9 | C4, C13 | T-12.2, T-12.4, T-20.2 |  |  |
 | 1.10 | C2, C13, C14, C16, C20 | T-20.1, T-21.1, T-25.2, T-29.1 |  |  |
 | 1.11 | C1 | T-1.1, T-29.2 | T-1.1: offline lint-only gate（Docker/API key 不要） | T-1.1: `10c3b48` |

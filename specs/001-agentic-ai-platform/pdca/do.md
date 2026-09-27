@@ -854,3 +854,9 @@
 - Adversarial reviews: T-3.1 `APPROVE_WITH_NOTES`、T-3.2最終`APPROVE`。
 - Auto-remediation: Task 3 Implementation Notes、Req 1.8 Test列、traceability Gapsを補完した。
 - Commit列は実装コミット作成後にSHAを記録する。
+
+### 2026-09-27 Ship Commit: Tasks 3.1–3.2
+
+- `dbf1300 feat(platform): add local database and tracing services`
+- Pre-commit protection: IBM Vault Radar、staged Biome、gitleaks、Task 5.1-aware model-ID deferral all passed。
+- Traceability Req 1.8 Commit列へ実装SHAを記録した。
