@@ -545,3 +545,11 @@
 - W-1 fix: recorded `9418a09` in the traceability NFR-11 Commit cell and in the T-2.2 verification entry above.
 - W-2 fix: annotated the stale "Task 2.1 remains unchecked" status as superseded.
 - L-1/L-2 fix (`956b3df`): `persist-credentials: false` on all 3 checkouts, `timeout-minutes` per job (gate 15, secret-scan 10, audit 10, ci-status 5), and `concurrency` that cancels superseded pull-request runs only. YAML parsed; `mise run gate` exit 0; `git diff --check` clean.
+
+### 2026-09-27 Re-validation: Task 2 (`/sdd-validate-impl`)
+
+- Verdict: GO, 0 critical, 1 warning.
+- Independent re-run on `c3c8c1f`: `mise run setup` (frozen) exit 0; `mise run gate` (`Checked 7 files`) exit 0; `mise run audit` (`No known vulnerabilities found`); `mise run secret-scan` (26 commits, no leaks).
+- Structure: YAML parses; jobs `gate`/`secret-scan`/`audit`/`ci-status`; `ci-status.needs` lists all three; workflow `permissions` is `contents: read` only; both action pins (3 uses each) match the official `v6.0.2` / `v4.2.4` tag SHAs via the GitHub API. Dependabot declares `npm` and `github-actions`.
+- Boundary: unchanged from the prior validation (`f9e7aca`, `956b3df` touch only `.github/workflows/ci.yml` / `.github/dependabot.yml`).
+- W-1: `956b3df` (checkout credential hardening, timeouts, concurrency) and `c3c8c1f` are not yet pushed; PR #2's last green run (`36309720286`) is on `a00f581`. Push and confirm `ci-status` succeeds on the new head.
