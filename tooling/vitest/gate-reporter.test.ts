@@ -116,16 +116,106 @@ describe("gate reporter", () => {
 	it("counts pg test files outside ignored directories and reports none in the pg suite", () => {
 		const root = mkdtempSync(join(tmpdir(), "gate-reporter-"));
 		temporaryRoots.push(root);
-		mkdirSync(join(root, "packages", "example"), { recursive: true });
+		mkdirSync(join(root, "scripts", "example"), { recursive: true });
 		mkdirSync(join(root, "node_modules", "ignored"), { recursive: true });
-		writeFileSync(join(root, "packages", "example", "one.pg.test.ts"), "");
-		writeFileSync(join(root, "packages", "example", "two.pg.test.mts"), "");
-		writeFileSync(join(root, "packages", "example", "ordinary.test.ts"), "");
+		writeFileSync(join(root, "scripts", "example", "one.pg.test.ts"), "");
+		writeFileSync(join(root, "scripts", "example", "two.pg.test.mts"), "");
+		writeFileSync(join(root, "scripts", "example", "ordinary.test.ts"), "");
 		writeFileSync(join(root, "node_modules", "ignored", "hidden.pg.test.ts"), "");
 
 		expect(countUnexecutedPgTests(root, "gate")).toBe(2);
 		expect(countUnexecutedPgTests(root, "local")).toBe(2);
 		expect(countUnexecutedPgTests(root, "pg")).toBe(0);
+	});
+
+	it("fails a gate execution unit whose tests were all skipped", () => {
+		const write = vi.fn();
+		const setExitCode = vi.fn();
+		const reporter = new GateReporter({
+			env: { AI_TEST_SUITE: "gate" },
+			root: process.cwd(),
+			setExitCode,
+			write,
+		});
+
+		reporter.onTestRunEnd(
+			[
+				moduleWithResults([
+					{ state: "skipped", note: "Ollama is unavailable" },
+					{ state: "skipped", mode: "skip" },
+				]),
+			],
+			[],
+			"passed",
+		);
+
+		expect(setExitCode).toHaveBeenCalledWith(1);
+		expect(write).toHaveBeenCalledWith(expect.stringContaining("executed=0"));
+		expect(write).toHaveBeenCalledWith("Gate reporter error: no tests executed in the gate suite.");
+	});
+
+	it.each([
+		["gate", undefined],
+		["gate", "gate"],
+	])(
+		"does not set an exit code when a %s unit executed tests (AI_TEST_SUITE=%s)",
+		(_suite, env) => {
+			const write = vi.fn();
+			const setExitCode = vi.fn();
+			const reporter = new GateReporter({
+				env: env === undefined ? {} : { AI_TEST_SUITE: env },
+				root: process.cwd(),
+				setExitCode,
+				write,
+			});
+
+			reporter.onTestRunEnd(
+				[moduleWithResults([{ state: "passed" }, { state: "skipped", mode: "skip" }])],
+				[],
+				"passed",
+			);
+
+			expect(setExitCode).not.toHaveBeenCalled();
+			expect(write).toHaveBeenCalledOnce();
+			expect(write).toHaveBeenCalledWith(expect.stringContaining("executed=1"));
+		},
+	);
+
+	it("does not count workspace pg tests in the root execution unit", () => {
+		const root = mkdtempSync(join(tmpdir(), "gate-reporter-workspaces-"));
+		temporaryRoots.push(root);
+		for (const directory of [
+			"apps/web/lib",
+			"packages/ai-core/src",
+			"scripts/db",
+			"tooling/packages",
+		]) {
+			mkdirSync(join(root, directory), { recursive: true });
+		}
+		writeFileSync(join(root, "apps", "web", "lib", "web.pg.test.ts"), "");
+		writeFileSync(join(root, "packages", "ai-core", "src", "store.pg.test.ts"), "");
+		writeFileSync(join(root, "scripts", "db", "root.pg.test.ts"), "");
+		writeFileSync(join(root, "tooling", "packages", "nested.pg.test.ts"), "");
+
+		expect(countUnexecutedPgTests(root, "gate")).toBe(2);
+		expect(countUnexecutedPgTests(join(root, "packages", "ai-core"), "gate")).toBe(1);
+	});
+
+	it("reports zero pg tests when the root does not exist", () => {
+		expect(countUnexecutedPgTests(join(tmpdir(), "gate-reporter-missing-root-0f3a"), "gate")).toBe(
+			0,
+		);
+	});
+
+	it("rethrows file-system errors other than a missing root", () => {
+		const root = mkdtempSync(join(tmpdir(), "gate-reporter-notdir-"));
+		temporaryRoots.push(root);
+		const file = join(root, "not-a-directory");
+		writeFileSync(file, "");
+
+		expect(() => countUnexecutedPgTests(file, "gate")).toThrowError(
+			expect.objectContaining({ code: "ENOTDIR" }),
+		);
 	});
 
 	it("uses the Vitest project root captured by onInit", () => {

@@ -20,6 +20,10 @@ const IGNORED_DIRECTORIES = new Set([
 	"node_modules",
 ]);
 
+// The root execution unit covers only `tooling/` and `scripts/`; each workspace is its own unit
+// (plan C18「テストの実行単位」), so the root walk skips the workspace directories at its top level.
+const WORKSPACE_DIRECTORIES = new Set(["apps", "packages"]);
+
 type TestSuiteName = "gate" | "local" | "pg" | string;
 
 export interface GateTestSummary {
@@ -90,12 +94,14 @@ export function formatGateSummary(summary: GateTestSummary, dbTestsNotRun: numbe
 	return lines.join("\n");
 }
 
-function countPgTestsInDirectory(directory: string): number {
+function countPgTestsInDirectory(directory: string, isRoot: boolean): number {
 	let count = 0;
 	for (const entry of readdirSync(directory, { withFileTypes: true })) {
 		if (entry.isDirectory()) {
-			if (!IGNORED_DIRECTORIES.has(entry.name)) {
-				count += countPgTestsInDirectory(join(directory, entry.name));
+			const skipped =
+				IGNORED_DIRECTORIES.has(entry.name) || (isRoot && WORKSPACE_DIRECTORIES.has(entry.name));
+			if (!skipped) {
+				count += countPgTestsInDirectory(join(directory, entry.name), false);
 			}
 		} else if (entry.isFile() && PG_TEST_PATTERN.test(entry.name)) {
 			count += 1;
@@ -107,9 +113,11 @@ function countPgTestsInDirectory(directory: string): number {
 export function countUnexecutedPgTests(root: string, suite: TestSuiteName): number {
 	if (suite === "pg") return 0;
 	try {
-		return countPgTestsInDirectory(root);
-	} catch {
-		return 0;
+		return countPgTestsInDirectory(root, true);
+	} catch (error) {
+		// A missing root has no pg tests; any other I/O failure must not be reported as zero.
+		if ((error as NodeJS.ErrnoException).code === "ENOENT") return 0;
+		throw error;
 	}
 }
 

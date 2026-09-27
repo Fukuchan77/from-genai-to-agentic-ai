@@ -1,9 +1,11 @@
 import { readFile } from "node:fs/promises";
-import { pathToFileURL } from "node:url";
+import { isMainModule } from "./lib/cli.mjs";
 
 const REGISTRY_URL = "https://registry.npmjs.org";
 const MINIMUM_RELEASE_AGE_MS = 24 * 60 * 60 * 1000;
 const TYPESCRIPT_71_PRERELEASE = /^7\.1\.0-/u;
+const TYPESCRIPT_71_STABLE = /^7\.1\.\d+$/u;
+const DEFAULT_TIMEOUT_MS = 30_000;
 
 function versionParts(version) {
 	return version
@@ -97,19 +99,29 @@ export function isAiV7Compatible(range) {
 	return typeof range === "string" && range.split("||").some(clauseAllowsAiV7);
 }
 
-async function fetchPackageMetadata(packageName, fetchImpl) {
-	const response = await fetchImpl(`${REGISTRY_URL}/${encodeURIComponent(packageName)}`);
-	if (!response.ok) {
-		throw new Error(`npm registry request failed for ${packageName}: ${response.status}`);
+async function fetchPackageMetadata(packageName, fetchImpl, timeoutMs) {
+	try {
+		const response = await fetchImpl(`${REGISTRY_URL}/${encodeURIComponent(packageName)}`, {
+			signal: AbortSignal.timeout(timeoutMs),
+		});
+		if (!response.ok) {
+			throw new Error(`npm registry request failed for ${packageName}: ${response.status}`);
+		}
+		return await response.json();
+	} catch (error) {
+		if (error?.name === "TimeoutError") {
+			throw new Error(`npm registry request for ${packageName} timed out after ${timeoutMs} ms`, {
+				cause: error,
+			});
+		}
+		throw error;
 	}
-	return response.json();
 }
 
-function newestEligibleTypescript(metadata, currentVersion, now) {
+function newestEligibleTypescript(metadata, now, matches) {
 	const cutoff = now.getTime() - MINIMUM_RELEASE_AGE_MS;
 	return Object.keys(metadata.versions ?? {})
-		.filter((version) => TYPESCRIPT_71_PRERELEASE.test(version))
-		.filter((version) => compareVersions(version, currentVersion) > 0)
+		.filter(matches)
 		.filter((version) => {
 			const publishedAt = Date.parse(metadata.time?.[version] ?? "");
 			return Number.isFinite(publishedAt) && publishedAt <= cutoff;
@@ -128,26 +140,39 @@ function compatibleWatsonxVersions(metadata) {
 export async function checkRegistryUpdates({
 	fetchImpl = globalThis.fetch,
 	now = new Date(),
+	timeoutMs = DEFAULT_TIMEOUT_MS,
 	typescriptVersion,
 }) {
 	if (typeof fetchImpl !== "function") throw new TypeError("fetchImpl must be a function");
 	if (!(now instanceof Date) || !Number.isFinite(now.getTime())) {
 		throw new TypeError("now must be a valid Date");
 	}
+	if (!Number.isInteger(timeoutMs) || timeoutMs <= 0) {
+		throw new TypeError("timeoutMs must be a positive integer");
+	}
 	if (typeof typescriptVersion !== "string" || !TYPESCRIPT_71_PRERELEASE.test(typescriptVersion)) {
 		throw new Error("typescriptVersion must be an exact TypeScript 7.1 prerelease version");
 	}
 
 	const [typescriptMetadata, watsonxMetadata] = await Promise.all([
-		fetchPackageMetadata("typescript", fetchImpl),
-		fetchPackageMetadata("watsonx-ai-provider", fetchImpl),
+		fetchPackageMetadata("typescript", fetchImpl, timeoutMs),
+		fetchPackageMetadata("watsonx-ai-provider", fetchImpl, timeoutMs),
 	]);
 	const compatibleVersions = compatibleWatsonxVersions(watsonxMetadata);
 
 	return {
 		typescript: {
 			current: typescriptVersion,
-			newerEligible: newestEligibleTypescript(typescriptMetadata, typescriptVersion, now),
+			newerEligible: newestEligibleTypescript(
+				typescriptMetadata,
+				now,
+				(version) =>
+					TYPESCRIPT_71_PRERELEASE.test(version) && compareVersions(version, typescriptVersion) > 0,
+			),
+			// A stable 7.1.x release is reported separately: it ends the prerelease pin (ADR-2).
+			stableEligible: newestEligibleTypescript(typescriptMetadata, now, (version) =>
+				TYPESCRIPT_71_STABLE.test(version),
+			),
 		},
 		watsonx: {
 			aiV7Compatible: compatibleVersions.length > 0,
@@ -160,10 +185,13 @@ export function formatUpdateReport(result) {
 	const typescriptLine = result.typescript.newerEligible
 		? `TypeScript: newer eligible 7.1 prerelease build ${result.typescript.newerEligible} (current ${result.typescript.current}).`
 		: `TypeScript: ${result.typescript.current} is the newest eligible 7.1 prerelease build.`;
+	const stableLine = result.typescript.stableEligible
+		? `TypeScript: stable 7.1.x release ${result.typescript.stableEligible} is eligible (published at least 24 hours ago).`
+		: "TypeScript: no stable 7.1.x release is eligible yet.";
 	const watsonxLine = result.watsonx.aiV7Compatible
 		? `watsonx-ai-provider: ai@^7 compatible release(s): ${result.watsonx.compatibleVersions.join(", ")}.`
 		: "watsonx-ai-provider: no release declares compatibility with ai@^7.";
-	return `${typescriptLine}\n${watsonxLine}`;
+	return `${typescriptLine}\n${stableLine}\n${watsonxLine}`;
 }
 
 async function main() {
@@ -175,8 +203,7 @@ async function main() {
 	console.log(formatUpdateReport(result));
 }
 
-const entryUrl = process.argv[1] ? pathToFileURL(process.argv[1]).href : undefined;
-if (entryUrl === import.meta.url) {
+if (isMainModule(import.meta.url)) {
 	main().catch((error) => {
 		console.error(error instanceof Error ? error.message : String(error));
 		process.exitCode = 1;

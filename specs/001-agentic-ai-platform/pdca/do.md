@@ -1344,3 +1344,286 @@
 - Root cause: requirement IDを含まない短い置換needleを使ったため。
 - Solution: Req 1.12を復元し、Req 1.15の行全体をキーにして`e18f7dd`を追加した。
 - Result: Req 1.4、1.15、2.10、2.18だけがTask 5のSHAを持つことを`rg`で確認した。
+
+### 2026-09-27 W1 Adversarial Review: REQUEST_CHANGES
+
+- Report: `.sdd/reviews/001-agentic-ai-platform-impl-w1-review-2026-09-27.md`（新規コンテキストの `sdd-reviewer`、base `080a8e6`）。
+- HIGH 7件、MEDIUM 14件、LOW 13件。Task 5 ship validation の「`gate:repeat` 10/10」はTurborepoのキャッシュ再生だったため決定性の証拠として無効（H-5）、`no-dynamic-eval` のPROVEは `eval` 分岐だけだった（H-6）。
+- 独立確認: H-1（`error TS18003` の1行で `1 files`、exit 0）、H-5（`cache hit, replaying logs`）、H-6（`new Function`・`child_process` の違反fixtureなし）を再現した。
+
+### 2026-09-27 W1 Review Remediation
+
+- 方針: W1の範囲で実装できる指摘をすべてテスト先行で修正。ファイルが重ならない3系統をサブエージェントに分け、共有ヘルパ・設定・文書・最終検証はメインセッションで行った。
+- 共有ヘルパ（メイン）: `scripts/lib/cli.mjs`（`isMainModule`、実パス比較。M-7）、`scripts/lib/scan-exclusions.mjs`（生成物ディレクトリ。L-4）+ `scripts/lib/cli.test.mjs`。
+  - RED: `Cannot find module './cli.mjs'`。GREEN: 13/13。
+  - PROVE: `realpathSync` を恒等関数に変更 → `matches the module when argv[1] reaches it through a symlink` が失敗。`dist` を除外リストから削除 → `excludes dist` が失敗。いずれも復元。
+- H-4（メイン）: 一時プローブ `scripts/zz-env-probe.test.mjs` で、`AI_MODEL_CHAT` 等を与えた `turbo run test --force` の中で `expected { chat: undefined, …(4) }` を確認（RED）。`turbo.json` の `test`・`test:coverage`・`//#test` の `env` に `AI_RUN_MODE`、`AI_LIVE_PROVIDER`、`AI_MODEL_{CHAT,STRUCTURED,EMBEDDING,JUDGE}`、`POSTGRES_PORT` を追加して GREEN。プローブは削除した。
+- H-5（メイン）: `gate:repeat` に `TURBO_FORCE=true`。10回とも `cache bypass, force executing` と `executed=208 passed=208 failed=0`。
+- M-10・M-14・L-7（メイン）: `services:*` は `.env.local` があれば `--env-file .env.local` を渡し、`up` は `--wait`。`mise run services:up:db` が Postgres の `Healthy` まで待つこと（約6秒）を確認し、`services:down` で停止した。lint 失敗時は Biome の既定 reporter で再実行して表示する。
+- M-12・L-5（メイン）: Compose の6イメージを `tag@sha256:<index digest>` で固定（`docker buildx imagetools inspect` で取得）。Dependabot に `docker-compose` エコシステムを追加し、`github-actions` と合わせて `cooldown.default-days: 1`。`docker compose config -q` と `services:up:db` で起動を確認。
+- 文書（メイン）: M-9・L-5 は research の依存表（`@types/node` 26.6.3、TypeScript `7.1.0-dev.20260926.1`、Vitest 5.0.2）と plan のルート `package.json` 行。C18・C20 は plan に設計判断を記録した。M-10・L-8・L-13 は README（`.env.local` の読み込み経路、pre-commit のモデルID検査は作業ツリーを走査すること、Rancher Desktop の共有設定）。L-4 で `.gitignore` に `.stryker-tmp/` を追加。
+- 注意: C系統の PROVE（M-4 で `setupFiles` を空にした実行、L-11 で dgram を遮断しない実行）は、ホストから実際に `example.com` への HTTP（200）と UDP 送信を1回ずつ発生させた。秘密情報は送っていない。以後、遮断の PROVE にはループバックの未使用ポートなど、外部に出ない接続先を使う。
+- 先送り: L-12（Stryker の root の解決）は変異対象の `packages/ai-core` がないため、W3 の締め（19.3）の前に `stryker run --dryRunOnly` で確認する。L-10（進捗表）は W1 移行コミットで更新する。L-9: 今回の plan（C18・C20・File Structure）と research（依存表）の改訂は、W1 レビューの全指摘を修正するというユーザーの指示（2026-09-27）に基づく。改訂は本記録とレビュー報告の「対応状況」に残し、W1 移行前にユーザーの確認を受ける。
+- 残る制約（A系統の報告）: 検査は名前ベースのため、`const e = eval`、`(0, eval)(src)`、`const A = ToolLoopAgent; new A()` のような参照のコピーは検出しない。
+
+#### Final Verification
+
+- `mise run gate`: Biome 28 files → Model ID 20 files → W1規則（no-dynamic-eval 19、actions-pinned 1、frozen-lockfile 2、allow-builds-reasoned 1 files）→ root test 9 files / 207 passed + 1 expected fail（`executed=208 passed=208 failed=0 skipped=0`、`cache miss, executing`）。
+- `mise run gate:repeat`: 10/10 同じ成功判定、10回とも `force executing`。
+- `mise run typecheck`: 1/1 successful。
+- テスト数: 48 → 208（+160）。
+
+#### Subagent Evidence (verbatim)
+
+
+##### Fix A
+
+##### W1 fix A evidence: scripts/check-repo-rules.mjs (H-6, M-2, M-3, M-5, M-6, M-7, M-13, L-1, L-3, L-4)
+
+Command: pnpm exec vitest run --config vitest.config.ts scripts/check-repo-rules.test.mjs
+
+###### RED (all new tests written before implementation)
+Tests  51 failed | 44 passed (95)
+Pre-existing behavior that was already GREEN in the RED run (characterization; their PROVE is below):
+new Function, named/default/dynamic/re-export child_process imports, `pnpm install`, `pnpm i`, `--no-frozen-lockfile`,
+chained/block-scalar install, regex after === / ??, division cases, prompt/messages/input/apiKey/userPrompt/toolInput/promptText,
+aliased generateObject import, --only "" and unknown rule names.
+Failing test lines in the RED run:
+-  FAIL  scripts/check-repo-rules.test.mjs > --only parsing (L-1) > rejects an empty rule list passed to checkRepoRules
+-  FAIL  scripts/check-repo-rules.test.mjs > --only parsing (L-1) > rejects an empty selection [" , "]
+-  FAIL  scripts/check-repo-rules.test.mjs > --only parsing (L-1) > rejects an empty selection [","]
+-  FAIL  scripts/check-repo-rules.test.mjs > actions-pinned (M-3) > accepts read-only permissions with pinned actions
+-  FAIL  scripts/check-repo-rules.test.mjs > actions-pinned (M-3) > rejects a flow-style write scope
+-  FAIL  scripts/check-repo-rules.test.mjs > actions-pinned (M-3) > rejects a job-level write scope
+-  FAIL  scripts/check-repo-rules.test.mjs > actions-pinned (M-3) > rejects a job-level write-all
+-  FAIL  scripts/check-repo-rules.test.mjs > actions-pinned (M-3) > rejects a workflow-level write scope
+-  FAIL  scripts/check-repo-rules.test.mjs > actions-pinned (M-3) > rejects an unpinned uses in a .yaml workflow
+-  FAIL  scripts/check-repo-rules.test.mjs > actions-pinned (M-3) > rejects workflow-level write-all
+-  FAIL  scripts/check-repo-rules.test.mjs > allow-builds-reasoned (L-3) > parses four-space block entries
+-  FAIL  scripts/check-repo-rules.test.mjs > allow-builds-reasoned (L-3) > rejects the unsupported block sequence format
+-  FAIL  scripts/check-repo-rules.test.mjs > allow-builds-reasoned (L-3) > rejects the unsupported flow mapping format
+-  FAIL  scripts/check-repo-rules.test.mjs > allow-builds-reasoned (L-3) > rejects the unsupported flow sequence format
+-  FAIL  scripts/check-repo-rules.test.mjs > allow-builds-reasoned (L-3) > rejects the unsupported mixed indentation format
+-  FAIL  scripts/check-repo-rules.test.mjs > allow-builds-reasoned (L-3) > rejects the unsupported nested mapping format
+-  FAIL  scripts/check-repo-rules.test.mjs > frozen-lockfile (M-2) > accepts mise run setup and frozen pnpm installs and scans workflows plus mise.toml
+-  FAIL  scripts/check-repo-rules.test.mjs > frozen-lockfile (M-2) > ignores install words outside run steps
+-  FAIL  scripts/check-repo-rules.test.mjs > frozen-lockfile (M-2) > rejects a repository whose mise.toml is missing
+-  FAIL  scripts/check-repo-rules.test.mjs > frozen-lockfile (M-2) > rejects bare yarn in a workflow
+-  FAIL  scripts/check-repo-rules.test.mjs > frozen-lockfile (M-2) > rejects bun install in a workflow
+-  FAIL  scripts/check-repo-rules.test.mjs > frozen-lockfile (M-2) > rejects explicitly disabled frozen lockfile in a workflow
+-  FAIL  scripts/check-repo-rules.test.mjs > frozen-lockfile (M-2) > rejects mise.toml with missing setup task
+-  FAIL  scripts/check-repo-rules.test.mjs > frozen-lockfile (M-2) > rejects mise.toml with setup task that disables the frozen lockfile
+-  FAIL  scripts/check-repo-rules.test.mjs > frozen-lockfile (M-2) > rejects mise.toml with setup task without an install
+-  FAIL  scripts/check-repo-rules.test.mjs > frozen-lockfile (M-2) > rejects mise.toml with unfrozen setup task
+-  FAIL  scripts/check-repo-rules.test.mjs > frozen-lockfile (M-2) > rejects npm ci in a workflow
+-  FAIL  scripts/check-repo-rules.test.mjs > frozen-lockfile (M-2) > rejects npm i in a workflow
+-  FAIL  scripts/check-repo-rules.test.mjs > frozen-lockfile (M-2) > rejects npm install in a workflow
+-  FAIL  scripts/check-repo-rules.test.mjs > frozen-lockfile (M-2) > rejects recursive pnpm install in a workflow
+-  FAIL  scripts/check-repo-rules.test.mjs > frozen-lockfile (M-2) > rejects unfrozen installs in .yaml workflows
+-  FAIL  scripts/check-repo-rules.test.mjs > frozen-lockfile (M-2) > rejects yarn install in a workflow
+-  FAIL  scripts/check-repo-rules.test.mjs > generated directories (L-4) > skips generated directories during the walk
+-  FAIL  scripts/check-repo-rules.test.mjs > lexer (M-5) > recognizes a regex literal after }
+-  FAIL  scripts/check-repo-rules.test.mjs > lexer (M-5) > recognizes a regex literal after +
+-  FAIL  scripts/check-repo-rules.test.mjs > lexer (M-5) > recognizes a regex literal after typeof
+-  FAIL  scripts/check-repo-rules.test.mjs > lexer (M-5) > scans code inside template substitutions
+-  FAIL  scripts/check-repo-rules.test.mjs > lexer (M-5) > scans identifiers in template substitutions passed to a logger
+-  FAIL  scripts/check-repo-rules.test.mjs > lexer (M-5) > scans nested templates and object literals inside substitutions
+-  FAIL  scripts/check-repo-rules.test.mjs > no-dynamic-eval (H-6) > detects Function call
+-  FAIL  scripts/check-repo-rules.test.mjs > no-dynamic-eval (H-6) > detects require of child_process
+-  FAIL  scripts/check-repo-rules.test.mjs > no-sensitive-logging (M-6) > allows numeric metadata such as token counts and schema names
+-  FAIL  scripts/check-repo-rules.test.mjs > no-sensitive-logging (M-6) > flags api_key
+-  FAIL  scripts/check-repo-rules.test.mjs > no-sensitive-logging (M-6) > flags OPENAI_API_KEY
+-  FAIL  scripts/check-repo-rules.test.mjs > W2/W3 rule evasions (M-13) > guarded-agent-only detects aliased import
+-  FAIL  scripts/check-repo-rules.test.mjs > W2/W3 rule evasions (M-13) > guarded-agent-only detects namespace import
+-  FAIL  scripts/check-repo-rules.test.mjs > W2/W3 rule evasions (M-13) > no-deprecated-object-api detects dynamic import
+-  FAIL  scripts/check-repo-rules.test.mjs > W2/W3 rule evasions (M-13) > no-deprecated-object-api detects namespace import
+-  FAIL  scripts/check-repo-rules.test.mjs > W2/W3 rule evasions (M-13) > no-deprecated-object-api detects optional namespace access
+-  FAIL  scripts/check-repo-rules.test.mjs > W2/W3 rule evasions (M-13) > tool-risk-declared accepts explicit, shorthand, and generic declarations
+-  FAIL  scripts/check-repo-rules.test.mjs > W2/W3 rule evasions (M-13) > tool-risk-declared checks calls with type arguments
+
+###### GREEN
+Tests  96 passed (96)   (95 + 1 test added after PROVE found a survivor: "frozen lockfile overridden later")
+biome check (2 files): No fixes applied, 0 diagnostics.
+
+###### PROVE (each line: branch broken -> suite result -> first failing test; then file restored, cmp verified)
+- H-6 require: Tests  1 failed | 95 passed (96) | first: FAIL  scripts/check-repo-rules.test.mjs > no-dynamic-eval (H-6) > detects require of child_process
+- H-6 Function(): Tests  1 failed | 95 passed (96) | first: FAIL  scripts/check-repo-rules.test.mjs > no-dynamic-eval (H-6) > detects Function call
+- H-6 new Function: Tests  1 failed | 95 passed (96) | first: FAIL  scripts/check-repo-rules.test.mjs > no-dynamic-eval (H-6) > detects new Function
+- H-6 child_process: Tests  10 failed | 86 passed (96) | first: FAIL  scripts/check-repo-rules.test.mjs > no-dynamic-eval (H-6) > detects named node:child_process import
+- M-2 mise setup: Tests  3 failed | 93 passed (96) | first: FAIL  scripts/check-repo-rules.test.mjs > frozen-lockfile (M-2) > rejects mise.toml with unfrozen setup task
+- M-2 npm/yarn/bun: Tests  7 failed | 89 passed (96) | first: FAIL  scripts/check-repo-rules.test.mjs > frozen-lockfile (M-2) > rejects npm install in a workflow
+- M-2 frozen=false: Tests  1 failed | 95 passed (96) | first: FAIL  scripts/check-repo-rules.test.mjs > frozen-lockfile (M-2) > rejects frozen lockfile overridden later in a workflow
+- M-2 mise missing: Tests  2 failed | 94 passed (96) | first: FAIL  scripts/check-repo-rules.test.mjs > frozen-lockfile (M-2) > rejects mise.toml with missing setup task
+- M-2/M-3 .yaml: Tests  4 failed | 92 passed (96) | first: FAIL  scripts/check-repo-rules.test.mjs > frozen-lockfile (M-2) > rejects unfrozen installs in .yaml workflows
+- M-2 run-only: Tests  1 failed | 95 passed (96) | first: FAIL  scripts/check-repo-rules.test.mjs > frozen-lockfile (M-2) > ignores install words outside run steps
+- M-3 write-all: Tests  2 failed | 94 passed (96) | first: FAIL  scripts/check-repo-rules.test.mjs > actions-pinned (M-3) > rejects workflow-level write-all
+- M-3 block write scope: Tests  2 failed | 94 passed (96) | first: FAIL  scripts/check-repo-rules.test.mjs > actions-pinned (M-3) > rejects a workflow-level write scope
+- M-5 template ${: Tests  3 failed | 93 passed (96) | first: FAIL  scripts/check-repo-rules.test.mjs > lexer (M-5) > scans code inside template substitutions
+- M-5 regex after +: Tests  1 failed | 95 passed (96) | first: FAIL  scripts/check-repo-rules.test.mjs > lexer (M-5) > recognizes a regex literal after +
+- M-5 regex after typeof: Tests  1 failed | 95 passed (96) | first: FAIL  scripts/check-repo-rules.test.mjs > lexer (M-5) > recognizes a regex literal after typeof
+- M-5 regex after }: Tests  1 failed | 95 passed (96) | first: FAIL  scripts/check-repo-rules.test.mjs > lexer (M-5) > recognizes a regex literal after }
+- M-6 metadata suffix: Tests  1 failed | 95 passed (96) | first: FAIL  scripts/check-repo-rules.test.mjs > no-sensitive-logging (M-6) > allows numeric metadata such as token counts and schema names
+- M-6 camel split: Tests  4 failed | 92 passed (96) | first: FAIL  scripts/check-repo-rules.test.mjs > repository rule violations > detects no-sensitive-logging
+- M-13 namespace: Tests  2 failed | 94 passed (96) | first: FAIL  scripts/check-repo-rules.test.mjs > W2/W3 rule evasions (M-13) > no-deprecated-object-api detects namespace import
+- M-13 dynamic: Tests  1 failed | 95 passed (96) | first: FAIL  scripts/check-repo-rules.test.mjs > W2/W3 rule evasions (M-13) > no-deprecated-object-api detects dynamic import
+- M-13 agent alias: Tests  1 failed | 95 passed (96) | first: FAIL  scripts/check-repo-rules.test.mjs > W2/W3 rule evasions (M-13) > guarded-agent-only detects aliased import
+- M-13 agent namespace: Tests  1 failed | 95 passed (96) | first: FAIL  scripts/check-repo-rules.test.mjs > W2/W3 rule evasions (M-13) > guarded-agent-only detects namespace import
+- M-13 type args: Tests  1 failed | 95 passed (96) | first: FAIL  scripts/check-repo-rules.test.mjs > W2/W3 rule evasions (M-13) > tool-risk-declared checks calls with type arguments
+- M-13 shorthand risk: Tests  1 failed | 95 passed (96) | first: FAIL  scripts/check-repo-rules.test.mjs > W2/W3 rule evasions (M-13) > tool-risk-declared accepts explicit, shorthand, and generic declarations
+- L-1 parseArgs empty: Tests  2 failed | 94 passed (96) | first: FAIL  scripts/check-repo-rules.test.mjs > --only parsing (L-1) > rejects an empty selection [","]
+- L-1 checkRepoRules empty: Tests  1 failed | 95 passed (96) | first: FAIL  scripts/check-repo-rules.test.mjs > --only parsing (L-1) > rejects an empty rule list passed to checkRepoRules
+- L-3 flow style: Tests  2 failed | 94 passed (96) | first: FAIL  scripts/check-repo-rules.test.mjs > allow-builds-reasoned (L-3) > rejects the unsupported flow mapping format
+- L-3 indent: Tests  1 failed | 95 passed (96) | first: FAIL  scripts/check-repo-rules.test.mjs > allow-builds-reasoned (L-3) > rejects the unsupported mixed indentation format
+- L-3 4-space: Tests  2 failed | 94 passed (96) | first: FAIL  scripts/check-repo-rules.test.mjs > allow-builds-reasoned (L-3) > parses four-space block entries
+- L-4 generated dirs: Tests  1 failed | 95 passed (96) | first: FAIL  scripts/check-repo-rules.test.mjs > generated directories (L-4) > skips generated directories during the walk
+- M-7: reverted the entry check to the old argv[1] URL comparison -> `node /tmp/crr-link.mjs --only allow-builds-reasoned` (symlink) printed nothing, exit=0.
+  Restored isMainModule -> printed "allow-builds-reasoned: scanned 1 FILES", exit=0. (The helper itself is tested in scripts/lib/cli.test.mjs.)
+
+Survivors of the first PROVE round, fixed:
+- M-5 regex after + / typeof / }: the tests were vacuous because string tokens now end at a newline, so the import on the next line
+  was scanned anyway. The fixture now puts the import on the same line; all three mutants are killed.
+- M-2 frozen=false: `--frozen-lockfile=false` was already rejected by the positive match. Added the
+  `--frozen-lockfile --no-frozen-lockfile` case; the mutant is killed.
+- M-6 `_` split: redundant (the word regex never matches `_`), so it was removed. Replaced with a camelCase-split mutant, which is killed.
+
+###### CLI
+$ node scripts/check-repo-rules.mjs --only no-dynamic-eval,actions-pinned,frozen-lockfile,allow-builds-reasoned
+no-dynamic-eval: scanned 19 FILES
+actions-pinned: scanned 1 FILES
+frozen-lockfile: scanned 2 FILES
+allow-builds-reasoned: scanned 1 FILES
+exit=0
+$ node scripts/check-repo-rules.mjs --only ,   -> "Usage: ... (no rule selected)", exit=1
+
+##### Fix B
+
+##### W1 fix B evidence
+
+###### H-1 count-tsc
+RED (5 failed | 4 passed):
+- "counts only project files ..." AssertionError: expected [ …(2) ] to deeply equal (old counted lib/@types lines)
+- "fails when a tsconfig lists only lib and @types declarations" AssertionError: expected [Function] to throw an error
+- "fails the run when tsc reports an error line" AssertionError: expected [Function] to throw an error
+- "fails the run on a line that is not a file path" AssertionError: expected [Function] to throw an error
+- "resolves the tsconfig directory against cwd ..." AssertionError deep equal
+GREEN: 9 passed (9). Rule: path resolved against cwd; counted iff inside dirname(resolve(cwd, tsconfig)) and no `node_modules` segment in the config-relative path; `error TS\d+` (ANSI stripped) or a line without a source extension (.[cm]?[jt]sx?|.json) fails naming the tsconfig.
+PROVE:
+- drop node_modules exclusion -> FAIL "counts only project files for every grouped tsconfig output"
+- drop inside-config-dir check -> FAIL "counts only project files..." + "resolves the tsconfig directory against cwd..."
+- drop error TS branch -> FAIL "fails the run when tsc reports an error line, naming the tsconfig"
+- drop non-path branch -> FAIL "fails the run on a line that is not a file path"
+Restored (diff clean).
+
+###### M-7 isMainModule (count-biome, count-tsc, check-updates, check-model-ids)
+RED: FAIL "count-biome.mjs decides whether to run via isMainModule, not an argv[1] string match" (AssertionError: expected ... to contain 'if (isMainModule(import.meta.url))'); same for check-updates CLI entry point.
+GREEN: all pass. Manual: symlink /tmp/cb-link.mjs -> count-biome.mjs: prints "Biome: 3 files" exit 0; zero-count input exit 1.
+
+###### L-6 check-updates
+RED (5 failed | 3 passed): "reports the newest stable 7.1.x release..." expected { …(2) } to deeply equal { …(3) }; "passes an abort signal..." expected undefined to be an instance of AbortSignal; "fails with a timeout message..." got 'Cannot destructure property 'signal'...'; deterministic report (3-line format).
+GREEN: 8 passed (8).
+PROVE:
+- stable regex admits prereleases -> FAIL "reports the newest eligible TypeScript 7.1 prerelease build", "uses only the injected fetcher..."
+- never report stable -> FAIL "reports the newest stable 7.1.x release..."
+- no signal -> FAIL "passes an abort signal..." + "fails with a timeout message..."
+- no TimeoutError branch -> FAIL "fails with a timeout message..."
+Restored (diff clean).
+
+###### H-2 / M-1 / L-2 / L-4 / M-7 check-model-ids
+RED (7 failed | 6 passed):
+- H-2 "does not check module specifiers..." expected [ …(7) ] to deeply equal [ …(2) ] (gpt-tokenizer etc. flagged)
+- M-1 "allows exceptions only at their exact repository-relative paths" expected { scannedFiles: 1, violations: [] } to deeply equal { scannedFiles: 4, … }
+- M-1 "exports the detected families..." expected undefined to deeply equal ArrayContaining
+- M-1 "detects embedding model IDs" expected [] to deeply equal [ 'text-embedding-3-small', …(3) ]
+- L-2 "requires a model-ID shape..." expected [ Array(26) ] to deeply equal [ Array(15) ]
+- L-4 "skips generated directories entirely" expected { scannedFiles: 6 } to deeply equal { scannedFiles: 1 }
+- M-7 "decides whether to run via isMainModule" expected source to contain 'if (isMainModule(import.meta.url))'
+("reports line numbers for violations on many lines" passed before and after: behaviour guard for the line-index refactor)
+GREEN: 13 passed (13).
+PROVE (each -> 1+ FAIL, then restored, diff clean):
+- remove isModuleSpecifier skip -> FAIL "does not check module specifiers..."
+- `\bimport\s*\(` -> `import\s*\(` -> FAIL "does not check module specifiers..." (reimport("gpt-4.1") case)
+- `\bfrom` -> `from`: survives; equivalent mutant (no valid JS has an identifier ending in `from` directly before a string literal)
+- basename allowlist -> FAIL "allows exceptions only at their exact repository-relative paths"
+- env-schema basename check -> FAIL same
+- drop nomic-embed family -> FAIL "exports the detected families..." + "detects embedding model IDs"
+- VERSIONED = "" -> FAIL "requires a model-ID shape..."
+- command-r without (?![A-Za-z]) -> FAIL same
+- old o[134]-? -> FAIL same
+- binary search `<=` -> `<` -> FAIL same (line numbers)
+- no isGeneratedDirectory skip -> FAIL "skips generated directories entirely"
+- argv[1] compare -> FAIL "decides whether to run via isMainModule..."
+
+###### Repo commands
+$ node scripts/check-model-ids.mjs -> "Model ID check: scanned 20 files." + 29 violations, all in tooling/vitest/global-setup-local.test.ts (untracked, another agent's file; HEAD checker also flags it with 21). exit 1.
+$ (echo ::tsconfig::tsconfig.json; pnpm exec tsc -p tsconfig.json --listFilesOnly) | node scripts/gate/count-tsc.mjs -> "TypeScript tsconfig.json: 10 files", exit 0 (matches the 10 non-node_modules lines of the 289-line listing).
+
+##### Fix C
+
+##### W1 fix evidence (agent C: tooling/vitest, vitest.config.ts)
+
+###### H-3 / M-8 (Ollama default URL, /api normalization, global-setup-local tests)
+- RED: `FAIL tooling/vitest/global-setup-local.test.ts ... Error: Cannot find module './ollama'` (new pure exports absent)
+- GREEN: `Tests  32 passed (32)` (global-setup-local.test.ts)
+- PROVE (ollama.ts `.replace(OLLAMA_API_SUFFIX, "")` removed): `× normalizes http://127.0.0.1:11434/api to the base http://127.0.0.1:11434`, `× accepts an OLLAMA_BASE_URL that already ends with /api` -> restored
+- PROVE (readJson catch -> throw): `× reports a non-JSON body as an invalid tags response` -> restored
+- PROVE (`installed.map(withDefaultTag)` -> `installed`): `× treats an untagged model and its :latest tag as the same model` -> restored; `Tests 32 passed (32)`
+
+###### H-3 / H-7 / M-4 / M-14 / L-11 (guard) — RED
+- `FAIL tooling/vitest/hermetic-registration.test.ts ... Cannot find module './network-guard'`
+- setup-hermetic.test.ts: `Failed Tests 20` — `TypeError: consumeBlockedConnections is not a function` (all 20; recorder/consume API absent; new behaviors default-Ollama, pg, dgram, lookupService individually PROVEd below)
+- GREEN (guard split into side-effect-free `network-guard.ts` + `setup-hermetic.ts` entry): `Tests  60 passed | 1 expected fail (61)` (tooling)
+
+####### H-3 (default Ollama allowed in local mode)
+- PROVE (guard reintroduces `|| !env.OLLAMA_BASE_URL` early return): `× allows the default Ollama origin in local mode when OLLAMA_BASE_URL is unset` -> restored
+
+####### H-7 (swallowed block still fails the test)
+- PROVE (setup-hermetic afterEach removed): `FAIL hermetic-registration.test.ts > ... > fails a test that swallows a NetworkBlockedError` / `Error: Expect test to fail` -> restored
+- PROVE (`blockedConnections.push` removed): `× blocks fetch and reports the requested destination`, `× blocks every Socket.connect form ...` etc. -> restored
+- Unit: `records blocked destinations even when the caller swallows the error` asserts the exact afterEach error text and clearing.
+
+####### M-4 (setup registration)
+- PROVE (`setupFiles: []` in vitest.config.ts): `× blocks fetch, net.connect, and dns.lookup without an explicit install` — `promise resolved "Response { status: 200 ... url: 'http://example.com/' }" instead of rejecting`; `× fails a test that swallows a NetworkBlockedError` -> restored
+
+####### M-14 (pg suite allows 127.0.0.1/localhost:POSTGRES_PORT, default 5432 per compose.yaml)
+- PROVE (pg allowance disabled): `× allows only the local Postgres port (5432 by default) in the pg suite`, `× ... (POSTGRES_PORT when set)` -> restored
+- PROVE (allowance in every suite): `× keeps the local Postgres port blocked outside the pg suite` -> restored
+- PROVE (POSTGRES_PORT ignored): `× allows only the local Postgres port (POSTGRES_PORT when set) in the pg suite` -> restored
+
+####### L-11 (dgram send/connect, dns.lookupService + promises)
+- PROVE (dgram send unguarded): `× blocks dgram sends and connects with the destination in the error` -> restored
+- PROVE (dns.lookupService unguarded): `× blocks callback and promise dns.lookupService` -> restored
+- After restore: `Tests  60 passed | 1 expected fail (61)`
+
+###### M-11 (gate-reporter)
+- RED: `× does not count workspace pg tests in the root execution unit` (`expected 4 to be 2`), `× rethrows file-system errors other than a missing root` (`expected function to throw an error, but it didn't`); new all-skipped / executed>0 tests passed immediately (characterization of existing behavior, proven below)
+- GREEN: `Tests  13 passed (13)`
+- PROVE (`executed === 0` -> counts skipped too): `× fails a gate execution unit whose tests were all skipped`
+- PROVE (condition `||`): `× does not set an exit code when a gate unit executed tests ...` (+ empty local/pg)
+- PROVE (workspace exclusion off): `× does not count workspace pg tests in the root execution unit`; (exclusion at every depth): same test fails
+- PROVE (catch-all `return 0`): `× rethrows file-system errors other than a missing root`; (ENOENT also rethrown): `× reports zero pg tests when the root does not exist`
+- restored: `Tests  13 passed (13)`
+
+###### Final
+- Model-ID placeholders (coordinator constraint): `node scripts/check-model-ids.mjs` -> `Model ID check: scanned 20 files.` exit 0
+- biome: `Checked 10 files ... No fixes applied.`; tsc -p tsconfig.json --noEmit: exit 0
+- tooling: `Tests  66 passed | 1 expected fail (67)`; full root unit (gate): `Test Files 9 passed (9)`, `Tests 207 passed | 1 expected fail (208)`; pg suite: empty unit allowed
+- Note: PROVE with `setupFiles: []` (and unguarded dgram) made real network sends from this host; expected for a mutation run only.
+
+### 2026-09-27 W1 Re-review: APPROVE_WITH_NOTES
+
+- Report: `.sdd/reviews/001-agentic-ai-platform-impl-w1-review-2026-09-27-r2.md`。HIGH 7件はすべて、第1ラウンドのプローブ・変異の再実行で解消を確認。新しい CRITICAL / HIGH なし。MEDIUM 3件（N-1〜N-3）、LOW 5件（N-4〜N-8）。
+
+### 2026-09-27 W1 Re-review Remediation
+
+- N-1: RED は `requires a model-ID shape ...` が `o1`・`o3`・`gpt-image-1`・`gpt-realtime`・`chatgpt-4o-latest` の不足で失敗。GREEN 13/13。PROVE: o 系列を旧パターン `o[1-9]-(?=[a-z])` に戻す → 失敗、`image|realtime|audio` と `chatgpt-` を削除 → 失敗。いずれも復元。`check:model-ids` は 20 files で成功。
+- N-3: 遮断テストの宛先をループバックへ置換し、DNS をループバックへ固定。tooling 66 passed + 1 expected fail、`tsc` exit 0。PROVE: `setupFiles: []` で `hermetic-registration.test.ts` の2件が失敗し、外部への通信なし（ローカルの `http://localhost/` が 404）。`vitest.config.ts` は復元。
+- N-6: RED は `allows a count property of a sensitive value` が失敗。GREEN 100/100。PROVE: `COUNT_PROPERTIES` の判定を常に真にする → `still flags messages.map(...)`・`still flags prompt.text` が失敗。復元。
+- N-7: `mise run services:up` で6サービスが healthy。`services:down` で停止。
+- N-8: plan の mise タスク表に、`gate` はキャッシュを使い、`gate:repeat` は `TURBO_FORCE` で毎回実行する旨を記録。
+- 先送り: N-2（002 開始前）、N-4（W2 の testing ヘルパ）。N-5 は名前ベースの検査の限界として、次の回避例を記録する: 間接の `eval`・`eval?.()`・`node:vm`・テンプレートでの動的 import・`if (x) /re/` の後の import・JSX テキスト内の `//`・ToolLoopAgent のサブクラス・flow 形式の `uses`・permissions のない4スペースの jobs・CI の `pnpm add`・中身のない `#` コメント。13.7 / 19.3 の結線前に再評価する。
+- Final: `mise run gate` → executed=212 passed=212 failed=0、`mise run gate:repeat` 10/10（`force executing` 10回）、`mise run typecheck` 1/1。
+
+### 2026-09-27 W1 Plan Revision Approval
+
+- ユーザーが、W1 レビュー対応での plan（C1 の mise タスク表、C18、C20、File Structure）と research（依存表）の改訂を承認した（L-9）。
+- 同時に、W1 の移行を2コミット（1つ目は `tasks.md` → `tasks-comp-w1.md` の名前の変更だけ、2つ目で `tasks-w2.md` → `tasks.md` と索引の移動）で行う方式と、`tasks.md` の「完了した波の移行手順」5 の改訂を承認した。理由: Git はリネームを記録せず、削除されたパスだけを類似度で追跡する。1コミットでは `tasks.md` が前後に存在するため、W1 の履歴を `tasks-comp-w1.md` から追えなくなる。

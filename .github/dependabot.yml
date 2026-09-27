@@ -35,3 +35,14 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    # Apply the same 24-hour minimum release age as npm (NFR-11).
+    cooldown:
+      default-days: 1
+
+  # Compose images are pinned by digest; Dependabot proposes tag and digest updates.
+  - package-ecosystem: "docker-compose"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 1

@@ -31,7 +31,13 @@ mise run gate
 `mise run setup`はpre-commitフック（`.githooks/pre-commit`）を有効にします。フックは
 `pnpm`と`gitleaks`をPATHから呼ぶため、miseを有効にしたシェル（`mise activate`）から
 commitしてください。miseを有効にしていないGitクライアントでは、フックがコマンドを
-見つけられずにcommitを拒否します。
+見つけられずにcommitを拒否します。フックのBiomeとgitleaksはステージ済みの内容を検査しますが、
+モデルID検査（`mise run check:model-ids`）は作業ツリー全体を走査します。ステージしていない
+修正で違反が隠れることがあるため、commit前に`mise run gate`も実行してください。
+
+`.env.local`は、Next.jsと`mise run services:*`（Composeへ`--env-file .env.local`として渡す）の
+両方が読みます。ファイルがなければComposeは`compose.yaml`の既定値で起動します。既定の秘密値は
+ローカル専用なので、共有環境では`.env.local`に独自の値を設定してください。
 
 ## 主なコマンド
 
@@ -46,6 +52,29 @@ mise run services:up    # Postgres・Langfuseサービス（Compose完成後）
 ```
 
 ツールは直接実行せず、原則として`mise run <task>`から起動します。
+
+## トラブルシュート
+
+### Rancher Desktopでinit SQLがマウントされない
+
+Rancher Desktopは既定でホームディレクトリと`/Volumes`だけをVMへ共有します。リポジトリを
+`/Users/Shared`などに置いている場合、Postgresのinit SQLが見えず、`vector`拡張とLangfuse用DBが
+作成されません。`~/Library/Application Support/rancher-desktop/lima/_config/override.yaml`に
+次を追加し、Rancher Desktopを再起動してください。
+
+```yaml
+mounts:
+  - location: "/Users/Shared"
+    writable: true
+```
+
+確認:
+
+```bash
+docker run --rm \
+  --mount type=bind,source="$PWD/infra/postgres/init",target=/mnt,readonly \
+  pgvector/pgvector:pg17 ls -l /mnt/01-extensions.sql
+```
 
 ## 実行モード
 

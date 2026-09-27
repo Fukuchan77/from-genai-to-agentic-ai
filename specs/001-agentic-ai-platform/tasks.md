@@ -297,3 +297,4 @@ _Traces:_ REQ-001, REQ-002, C20, C1
 - W1 gate は `lint`（Biome JSON の非空走査検査）→ `check:model-ids` → W1 の4規則に限定した `check:repo-rules` → root test の順で直列実行する。
 - Biome のJSONは一時ファイル経由で `count-biome.mjs` に渡し、Biome自身の非ゼロ終了をパイプで隠さない。
 - pre-commit のモデルID検査はTask 5.1の存在確認分岐を廃止し、常に実行する。
+- W1 敵対的レビュー（2026-09-27）の対応で、境界に次のファイルを加えた: `scripts/lib/cli.mjs`・`scripts/lib/scan-exclusions.mjs`・`scripts/lib/cli.test.mjs`（CLI 起動判定と生成物の除外を全スクリプトで共有）、`tooling/vitest/network-guard.ts`・`ollama.ts`・`hermetic-registration.test.ts`・`global-setup-local.test.ts`（Task 4 の境界。遮断本体の分離、既定 URL の一元化、登録と global setup の恒久テスト）。`turbo.json`・`compose.yaml`・`.github/dependabot.yml`・`.gitignore`・`README.md`・`.env.example` も同レビューの対応として修正した。記録は `pdca/do.md` の「W1 Review Remediation」。

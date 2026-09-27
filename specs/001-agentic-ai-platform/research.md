@@ -179,7 +179,7 @@ New feature（greenfield、full discovery）。リポジトリにはソースコ
 |------------|---------|---------|----------|
 | Node.js | 26.10 | ランタイム（`mise.toml`） | yes（参照リポジトリ） |
 | pnpm | 12.6 | パッケージマネージャ | yes（参照リポジトリ） |
-| typescript | 7.1.0-dev.20260923.1 | 型検査（Go ネイティブ `tsc`） | yes（参照リポジトリ） |
+| typescript | 7.1.0-dev.20260926.1 | 型検査（Go ネイティブ `tsc`）。2026-09-27 に Dependabot の `prerelease-toolchain` グループで 20260923.1 から更新した（公開から24時間以上経過したビルド。5.4 で `--listFilesOnly` を実測済み） | yes（参照リポジトリ、実測） |
 | turbo | 2.11.4 | ワークスペース横断のタスク実行 | partial（pnpm 12 との組み合わせは未検証） |
 | next | 16.4.0-canary.40 | Web アプリ（App Router、Turbopack、`reactCompiler`、`typedRoutes`） | yes（参照リポジトリ） |
 | react / react-dom | 19.3.0 | UI | yes |
@@ -198,7 +198,8 @@ New feature（greenfield、full discovery）。リポジトリにはソースコ
 | youtubei.js | 18.1.0 | YouTube 字幕の取得 | partial（字幕 API の形状は未検証） |
 | gpt-tokenizer | 4.0.0 | トークン数の推定 | yes（レジストリ） |
 | @biomejs/biome | 2.5.14 | lint / format | yes |
-| vitest / @vitest/coverage-v8 | 5.0.1 | 単体テスト、カバレッジ | yes |
+| vitest / @vitest/coverage-v8 | 5.0.2 | 単体テスト、カバレッジ。2026-09-27 に Dependabot の `dev-tooling` グループで 5.0.1 から更新した | yes |
+| @types/node | 26.6.3 | ルートの `tooling/`・`scripts/` の TypeScript が `node:net`・`node:dns` 等の型を参照するため（Task 1.4 で追加。2026-09-27 の W1 レビュー M-9 で記録） | yes（レジストリ） |
 | @playwright/test | 1.64.0-alpha-2026-09-23 | E2E（Chromium / Firefox / WebKit） | yes（WebKit は参照リポジトリで未実施） |
 | @axe-core/playwright | 4.13.x | アクセシビリティ検査 | yes |
 | @stryker-mutator/core + vitest-runner | 10.0.0 | ミューテーションテスト（Req 1.16） | partial（Vitest 5 との組み合わせは未検証） |

@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { pathToFileURL } from "node:url";
+import { isMainModule } from "../lib/cli.mjs";
 
 function parseBiomeJson(output) {
 	const start = output.indexOf("{");
@@ -44,6 +44,6 @@ function run() {
 	}
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (isMainModule(import.meta.url)) {
 	run();
 }

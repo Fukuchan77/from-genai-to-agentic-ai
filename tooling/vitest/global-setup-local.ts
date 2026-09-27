@@ -1,8 +1,10 @@
 import type { TestProject } from "vitest/node";
+import { DEFAULT_OLLAMA_BASE_URL, normalizeOllamaBaseUrl, ollamaTagsUrl } from "./ollama";
 
-export const DEFAULT_OLLAMA_BASE_URL = "http://127.0.0.1:11434";
-const OLLAMA_TAGS_PATH = "/api/tags";
+export { DEFAULT_OLLAMA_BASE_URL } from "./ollama";
+
 const OLLAMA_CHECK_TIMEOUT_MS = 2_000;
+const OLLAMA_DEFAULT_TAG = ":latest";
 const REQUIRED_MODEL_ENV_KEYS = [
 	"AI_MODEL_CHAT",
 	"AI_MODEL_STRUCTURED",
@@ -26,7 +28,7 @@ interface CheckLocalAvailabilityOptions {
 
 interface SetupLocalAvailabilityOptions extends CheckLocalAvailabilityOptions {}
 
-interface OllamaTagsResponse {
+export interface OllamaTagsResponse {
 	models: string[];
 }
 
@@ -50,18 +52,8 @@ function unavailable(
 	};
 }
 
-function normalizeBaseUrl(value: string | undefined): string | undefined {
-	const candidate = value?.trim() || DEFAULT_OLLAMA_BASE_URL;
-	try {
-		const url = new URL(candidate);
-		if (url.protocol !== "http:" && url.protocol !== "https:") return undefined;
-		return url.href.replace(/\/+$/u, "");
-	} catch {
-		return undefined;
-	}
-}
-
-function requiredModels(env: NodeJS.ProcessEnv): string[] {
+/** Models named by the `AI_MODEL_*` variables, trimmed, without blanks or duplicates. */
+export function requiredModels(env: NodeJS.ProcessEnv): string[] {
 	return [
 		...new Set(
 			REQUIRED_MODEL_ENV_KEYS.map((key) => env[key]?.trim()).filter((model): model is string =>
@@ -71,7 +63,8 @@ function requiredModels(env: NodeJS.ProcessEnv): string[] {
 	];
 }
 
-function parseTagsResponse(value: unknown): OllamaTagsResponse | undefined {
+/** Parses an Ollama `/api/tags` body; returns `undefined` for any malformed shape. */
+export function parseTagsResponse(value: unknown): OllamaTagsResponse | undefined {
 	if (typeof value !== "object" || value === null || !("models" in value)) return undefined;
 	const models = (value as { models?: unknown }).models;
 	if (!Array.isArray(models)) return undefined;
@@ -92,8 +85,41 @@ function parseTagsResponse(value: unknown): OllamaTagsResponse | undefined {
 	return { models: [...new Set(names)] };
 }
 
+function withDefaultTag(model: string): string {
+	return model.includes(":") ? model : `${model}${OLLAMA_DEFAULT_TAG}`;
+}
+
+/**
+ * Required models that are not installed. Ollama reports untagged pulls as `name:latest`, so an
+ * untagged name and its `:latest` tag are treated as the same model.
+ */
+export function findMissingModels(
+	required: readonly string[],
+	installed: readonly string[],
+): string[] {
+	const installedModels = new Set(installed.map(withDefaultTag));
+	return required.filter((model) => !installedModels.has(withDefaultTag(model)));
+}
+
+export function httpErrorReason(status: number, statusText: string, tagsUrl: string): string {
+	const statusLabel = statusText ? `${status} ${statusText}` : String(status);
+	return `Ollama returned HTTP ${statusLabel} from ${tagsUrl}.`;
+}
+
+function invalidTagsReason(tagsUrl: string): string {
+	return `Ollama returned an invalid /api/tags response from ${tagsUrl}.`;
+}
+
 function errorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
+}
+
+async function readJson(response: Response): Promise<{ ok: true; value: unknown } | { ok: false }> {
+	try {
+		return { ok: true, value: await response.json() };
+	} catch {
+		return { ok: false };
+	}
 }
 
 export async function checkLocalAvailability(
@@ -102,54 +128,56 @@ export async function checkLocalAvailability(
 	const env = options.env ?? process.env;
 	const configuredBaseUrl = env.OLLAMA_BASE_URL?.trim() || DEFAULT_OLLAMA_BASE_URL;
 	if (env.AI_TEST_RUN_MODE !== "local") {
-		return unavailable(configuredBaseUrl, "Local tests require AI_TEST_RUN_MODE=local.");
+		return unavailable(
+			normalizeOllamaBaseUrl(configuredBaseUrl) ?? configuredBaseUrl,
+			"Local tests require AI_TEST_RUN_MODE=local.",
+		);
 	}
 
-	const baseUrl = normalizeBaseUrl(configuredBaseUrl);
+	const baseUrl = normalizeOllamaBaseUrl(configuredBaseUrl);
 	if (!baseUrl) {
 		return unavailable(configuredBaseUrl, "OLLAMA_BASE_URL must be an absolute http or https URL.");
 	}
 
 	const fetchImpl = options.fetch ?? globalThis.fetch;
-	const tagsUrl = `${baseUrl}${OLLAMA_TAGS_PATH}`;
+	const tagsUrl = ollamaTagsUrl(baseUrl);
+	let response: Response;
 	try {
-		const response = await fetchImpl(tagsUrl, {
+		response = await fetchImpl(tagsUrl, {
 			headers: { accept: "application/json" },
 			signal: AbortSignal.timeout(options.timeoutMs ?? OLLAMA_CHECK_TIMEOUT_MS),
 		});
-		if (!response.ok) {
-			return unavailable(baseUrl, `Ollama returned HTTP ${response.status} from ${tagsUrl}.`);
-		}
-
-		const tags = parseTagsResponse(await response.json());
-		if (!tags) {
-			return unavailable(baseUrl, "Ollama returned an invalid /api/tags response.");
-		}
-
-		const installedModels = new Set(tags.models);
-		const missingModels = requiredModels(env).filter((model) => !installedModels.has(model));
-		if (missingModels.length > 0) {
-			const pullCommands = missingModels.map((model) => `\`ollama pull ${model}\``).join(", ");
-			return unavailable(
-				baseUrl,
-				`Required Ollama models are not installed: ${missingModels.join(", ")}. Run ${pullCommands}.`,
-				{ models: tags.models, missingModels },
-			);
-		}
-
-		return {
-			available: true,
-			baseUrl,
-			models: tags.models,
-			missingModels: [],
-			reason: null,
-		};
 	} catch (error) {
 		return unavailable(
 			baseUrl,
 			`Ollama is unavailable at ${baseUrl}: ${errorMessage(error)}. Start it with \`ollama serve\`.`,
 		);
 	}
+	if (!response.ok) {
+		return unavailable(baseUrl, httpErrorReason(response.status, response.statusText, tagsUrl));
+	}
+
+	const body = await readJson(response);
+	const tags = body.ok ? parseTagsResponse(body.value) : undefined;
+	if (!tags) return unavailable(baseUrl, invalidTagsReason(tagsUrl));
+
+	const missingModels = findMissingModels(requiredModels(env), tags.models);
+	if (missingModels.length > 0) {
+		const pullCommands = missingModels.map((model) => `\`ollama pull ${model}\``).join(", ");
+		return unavailable(
+			baseUrl,
+			`Required Ollama models are not installed: ${missingModels.join(", ")}. Run ${pullCommands}.`,
+			{ models: tags.models, missingModels },
+		);
+	}
+
+	return {
+		available: true,
+		baseUrl,
+		models: tags.models,
+		missingModels: [],
+		reason: null,
+	};
 }
 
 export default async function setupLocalAvailability(

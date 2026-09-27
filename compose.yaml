@@ -51,7 +51,7 @@ x-langfuse-healthcheck: &langfuse-healthcheck
 
 services:
   postgres:
-    image: pgvector/pgvector:pg17
+    image: pgvector/pgvector:pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f
     profiles: [db, trace]
     restart: unless-stopped
     environment:
@@ -76,7 +76,7 @@ services:
       start_period: 5s
 
   langfuse-web:
-    image: docker.langfuse.com/langfuse/langfuse:4
+    image: docker.langfuse.com/langfuse/langfuse:4@sha256:755b821ba8f73a20d43d90e68f2b75d2f597dd164c55890f67a05f5a8d0f0e24
     profiles: [trace]
     restart: unless-stopped
     depends_on: *langfuse-depends-on
@@ -92,7 +92,7 @@ services:
       test: [CMD, wget, --no-verbose, --tries=1, --spider, http://127.0.0.1:3000/api/public/health]
 
   langfuse-worker:
-    image: docker.langfuse.com/langfuse/langfuse-worker:4
+    image: docker.langfuse.com/langfuse/langfuse-worker:4@sha256:3568d2d1eb5dd570f4087b37972ddffa3f6ae4f872553e0b0e2eedf4896a29e9
     profiles: [trace]
     restart: unless-stopped
     depends_on: *langfuse-depends-on
@@ -105,7 +105,7 @@ services:
       test: [CMD, wget, --no-verbose, --tries=1, --spider, http://127.0.0.1:3030/api/health]
 
   clickhouse:
-    image: clickhouse/clickhouse-server:25.12
+    image: clickhouse/clickhouse-server:25.12@sha256:8a790dd3468db22b1d4e7b18a176f378ff5ff6053b9c48dd4ea1fa71a24c5ba6
     profiles: [trace]
     restart: unless-stopped
     user: "101:101"
@@ -127,7 +127,7 @@ services:
       start_period: 1s
 
   redis:
-    image: redis:7
+    image: redis:7@sha256:c6eabf748fc7a61dbb5a705c78bcf3d6377b1127a97d0ce965c11c44ba46896f
     profiles: [trace]
     restart: unless-stopped
     command:
@@ -150,7 +150,7 @@ services:
       start_period: 1s
 
   minio:
-    image: cgr.dev/chainguard/minio
+    image: cgr.dev/chainguard/minio:latest@sha256:6a1d0b45c8669726bba580ced0bfa4cb9fdeed1ed636dfabd81d1577beb6937b
     profiles: [trace]
     restart: unless-stopped
     entrypoint: sh

@@ -1,19 +1,73 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { basename, join, relative, resolve, sep } from "node:path";
-import { fileURLToPath } from "node:url";
+import { isMainModule } from "./lib/cli.mjs";
+import { isGeneratedDirectory } from "./lib/scan-exclusions.mjs";
 
 const CODE_EXTENSIONS = new Set([".mjs", ".ts", ".tsx"]);
-const EXCLUDED_FILE_NAMES = new Set([
-	"catalog.ts",
-	"check-model-ids.mjs",
-	"check-model-ids.test.mjs",
+/** Repository-relative paths where model ID literals are allowed anywhere (plan C20). */
+const ALLOWED_FILES = new Set([
+	"packages/ai-core/src/models/catalog.ts",
+	"scripts/check-model-ids.mjs",
+	"scripts/check-model-ids.test.mjs",
 ]);
+/** The env schema may hold model ID literals only as `.default(...)` arguments (plan C4). */
+const ENV_SCHEMA_FILE = "packages/ai-core/src/config/env-schema.ts";
+
 function compareText(left, right) {
 	return left < right ? -1 : left > right ? 1 : 0;
 }
 
-const MODEL_ID_PATTERN =
-	/(?<![A-Za-z0-9])(?:claude-|gpt-|gemini-|deepseek-|command-r|llama|qwen|gemma|granite|mistral|mixtral|codestral|phi|jamba-|nova-|o[134]-?)(?:[A-Za-z0-9._:/-]*[A-Za-z0-9])?/gu;
+// Variant words that turn a common-word family into a model ID (`mistral-small`, `llama-guard3`).
+const VARIANT_WORDS =
+	"small|medium|large|nemo|tiny|mini|nano|plus|pro|instruct|embedding|embed|code|coder|vision|guard|moe|latest";
+// A family that is also an ordinary word must be followed by a version digit, or by `-` / `:`
+// and a version or variant token (`phi3`, `phi-4`, `gemma3:4b`, `mistral-small`).
+const VERSIONED = String.raw`(?:\d|[-:](?:\d|(?:${VARIANT_WORDS})(?![a-z])))`;
+
+/**
+ * Model families detected by the check, kept in sync with the catalog's providers
+ * (anthropic, openai, azure, google, ollama; plan C5 / C6) and their embedding models.
+ * `pattern` is the regex source that must follow the ID's left boundary.
+ */
+export const MODEL_ID_FAMILIES = Object.freeze([
+	{ prefix: "claude-", pattern: "claude-" },
+	// `gpt-tokenizer` is a package, so `gpt-` needs a version digit or a known model line.
+	{
+		prefix: "gpt-",
+		pattern: String.raw`gpt-(?=\d|(?:oss|image|realtime|audio)(?![A-Za-z]))`,
+	},
+	{ prefix: "chatgpt-", pattern: "chatgpt-" },
+	// o-series IDs stand alone (`o3`) or take a variant (`o3-mini`); `o3lint` and `foo3` do not match.
+	{ prefix: "o", pattern: "o[1-9](?:-(?=[a-z])|(?![A-Za-z0-9]))" },
+	{ prefix: "text-embedding-", pattern: "text-embedding-" },
+	{ prefix: "gemini-", pattern: "gemini-" },
+	{ prefix: "embeddinggemma", pattern: "embeddinggemma" },
+	{ prefix: "gemma", pattern: `gemma${VERSIONED}` },
+	{ prefix: "llama", pattern: `llama${VERSIONED}` },
+	{ prefix: "qwen", pattern: `qwen${VERSIONED}` },
+	{ prefix: "granite", pattern: `granite${VERSIONED}` },
+	{ prefix: "mistral", pattern: `mistral${VERSIONED}` },
+	{ prefix: "mixtral", pattern: "mixtral" },
+	{ prefix: "codestral", pattern: "codestral" },
+	{ prefix: "phi", pattern: `phi${VERSIONED}` },
+	{ prefix: "deepseek-", pattern: "deepseek-" },
+	{ prefix: "command-r", pattern: "command-r(?![A-Za-z])" },
+	{ prefix: "jamba-", pattern: "jamba-" },
+	{ prefix: "nova-", pattern: "nova-" },
+	{ prefix: "nomic-embed-", pattern: "nomic-embed-" },
+	{ prefix: "mxbai-embed-", pattern: "mxbai-embed-" },
+	{ prefix: "snowflake-arctic-embed", pattern: "snowflake-arctic-embed" },
+]);
+
+export const MODEL_ID_PREFIXES = Object.freeze(MODEL_ID_FAMILIES.map(({ prefix }) => prefix));
+
+const MODEL_ID_PATTERN = new RegExp(
+	`(?<![A-Za-z0-9])(?:${MODEL_ID_FAMILIES.map(({ pattern }) => pattern).join("|")})(?:[A-Za-z0-9._:/-]*[A-Za-z0-9])?`,
+	"gu",
+);
+
+// A string literal right after one of these is a module specifier (a package name), not a model ID.
+const MODULE_SPECIFIER_CONTEXT = /(?:\bfrom|\bimport|\bimport\s*\(|\brequire\s*\()\s*$/u;
 
 function extension(filePath) {
 	const fileName = basename(filePath);
@@ -27,7 +81,9 @@ function listFiles(directory) {
 			.sort((left, right) => compareText(left.name, right.name))
 			.flatMap((entry) => {
 				const filePath = join(directory, entry.name);
-				if (entry.isDirectory()) return listFiles(filePath);
+				if (entry.isDirectory()) {
+					return isGeneratedDirectory(entry.name) ? [] : listFiles(filePath);
+				}
 				return entry.isFile() ? [filePath] : [];
 			});
 	} catch (error) {
@@ -36,14 +92,16 @@ function listFiles(directory) {
 	}
 }
 
-function isExcluded(filePath) {
-	return EXCLUDED_FILE_NAMES.has(basename(filePath));
+function repositoryPath(root, filePath) {
+	return relative(root, filePath).split(sep).join("/");
 }
 
 function collectEligibleFiles(root) {
 	const codeFiles = ["apps", "packages", "scripts", "tooling"].flatMap((directory) =>
 		listFiles(join(root, directory)).filter(
-			(filePath) => CODE_EXTENSIONS.has(extension(filePath)) && !isExcluded(filePath),
+			(filePath) =>
+				CODE_EXTENSIONS.has(extension(filePath)) &&
+				!ALLOWED_FILES.has(repositoryPath(root, filePath)),
 		),
 	);
 	const documentationFiles = listFiles(join(root, "docs")).filter(
@@ -105,12 +163,24 @@ function codeStringLiterals(source) {
 	return literals;
 }
 
-function lineNumberAt(source, index) {
-	let line = 1;
-	for (let position = 0; position < index; position += 1) {
-		if (source[position] === "\n") line += 1;
+function lineStartIndex(source) {
+	const starts = [0];
+	for (let position = source.indexOf("\n"); position !== -1; ) {
+		starts.push(position + 1);
+		position = source.indexOf("\n", position + 1);
 	}
-	return line;
+	return starts;
+}
+
+function lineNumberAt(lineStarts, index) {
+	let low = 0;
+	let high = lineStarts.length - 1;
+	while (low < high) {
+		const middle = Math.ceil((low + high) / 2);
+		if (lineStarts[middle] <= index) low = middle;
+		else high = middle - 1;
+	}
+	return low + 1;
 }
 
 function modelMatches(value) {
@@ -120,6 +190,10 @@ function modelMatches(value) {
 	}));
 }
 
+function isModuleSpecifier(source, literalStart) {
+	return MODULE_SPECIFIER_CONTEXT.test(source.slice(Math.max(0, literalStart - 40), literalStart));
+}
+
 function isEnvSchemaDefault(source, literalStart) {
 	const prefix = source.slice(Math.max(0, literalStart - 100), literalStart);
 	return /\.default\(\s*$/u.test(prefix);
@@ -127,22 +201,24 @@ function isEnvSchemaDefault(source, literalStart) {
 
 function fileViolations(root, filePath) {
 	const source = readFileSync(filePath, "utf8");
-	const relativePath = relative(root, filePath).split(sep).join("/");
+	const relativePath = repositoryPath(root, filePath);
+	const lineStarts = lineStartIndex(source);
 	if (extension(filePath) === ".md") {
 		return modelMatches(source).map(({ index, modelId }) => ({
 			file: relativePath,
-			line: lineNumberAt(source, index),
+			line: lineNumberAt(lineStarts, index),
 			modelId,
 		}));
 	}
 
 	return codeStringLiterals(source).flatMap(({ literalStart, value, valueStart }) => {
-		if (basename(filePath) === "env-schema.ts" && isEnvSchemaDefault(source, literalStart)) {
+		if (isModuleSpecifier(source, literalStart)) return [];
+		if (relativePath === ENV_SCHEMA_FILE && isEnvSchemaDefault(source, literalStart)) {
 			return [];
 		}
 		return modelMatches(value).map(({ index, modelId }) => ({
 			file: relativePath,
-			line: lineNumberAt(source, valueStart + index),
+			line: lineNumberAt(lineStarts, valueStart + index),
 			modelId,
 		}));
 	});
@@ -174,4 +250,4 @@ function runCli() {
 	}
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) runCli();
+if (isMainModule(import.meta.url)) runCli();

@@ -152,6 +152,7 @@ vite.config.ts.timestamp-*
 .turbo/
 
 # Test and mutation reports
+.stryker-tmp/
 playwright-report/
 test-results/
 reports/
