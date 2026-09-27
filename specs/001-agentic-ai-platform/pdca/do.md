@@ -474,7 +474,7 @@
 
 **Resolution decision**: Do not alter `package.json`, `pnpm-workspace.yaml`, or `pnpm-lock.yaml` from Task 2.1 because its declared boundary is only `.github/workflows/ci.yml`, and the task forbids undeclared dependency changes. The workflow correctly exposes the existing supply-chain failure, but its `audit` job and therefore `ci-status` cannot be green until a separately approved dependency remediation updates the pinned graph.
 
-**Task status**: Implementation file is present and the mandatory repository gate is green, but Task 2.1 remains unchecked because its PR-level `ci-status` success verification cannot currently pass.
+**Task status**: Implementation file is present and the mandatory repository gate is green, but Task 2.1 remains unchecked because its PR-level `ci-status` success verification cannot currently pass. (Superseded: the `qs` override `9418a09` cleared the audit, Task 2.1 was marked `[x]` at ship validation, and PR #2 `ci-status` succeeded; see "Validation: Task 2" below.)
 
 ### 2026-09-27 18:22 JST Task 2.2 Started
 
@@ -511,7 +511,7 @@
 
 - `mise run gate` → PASS: `Checked 7 files ... No fixes applied.`
 - `mise run secret-scan` → PASS: 22 commits scanned, no leaks found.
-- `mise run audit` → PASS: `No known vulnerabilities found` after the separately committed `qs@6.16.0` remediation.
+- `mise run audit` → PASS: `No known vulnerabilities found` after the separately committed `qs@6.16.0` remediation (`9418a09 fix(deps): override transitive qs to 6.16.0 for audit advisories`, a T-1.2-boundary fix to `pnpm-workspace.yaml` / `pnpm-lock.yaml`).
 - `git diff --check` → PASS.
 - GitHub Insights validation remains a post-push operational check because Dependabot only evaluates the committed default-branch configuration; local YAML parsing and contract checks are green.
 
@@ -535,3 +535,13 @@
 - `f9e7aca ci(platform): add initial CI and Dependabot configuration` — SHA-pinned initial CI jobs, aggregate status, and weekly grouped dependency updates.
 - Pre-commit protection passed: IBM Vault Radar, staged Biome with zero applicable files, staged gitleaks, and the Task 5.1-aware model-ID deferral.
 - Traceability Commit cells were updated for Req 1.7, Req 1.18, and NFR-11.
+
+### 2026-09-27 Validation: Task 2 (`/sdd-validate-impl`)
+
+- Verdict: GO with 2 warnings and 2 LOW notes; all four were applied.
+- Hosted checks: PR #2 run `36309720286` on `a00f581` succeeded for `Quality gate`, `Secret scan`, `Dependency audit`, and `CI status`; the Dependabot `.github/dependabot.yml` validation check also succeeded. This satisfies the T-2.1 `ci-status` Verify; the Insights view is confirmed after merge to `main`.
+- Independent re-run: `mise run setup` (frozen) exit 0, `mise run gate` (`Checked 7 files`) exit 0, `mise run audit` (`No known vulnerabilities found`), `mise run secret-scan` (24 commits, no leaks).
+- Boundary: `f9e7aca` touches only `.github/workflows/ci.yml` and `.github/dependabot.yml`. `9418a09` touches `pnpm-workspace.yaml` / `pnpm-lock.yaml`, which are inside the T-1.2 boundary, so it is tracked as a T-1.2 fix rather than a T-2 boundary violation.
+- W-1 fix: recorded `9418a09` in the traceability NFR-11 Commit cell and in the T-2.2 verification entry above.
+- W-2 fix: annotated the stale "Task 2.1 remains unchecked" status as superseded.
+- L-1/L-2 fix (`956b3df`): `persist-credentials: false` on all 3 checkouts, `timeout-minutes` per job (gate 15, secret-scan 10, audit 10, ci-status 5), and `concurrency` that cancels superseded pull-request runs only. YAML parsed; `mise run gate` exit 0; `git diff --check` clean.

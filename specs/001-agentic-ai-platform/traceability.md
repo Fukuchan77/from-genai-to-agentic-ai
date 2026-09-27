@@ -26,7 +26,7 @@ ID 規約は `tasks.md` の「ID 対応表」を参照する（この spec の p
 | 1.4 | C1 | T-1.1, T-1.4, T-5.5, T-13.7, T-19.3, T-29.1 | T-1.1: 初期gate、T-1.4: Vitest/Stryker構造検査・`tsc` | T-1.1: `10c3b48`、T-1.4: `ee05b10`、修正（T-1.1/T-1.4）: `01dc364` |
 | 1.5 | C1, C18 | T-4.1, T-29.2 |  |  |
 | 1.6 | C1 | T-1.3 | unused-import 負例、`tsc --noEmit`、`mise run gate` | T-1.3: `10c3b48` |
-| 1.7 | C2 | T-2.1, T-19.3, T-29.1 | T-2.1: CI構造検査、`ci-status` 成功/失敗シミュレーション | T-2.1: `f9e7aca` |
+| 1.7 | C2 | T-2.1, T-19.3, T-29.1 | T-2.1: CI構造検査、`ci-status` 成功/失敗シミュレーション | T-2.1: `f9e7aca`、修正（T-2.1）: `956b3df` |
 | 1.8 | C3, C22 | T-3.1, T-3.2, T-28.5 |  |  |
 | 1.9 | C4, C13 | T-12.2, T-12.4, T-20.2 |  |  |
 | 1.10 | C2, C13, C14, C16, C20 | T-20.1, T-21.1, T-25.2, T-29.1 |  |  |
@@ -152,7 +152,7 @@ Task 列に記載する。
 | NFR-08（隔離実行） | — | **未割当（下記 Gaps 参照）** |  |  |
 | NFR-09（アクセシビリティ） | C13, C19 | T-8.3, T-20.4, T-26.3, T-27.3 |  |  |
 | NFR-10（対応ブラウザ） | C19 | T-26.1, T-27.1, T-27.2 |  |  |
-| NFR-11（サプライチェーン） | C1, C2 | T-1.2, T-1.5, T-2.1, T-2.2 | T-1.2: frozen lockfile、T-1.5: staged secret hook、T-2.1: SHA/permissions/frozen setup、T-2.2: Dependabot構造検査 | T-1.2: `10c3b48`、T-1.5: `d9cec30`、修正（T-1.2）: `01dc364`、T-2.1/T-2.2: `f9e7aca` |
+| NFR-11（サプライチェーン） | C1, C2 | T-1.2, T-1.5, T-2.1, T-2.2 | T-1.2: frozen lockfile、T-1.5: staged secret hook、T-2.1: SHA/permissions/frozen setup、T-2.2: Dependabot構造検査 | T-1.2: `10c3b48`、T-1.5: `d9cec30`、修正（T-1.2）: `01dc364`, `9418a09`、T-2.1/T-2.2: `f9e7aca`、修正（T-2.1）: `956b3df` |
 | NFR-12（UI言語） | C13, C22 | T-20.3, T-28.2 |  |  |
 | NFR-13（コスト可視化） | C5 | T-9.2 |  |  |
 
@@ -182,5 +182,6 @@ Task 列に記載する。
   `createGuardedAgent` の `tools` を `buildToolSet` の戻り値 `GuardedToolSet` に限った（M-3。T-15.1、T-15.2、
   T-16.3。constitution 原則 6 の手続きのため、本表の行は変えていない）。T-8.1 に `babel-plugin-react-compiler`
   と `jsdom` を加えた（M-1）。NFR-10・NFR-12 の割り当てを大タスクからサブタスクに改めた（L-2）。
+- 2026-09-27 の `/sdd-validate-impl`（Task 2）: PR #2 の `ci-status` が `a00f581` で成功し、Dependabot の設定検証チェックも成功した（T-2.1・T-2.2 のホスト側検証を充足。Insights での確認は main へのマージ後）。T-2.1 の `audit` を通すための `qs` の override（`9418a09`）は T-1.2 の境界内の修正として追跡する。`ci.yml` に `persist-credentials: false`、ジョブごとの `timeout-minutes`、PR の古い実行を取り消す `concurrency` を加えた。
 - 2026-09-27 の `/sdd-validate-impl`（Task 1）: Vitest の CLI フィルタが `exclude` を戻せないため `test:local`・`test:db` が対象を実行できない欠陥と、Turborepo の strict env モードで `OLLAMA_BASE_URL` がテストに渡らない欠陥を検出した。`AI_TEST_SUITE` によるテストの選択（plan C18）と `turbo.json` の `env` で解消した。影響するタスクの記述（T-4.3、T-5.5、T-6.2、T-7.2、T-8.3）も更新した。
 - 2026-09-27 の `/sdd-validate-impl`（Task 1 の再検証）: `turbo.json` に `test:coverage` がなく `mise run test:coverage` が失敗する欠陥を検出し、T-1 の境界内で追加した。各ワークスペースの `test:coverage` スクリプトは、`test` スクリプトと同時に T-6.3（ai-core）・T-19.1（eval-suite）・T-21.1（apps/web）が加える（同日の検証の W-2 で割り当てた。各タスクの `_Boundary:_` は対象の `package.json` を含むため変更なし）。
