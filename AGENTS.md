@@ -45,7 +45,7 @@ Planned conventions:
 - LLM-generated code (data-analysis code, harness code and test scripts) never runs on the host — only inside a sandbox or container.
 - Retrieval: pgvector + Reciprocal Rank Fusion.
 - Observability: OpenTelemetry.
-- Biome for lint/format: 2-space indent, line width 100, single quotes, semicolons, `noUnusedVariables` / `noUnusedImports` as errors.
+- Biome for lint/format across all workspaces, with `noUnusedVariables` / `noUnusedImports` as errors. The concrete style is fixed in the design phase (the drafts propose 2-space indent, line width 100, single quotes, semicolons).
 
 ## Writing Conventions
 
