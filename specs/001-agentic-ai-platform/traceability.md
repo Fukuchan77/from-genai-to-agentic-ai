@@ -26,7 +26,7 @@ ID 規約は `tasks.md` の「ID 対応表」を参照する（この spec の p
 | 1.4 | C1 | T-1.1, T-1.4, T-5.5, T-13.7, T-19.3, T-29.1 | T-1.1: 初期gate、T-1.4: Vitest/Stryker構造検査・`tsc` | T-1.1: `10c3b48`、T-1.4: `ee05b10`、修正（T-1.1/T-1.4）: `01dc364` |
 | 1.5 | C1, C18 | T-4.1, T-29.2 |  |  |
 | 1.6 | C1 | T-1.3 | unused-import 負例、`tsc --noEmit`、`mise run gate` | T-1.3: `10c3b48` |
-| 1.7 | C2 | T-2.1, T-19.3, T-29.1 |  |  |
+| 1.7 | C2 | T-2.1, T-19.3, T-29.1 | T-2.1: CI構造検査、`ci-status` 成功/失敗シミュレーション | T-2.1: `f9e7aca` |
 | 1.8 | C3, C22 | T-3.1, T-3.2, T-28.5 |  |  |
 | 1.9 | C4, C13 | T-12.2, T-12.4, T-20.2 |  |  |
 | 1.10 | C2, C13, C14, C16, C20 | T-20.1, T-21.1, T-25.2, T-29.1 |  |  |
@@ -37,7 +37,7 @@ ID 規約は `tasks.md` の「ID 対応表」を参照する（この spec の p
 | 1.15 | C1, C18, C19, C20 | T-1.4, T-4.3, T-5.2, T-5.4, T-5.5, T-13.7, T-19.3, T-25.3, T-29.1 | T-1.4: `passWithNoTests: false`・reporter登録 | T-1.4: `ee05b10`、修正（T-1.4）: `01dc364` |
 | 1.16 | C1, C2, C18 | T-1.4, T-4.3, T-19.3, T-29.3 | T-1.4: Stryker対象・runner・閾値の構造検査 | T-1.4: `ee05b10` |
 | 1.17 | C2, C19 | T-25.1, T-25.3, T-26.1, T-26.2, T-27.1, T-27.2, T-29.1 |  |  |
-| 1.18 | C1, C2 | T-1.5, T-2.1, T-29.3 | T-1.5: staged dummy secret rejection（redact） | T-1.5: `d9cec30` |
+| 1.18 | C1, C2 | T-1.5, T-2.1, T-29.3 | T-1.5: staged dummy secret rejection（redact）、T-2.1: `fetch-depth: 0`・`mise run secret-scan` | T-1.5: `d9cec30`、T-2.1: `f9e7aca` |
 | 1.19 | C19 | T-26.3, T-27.3 |  |  |
 
 ## Requirement 2: LLM プロバイダと実行モード
@@ -152,12 +152,13 @@ Task 列に記載する。
 | NFR-08（隔離実行） | — | **未割当（下記 Gaps 参照）** |  |  |
 | NFR-09（アクセシビリティ） | C13, C19 | T-8.3, T-20.4, T-26.3, T-27.3 |  |  |
 | NFR-10（対応ブラウザ） | C19 | T-26.1, T-27.1, T-27.2 |  |  |
-| NFR-11（サプライチェーン） | C1, C2 | T-1.2, T-1.5, T-2.1, T-2.2 | T-1.2: frozen lockfile、T-1.5: staged secret hook | T-1.2: `10c3b48`、T-1.5: `d9cec30`、修正（T-1.2）: `01dc364` |
+| NFR-11（サプライチェーン） | C1, C2 | T-1.2, T-1.5, T-2.1, T-2.2 | T-1.2: frozen lockfile、T-1.5: staged secret hook、T-2.1: SHA/permissions/frozen setup、T-2.2: Dependabot構造検査 | T-1.2: `10c3b48`、T-1.5: `d9cec30`、修正（T-1.2）: `01dc364`、T-2.1/T-2.2: `f9e7aca` |
 | NFR-12（UI言語） | C13, C22 | T-20.3, T-28.2 |  |  |
 | NFR-13（コスト可視化） | C5 | T-9.2 |  |  |
 
 ## Gaps
 
+- 2026-09-27 の `/sdd-ship`（T-2.1〜T-2.2）では、新しい要件・設計ギャップは検出しなかった。PR の `ci-status` と GitHub Insights の Dependabot 設定確認は、設定を push した後のホスト側検証として残る。
 - 2026-09-27 の `/sdd-ship`（T-1.1〜T-1.3）では、新しい要件・設計ギャップは検出しなかった。`pnpm-lock.yaml` は T-1.2 の frozen install を成立させる派生成物として追跡する（2026-09-27 の `/sdd-validate-impl` で境界外と判定し、T-1・T-1.2 の `_Boundary:_` と plan のルートの表に加えた）。
 - 2026-09-27 の `/sdd-ship`（T-1.4〜T-1.5）でも新しい要件・設計ギャップは検出しなかった。Vitest hook と mutation の実行検証は、承認済みタスクどおり T-4.1/T-4.3/T-29.3 へ引き継ぐ。
 - **NFR-08（隔離実行）は M1 に意図的な未割当**: plan.md の Requirements Traceability が明記する

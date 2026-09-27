@@ -169,13 +169,13 @@ _Depends:_ 1
 _Requirements:_ 1.7, 1.18, NFR-11
 _Traces:_ REQ-001, C2
 
-- [ ] 2.1 (P) `ci.yml`: 初期構成のジョブ `gate`、`secret-scan`（`fetch-depth: 0` で全履歴）、`audit`、集約ジョブ `ci-status`（`needs` + `if: always()`）。`mutation` は 19.3、`e2e`（chromium/firefox/webkit マトリクス）と `client-bundle` は 29.1 が加える（[gate と CI の段階的な結線](#gate-と-ci-の段階的な結線)）。Actions はコミット SHA 固定、`permissions: contents: read` のみ、依存インストールは `mise run setup`
+- [x] 2.1 (P) `ci.yml`: 初期構成のジョブ `gate`、`secret-scan`（`fetch-depth: 0` で全履歴）、`audit`、集約ジョブ `ci-status`（`needs` + `if: always()`）。`mutation` は 19.3、`e2e`（chromium/firefox/webkit マトリクス）と `client-bundle` は 29.1 が加える（[gate と CI の段階的な結線](#gate-と-ci-の段階的な結線)）。Actions はコミット SHA 固定、`permissions: contents: read` のみ、依存インストールは `mise run setup`
   _Boundary:_ `.github/workflows/ci.yml`
   _Depends:_ 1
   _Requirements:_ 1.7, 1.18, NFR-11
   _Traces:_ REQ-001, C2
   _Verify:_ SHA 固定・`permissions`・`--frozen-lockfile` は 5.2 の `actions-pinned`/`frozen-lockfile` 規則が検査する（W1 の締めで gate に入る）。W1 の PR で `ci-status` が成功することを確認する
-- [ ] 2.2 (P) `dependabot.yml`: npm と GitHub Actions の週次更新、`cooldown`、グループ（`ai-sdk`/`prerelease-toolchain`/`react`/`dev-tooling`）、`@playwright/test` の除外
+- [x] 2.2 (P) `dependabot.yml`: npm と GitHub Actions の週次更新、`cooldown`、グループ（`ai-sdk`/`prerelease-toolchain`/`react`/`dev-tooling`）、`@playwright/test` の除外
   _Boundary:_ `.github/dependabot.yml`
   _Depends:_ 1
   _Requirements:_ NFR-11
@@ -183,6 +183,10 @@ _Traces:_ REQ-001, C2
   _Verify:_ GitHub の Insights → Dependency graph → Dependabot で設定の検証エラーがないことを確認する
 
 ### Implementation Notes
+
+- CI は初期波で実行対象がある `gate`・`secret-scan`・`audit` だけを独立ジョブにし、`ci-status` が全結果を集約する。
+- Actions と mise 本体を固定し、全検証ジョブが `mise run setup` を経由することでローカルと CI の入口を統一した。
+- Dependabot は公開24時間待機、互換性が連動する依存のグループ化、Playwright 先行版の除外を同時に管理する。
 
 ---
 

@@ -415,3 +415,123 @@
 - W-1 fix: the remediation commit `01dc364 fix(platform): select test suites via AI_TEST_SUITE` was missing from the traceability Commit cells; appended it to rows 1.1, 1.3, 1.4, 1.12, 1.15, NFR-05, NFR-07, and NFR-11.
 - W-2 fix: assigned the workspace `test:coverage` scripts (`vitest run --coverage.enabled --coverage.reporter=html`) to the tasks that add each `test` script: T-6.3 (ai-core), T-19.1 (eval-suite), T-21.1 (apps/web). Updated plan C18, the shared-file rule in `tasks.md` (now also listing `packages/eval-suite/package.json`), tasks 6.1/6.3/7.1/8.1/19.1/21.1, and the traceability Gap. No boundary changed because each task already owns its `package.json`.
 - LOW fix: README now states that the pre-commit hook needs a mise-activated shell for `pnpm` and `gitleaks`, and fails closed otherwise.
+
+### 2026-09-27 18:11 JST Task 2.1 Started
+
+- Objective: Add the initial pull-request/main CI workflow with `gate`, full-history `secret-scan`, dependency `audit`, and required aggregate `ci-status` jobs.
+- Success criteria:
+  - The workflow runs for pull requests and pushes to `main`, with workflow-level `permissions: contents: read` only.
+  - Every external action reference is pinned to a full 40-character commit SHA.
+  - Each verification job installs the repository-pinned toolchain and dependencies through `mise run setup`, then invokes the matching mise task.
+  - `secret-scan` checks out full history with `fetch-depth: 0`.
+  - `ci-status` uses `needs` plus `if: always()` and fails unless all three initial jobs succeed.
+- Approach: Use `actions/checkout` v6.0.2 and `jdx/mise-action` v4.2.4 at verified official tag SHAs; pin mise itself to the locally validated 2026.9.14 release.
+
+### 2026-09-27 18:11 JST Task 2.1 Error Investigation
+
+**Error**: The first PDCA append attempted to execute Markdown inline-code contents such as `gate` and `mise run setup`; the latter began a frozen install and was interrupted.
+
+**Root Cause**: The shell heredoc delimiter was unquoted, so zsh performed command substitution for every Markdown backtick before invoking `cat`. Because expansion happens before redirection, no partial repository edit was written.
+
+**Resolution**: Verified `git status` remained clean, then switched all Markdown appends to a single-quoted heredoc delimiter so contents are written literally. Repository dependencies and lockfiles were unchanged.
+
+### 2026-09-27 18:13 JST Task 2.1 Test Evidence
+
+**RED evidence** (before implementation):
+
+- Check: temporary structural verifier for `.github/workflows/ci.yml`.
+- Failure: `ENOENT: no such file or directory, open '.github/workflows/ci.yml'`.
+- Existing-test scan: no repository test referenced `ci-status`, `actions/checkout`, or `.github/workflows/ci.yml`; no related green baseline existed.
+
+**GREEN evidence**:
+
+- Structural verifier confirmed all four initial jobs, workflow-level read-only permissions, full-history checkout, aggregate `needs`/`always()`, six full-SHA action references, and three `mise run setup` steps.
+- YAML syntax: Ruby Psych parsed `.github/workflows/ci.yml` successfully.
+- Aggregate behavior: all-success inputs exited 0; a failed `secret-scan` input exited 1.
+- Action provenance: official tag refs resolved `actions/checkout` v6.0.2 to `de0fac2e4500dabe0009e67214ff5f5447ce83dd` and `jdx/mise-action` v4.2.4 to `7e36c90d9ab29c415a2384db3006f3ec8a8cc654`.
+
+**PROVE evidence**:
+
+- Break applied: changed `fetch-depth: 0` to `fetch-depth: 1` in the workflow.
+- Failure observed: `Error: Missing workflow contract: /fetch-depth: 0/`.
+- Restored: yes; the same verifier exited 0 after restoring the workflow.
+
+**Verification**:
+
+- `mise run gate` → PASS: `Checked 7 files ... No fixes applied.`
+- `mise run secret-scan` → PASS: 21 commits scanned, no leaks found.
+- `git diff --check` → PASS.
+
+### 2026-09-27 18:14 JST Task 2.1 Audit Failure Investigation
+
+**Error**: `mise run audit` exited 1 with three moderate advisories for `qs@6.15.1`.
+
+**Root Cause Investigation**:
+
+1. `mise exec -- pnpm why qs` traced the package exclusively through `@stryker-mutator/core@10.0.0 -> typed-rest-client@2.3.1 -> qs@6.15.1`.
+2. `git show HEAD:pnpm-lock.yaml` contains the same `qs@6.15.1` resolution, so the finding predates Task 2.1 and is not introduced by the workflow.
+3. The advisories require `qs>=6.16.0` for a complete fix; the repository's pinned transitive dependency remains at 6.15.1.
+
+**Resolution decision**: Do not alter `package.json`, `pnpm-workspace.yaml`, or `pnpm-lock.yaml` from Task 2.1 because its declared boundary is only `.github/workflows/ci.yml`, and the task forbids undeclared dependency changes. The workflow correctly exposes the existing supply-chain failure, but its `audit` job and therefore `ci-status` cannot be green until a separately approved dependency remediation updates the pinned graph.
+
+**Task status**: Implementation file is present and the mandatory repository gate is green, but Task 2.1 remains unchecked because its PR-level `ci-status` success verification cannot currently pass.
+
+### 2026-09-27 18:22 JST Task 2.2 Started
+
+- Objective: Add weekly npm and GitHub Actions Dependabot updates with the planned cooldown, npm update groups, and Playwright exclusion.
+- Success criteria:
+  - `version: 2` declares one weekly npm update block and one weekly GitHub Actions update block at `/`.
+  - npm updates use a one-day cooldown matching `minimumReleaseAge: 1440`.
+  - npm groups are ordered as `ai-sdk`, `prerelease-toolchain`, `react`, then `dev-tooling`, so specific groups win before the broad development group.
+  - `@playwright/test` is excluded from Dependabot updates and remains managed by the repository update-check lane.
+  - The YAML parses successfully and the mandatory repository gate remains green.
+- Approach: Follow the approved plan and the local reference configuration, cross-checked against GitHub's current Dependabot option reference for `cooldown`, `groups`, `ignore`, and the `/` directory rule for GitHub Actions.
+
+### 2026-09-27 18:22 JST Task 2.2 Test Evidence
+
+**RED evidence** (before implementation):
+
+- Check: temporary structural verifier for `.github/dependabot.yml`.
+- Failure: `ENOENT: no such file or directory, open '.github/dependabot.yml'`.
+- Existing-test scan: no repository test referenced Dependabot, `prerelease-toolchain`, or `default-days`; no related green baseline existed.
+
+**GREEN evidence**:
+
+- Structural verifier confirmed two weekly ecosystems, one-day cooldown, all four planned npm groups, and the `@playwright/test` exclusion.
+- Ruby Psych parsed the file and confirmed exactly two update entries.
+- Configuration follows the approved group order: `ai-sdk`, `prerelease-toolchain`, `react`, then the broad `dev-tooling` development-dependency group.
+
+**PROVE evidence**:
+
+- Break applied: changed npm `cooldown.default-days` from `1` to `0`.
+- Failure observed: `Error: Missing Dependabot contract: /cooldown:\n\s+default-days: 1/`.
+- Restored: yes; the structural verifier exited 0 after restoring the file.
+
+**Verification**:
+
+- `mise run gate` → PASS: `Checked 7 files ... No fixes applied.`
+- `mise run secret-scan` → PASS: 22 commits scanned, no leaks found.
+- `mise run audit` → PASS: `No known vulnerabilities found` after the separately committed `qs@6.16.0` remediation.
+- `git diff --check` → PASS.
+- GitHub Insights validation remains a post-push operational check because Dependabot only evaluates the committed default-branch configuration; local YAML parsing and contract checks are green.
+
+**VDD review**: skipped. Product changes are confined to `.github/dependabot.yml`; no dependency manifest or existing test was changed, and PROVE evidence was produced.
+
+**Completion**: Task 2.2 marked `[x]` after local verification.
+
+### 2026-09-27 18:29 JST Ship Validation: Tasks 2.1–2.2
+
+- Verdict: GO for scoped commits; no requirement, design, boundary, or regression finding was detected.
+- Boundaries: `.github/workflows/ci.yml` is inside T-2.1 and `.github/dependabot.yml` is inside T-2.2. SDD task state, PDCA, and traceability are workflow records.
+- CI contract: four initial jobs, full-history secret scan, read-only workflow permissions, six full-SHA action references, three frozen setup paths, and fail-closed aggregate status all passed structural checks.
+- Dependabot contract: two weekly ecosystems, one-day npm cooldown, four planned groups, and the Playwright exclusion passed structural checks and YAML parsing.
+- Non-vacuity: T-2.1 failed when `fetch-depth` was changed to 1; T-2.2 failed when `cooldown.default-days` was changed to 0; both restored configurations passed.
+- Gate evidence: `mise run setup` completed from the frozen lockfile; `mise run gate` checked 7 files; `mise run secret-scan` scanned 22 commits with no leaks; `mise run audit` found no known vulnerabilities.
+- Hosted checks: PR `ci-status` and GitHub Insights Dependabot validation require the committed configuration to be pushed and remain post-ship operational confirmations.
+- Auto-fixes: marked T-2.1 complete, added Task 2 implementation notes, and filled the T-2.1/T-2.2 traceability Test cells plus the Gaps entry.
+
+### 2026-09-27 18:30 JST Ship Commits: Tasks 2.1–2.2
+
+- `f9e7aca ci(platform): add initial CI and Dependabot configuration` — SHA-pinned initial CI jobs, aggregate status, and weekly grouped dependency updates.
+- Pre-commit protection passed: IBM Vault Radar, staged Biome with zero applicable files, staged gitleaks, and the Task 5.1-aware model-ID deferral.
+- Traceability Commit cells were updated for Req 1.7, Req 1.18, and NFR-11.
