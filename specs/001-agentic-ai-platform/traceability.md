@@ -20,10 +20,10 @@ ID 規約は `tasks.md` の「ID 対応表」を参照する（この spec の p
 
 | Requirement | Design | Task | Test | Commit |
 |---|---|---|---|---|
-| 1.1 | C1, C13, C21 | T-1.2, T-7.1, T-8.1, T-8.2, T-8.3, T-19.1 | T-1.2: `mise run setup`、Turbo pnpm-workspace dry-run | T-1.2: `10c3b48` |
+| 1.1 | C1, C13, C21 | T-1.2, T-7.1, T-8.1, T-8.2, T-8.3, T-19.1 | T-1.2: `mise run setup`、Turbo pnpm-workspace dry-run | T-1.2: `10c3b48`、修正（T-1.2）: `01dc364` |
 | 1.2 | C1 | T-6.1, T-6.3 |  |  |
-| 1.3 | C1 | T-1.1, T-1.2 | T-1.1: `mise tasks validate`（23件）、T-1.2: frozen install | T-1.1/T-1.2: `10c3b48` |
-| 1.4 | C1 | T-1.1, T-1.4, T-5.5, T-13.7, T-19.3, T-29.1 | T-1.1: 初期gate、T-1.4: Vitest/Stryker構造検査・`tsc` | T-1.1: `10c3b48`、T-1.4: `ee05b10` |
+| 1.3 | C1 | T-1.1, T-1.2 | T-1.1: `mise tasks validate`（23件）、T-1.2: frozen install | T-1.1/T-1.2: `10c3b48`、修正（T-1.1/T-1.2）: `01dc364` |
+| 1.4 | C1 | T-1.1, T-1.4, T-5.5, T-13.7, T-19.3, T-29.1 | T-1.1: 初期gate、T-1.4: Vitest/Stryker構造検査・`tsc` | T-1.1: `10c3b48`、T-1.4: `ee05b10`、修正（T-1.1/T-1.4）: `01dc364` |
 | 1.5 | C1, C18 | T-4.1, T-29.2 |  |  |
 | 1.6 | C1 | T-1.3 | unused-import 負例、`tsc --noEmit`、`mise run gate` | T-1.3: `10c3b48` |
 | 1.7 | C2 | T-2.1, T-19.3, T-29.1 |  |  |
@@ -31,10 +31,10 @@ ID 規約は `tasks.md` の「ID 対応表」を参照する（この spec の p
 | 1.9 | C4, C13 | T-12.2, T-12.4, T-20.2 |  |  |
 | 1.10 | C2, C13, C14, C16, C20 | T-20.1, T-21.1, T-25.2, T-29.1 |  |  |
 | 1.11 | C1 | T-1.1, T-29.2 | T-1.1: offline lint-only gate（Docker/API key 不要） | T-1.1: `10c3b48` |
-| 1.12 | C1, C18 | T-1.4, T-4.3 | T-1.4: test suffix include/exclude構成検査 | T-1.4: `ee05b10` |
+| 1.12 | C1, C18 | T-1.4, T-4.3 | T-1.4: test suffix include/exclude構成検査 | T-1.4: `ee05b10`、修正（T-1.4）: `01dc364` |
 | 1.13 | C6, C18, C21 | T-4.2, T-7.2, T-7.3, T-11.1, T-11.2, T-14.5, T-19.1, T-19.2 |  |  |
 | 1.14 | C18, C21 | T-4.2, T-4.3, T-7.2, T-11.2, T-14.5, T-19.2, T-29.2 |  |  |
-| 1.15 | C1, C18, C19, C20 | T-1.4, T-4.3, T-5.2, T-5.4, T-5.5, T-13.7, T-19.3, T-25.3, T-29.1 | T-1.4: `passWithNoTests: false`・reporter登録 | T-1.4: `ee05b10` |
+| 1.15 | C1, C18, C19, C20 | T-1.4, T-4.3, T-5.2, T-5.4, T-5.5, T-13.7, T-19.3, T-25.3, T-29.1 | T-1.4: `passWithNoTests: false`・reporter登録 | T-1.4: `ee05b10`、修正（T-1.4）: `01dc364` |
 | 1.16 | C1, C2, C18 | T-1.4, T-4.3, T-19.3, T-29.3 | T-1.4: Stryker対象・runner・閾値の構造検査 | T-1.4: `ee05b10` |
 | 1.17 | C2, C19 | T-25.1, T-25.3, T-26.1, T-26.2, T-27.1, T-27.2, T-29.1 |  |  |
 | 1.18 | C1, C2 | T-1.5, T-2.1, T-29.3 | T-1.5: staged dummy secret rejection（redact） | T-1.5: `d9cec30` |
@@ -146,13 +146,13 @@ Task 列に記載する。
 | NFR-02（決定性） | C1, C7 | T-13.1, T-13.2, T-29.2 |  |  |
 | NFR-03（オフライン動作） | C7, C18 | T-4.1, T-13.6, T-29.2 |  |  |
 | NFR-04（ストリーミング応答性） | C19 | T-26.3, T-27.4 |  |  |
-| NFR-05（型安全性） | C1 | T-1.3, T-6.3 | T-1.3: TypeScript 7.1 strict root typecheck | T-1.3: `10c3b48` |
+| NFR-05（型安全性） | C1 | T-1.3, T-6.3 | T-1.3: TypeScript 7.1 strict root typecheck | T-1.3: `10c3b48`、修正（T-1.3）: `01dc364` |
 | NFR-06（テストカバレッジ） | C18 | T-6.2 |  |  |
-| NFR-07（秘密情報） | C1, C4 | T-1.5, T-12.1, T-12.4 | T-1.5: names-only env・gitleaks redact | T-1.5: `d9cec30` |
+| NFR-07（秘密情報） | C1, C4 | T-1.5, T-12.1, T-12.4 | T-1.5: names-only env・gitleaks redact | T-1.5: `d9cec30`、修正（T-1.5）: `01dc364` |
 | NFR-08（隔離実行） | — | **未割当（下記 Gaps 参照）** |  |  |
 | NFR-09（アクセシビリティ） | C13, C19 | T-8.3, T-20.4, T-26.3, T-27.3 |  |  |
 | NFR-10（対応ブラウザ） | C19 | T-26.1, T-27.1, T-27.2 |  |  |
-| NFR-11（サプライチェーン） | C1, C2 | T-1.2, T-1.5, T-2.1, T-2.2 | T-1.2: frozen lockfile、T-1.5: staged secret hook | T-1.2: `10c3b48`、T-1.5: `d9cec30` |
+| NFR-11（サプライチェーン） | C1, C2 | T-1.2, T-1.5, T-2.1, T-2.2 | T-1.2: frozen lockfile、T-1.5: staged secret hook | T-1.2: `10c3b48`、T-1.5: `d9cec30`、修正（T-1.2）: `01dc364` |
 | NFR-12（UI言語） | C13, C22 | T-20.3, T-28.2 |  |  |
 | NFR-13（コスト可視化） | C5 | T-9.2 |  |  |
 
@@ -182,4 +182,4 @@ Task 列に記載する。
   T-16.3。constitution 原則 6 の手続きのため、本表の行は変えていない）。T-8.1 に `babel-plugin-react-compiler`
   と `jsdom` を加えた（M-1）。NFR-10・NFR-12 の割り当てを大タスクからサブタスクに改めた（L-2）。
 - 2026-09-27 の `/sdd-validate-impl`（Task 1）: Vitest の CLI フィルタが `exclude` を戻せないため `test:local`・`test:db` が対象を実行できない欠陥と、Turborepo の strict env モードで `OLLAMA_BASE_URL` がテストに渡らない欠陥を検出した。`AI_TEST_SUITE` によるテストの選択（plan C18）と `turbo.json` の `env` で解消した。影響するタスクの記述（T-4.3、T-5.5、T-6.2、T-7.2、T-8.3）も更新した。
-- 2026-09-27 の `/sdd-validate-impl`（Task 1 の再検証）: `turbo.json` に `test:coverage` がなく `mise run test:coverage` が失敗する欠陥を検出し、T-1 の境界内で追加した。各ワークスペースの `test:coverage` スクリプトを加えるタスクは W2〜W5 にまだないため、6.1・7.1・8.1 のいずれかで担当を決める必要がある。
+- 2026-09-27 の `/sdd-validate-impl`（Task 1 の再検証）: `turbo.json` に `test:coverage` がなく `mise run test:coverage` が失敗する欠陥を検出し、T-1 の境界内で追加した。各ワークスペースの `test:coverage` スクリプトは、`test` スクリプトと同時に T-6.3（ai-core）・T-19.1（eval-suite）・T-21.1（apps/web）が加える（同日の検証の W-2 で割り当てた。各タスクの `_Boundary:_` は対象の `package.json` を含むため変更なし）。

@@ -17,7 +17,7 @@ _Depends:_ 1, 4
 _Requirements:_ 1.2, NFR-05, NFR-06
 _Traces:_ REQ-001, C1, C18
 
-- [ ] 6.1 `package.json`（plan の File Structure Plan に列挙した M1 の依存をすべて宣言し、サブパス `exports` の骨格を置く。`test` スクリプトは最初のテストと同時に 6.3 で加える）、`tsconfig.json`（ベース設定の継承）
+- [ ] 6.1 `package.json`（plan の File Structure Plan に列挙した M1 の依存をすべて宣言し、サブパス `exports` の骨格を置く。`test`・`test:coverage` スクリプトは最初のテストと同時に 6.3 で加える）、`tsconfig.json`（ベース設定の継承）
   _Boundary:_ `packages/ai-core/package.json`, `packages/ai-core/tsconfig.json`
   _Depends:_ 1
   _Requirements:_ 1.2
@@ -29,7 +29,7 @@ _Traces:_ REQ-001, C1, C18
   _Requirements:_ NFR-06
   _Traces:_ REQ-001, C18
   _Verify:_ 6.3 で `test` スクリプトを加えた後、閾値を下回る状態で `mise run test` が失敗することを1回確認する
-- [ ] 6.3 `src/errors.ts`: `PlatformError` 基底クラス（`code`・日本語 `message`・`details`）と閉じた語彙の `PlatformErrorCode` + `errors.test.ts`。`packages/ai-core/package.json` に `test` スクリプトを加える（ai-core の最初のテスト）
+- [ ] 6.3 `src/errors.ts`: `PlatformError` 基底クラス（`code`・日本語 `message`・`details`）と閉じた語彙の `PlatformErrorCode` + `errors.test.ts`。`packages/ai-core/package.json` に `test`・`test:coverage`（`vitest run --coverage.enabled --coverage.reporter=html`）スクリプトを加える（ai-core の最初のテスト）
   _Boundary:_ `packages/ai-core/src/errors.ts`, `packages/ai-core/src/errors.test.ts`, `packages/ai-core/package.json`
   _Depends:_ 6.2
   _Requirements:_ 1.2, NFR-05
@@ -48,7 +48,7 @@ _Depends:_ 4, 6.1
 _Requirements:_ 1.1, 1.13, 1.14
 _Traces:_ REQ-001, C21
 
-- [ ] 7.1 `package.json`（`@platform/ai-core` に依存）、`tsconfig.json`。`test` スクリプトは最初のテストと同時に 19.1 で加える（テスト0件のプロジェクトで gate の `test` 段が失敗するのを防ぐ）
+- [ ] 7.1 `package.json`（`@platform/ai-core` に依存）、`tsconfig.json`。`test`・`test:coverage` スクリプトは最初のテストと同時に 19.1 で加える（テスト0件のプロジェクトで gate の `test` 段が失敗するのを防ぐ）
   _Boundary:_ `packages/eval-suite/package.json`, `packages/eval-suite/tsconfig.json`
   _Depends:_ 6.1
   _Requirements:_ 1.1
@@ -80,7 +80,7 @@ _Depends:_ 7.1
 _Requirements:_ 1.1, NFR-09
 _Traces:_ REQ-001, C13
 
-- [ ] 8.1 `package.json`（plan の File Structure Plan の `apps/web/package.json` の行に列挙した依存・開発依存をすべて宣言する。Next.js・React・`@ai-sdk/react`・`babel-plugin-react-compiler`・`server-only`・Tailwind CSS・shadcn/ui の生成部品の実行時依存・`jsdom`・Testing Library・`@vitejs/plugin-react`・`vite-tsconfig-paths`・Playwright・axe。`typecheck`（`next typegen && tsc --noEmit`）等のスクリプト。`test` スクリプトは 21.1 で加える）、`tsconfig.json`
+- [ ] 8.1 `package.json`（plan の File Structure Plan の `apps/web/package.json` の行に列挙した依存・開発依存をすべて宣言する。Next.js・React・`@ai-sdk/react`・`babel-plugin-react-compiler`・`server-only`・Tailwind CSS・shadcn/ui の生成部品の実行時依存・`jsdom`・Testing Library・`@vitejs/plugin-react`・`vite-tsconfig-paths`・Playwright・axe。`typecheck`（`next typegen && tsc --noEmit`）等のスクリプト。`test`・`test:coverage` スクリプトは 21.1 で加える）、`tsconfig.json`
   _Boundary:_ `apps/web/package.json`, `apps/web/tsconfig.json`
   _Depends:_ 7.1
   _Requirements:_ 1.1

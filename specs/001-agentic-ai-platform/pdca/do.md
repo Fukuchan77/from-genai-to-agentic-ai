@@ -407,3 +407,11 @@
 - W-1 (new): `mise run test:coverage` called `turbo run test:coverage`, which failed with `Could not find task 'test:coverage' in project`; Task 1 is the only owner of `turbo.json`, so no later task would have fixed it.
 - Fix: added a `test:coverage` task to `turbo.json` with the same `env` and `outputs` as `test`. `mise run test:coverage` now resolves the task graph (0 tasks until a workspace defines a `test:coverage` script) and exits 0; `mise run gate` still passes (`Checked 7 files`).
 - Remaining gap: no task in W2〜W5 adds a workspace `test:coverage` script yet; recorded in traceability Gaps.
+
+### 2026-09-27 Third Validation: Task 1 (`/sdd-validate-impl`)
+
+- Verdict: GO with 2 warnings and 1 LOW note. Independently re-ran `mise run setup` (frozen), `mise run gate` (`Checked 7 files`, exit 0), root `tsc --noEmit`, `mise tasks validate` (23), `mise run secret-scan` (19 commits, no leaks), the `AI_TEST_SUITE` probes, and the `turbo run test --dry=json` env list. An unused-import probe failed the gate (`noUnusedImports`, 8 files checked) and removing it restored exit 0.
+- Boundary: the 17 files changed by `10c3b48`, `ee05b10`, `d9cec30`, and `01dc364` are all inside the Task 1 `_Boundary:_`; no unused declarations.
+- W-1 fix: the remediation commit `01dc364 fix(platform): select test suites via AI_TEST_SUITE` was missing from the traceability Commit cells; appended it to rows 1.1, 1.3, 1.4, 1.12, 1.15, NFR-05, NFR-07, and NFR-11.
+- W-2 fix: assigned the workspace `test:coverage` scripts (`vitest run --coverage.enabled --coverage.reporter=html`) to the tasks that add each `test` script: T-6.3 (ai-core), T-19.1 (eval-suite), T-21.1 (apps/web). Updated plan C18, the shared-file rule in `tasks.md` (now also listing `packages/eval-suite/package.json`), tasks 6.1/6.3/7.1/8.1/19.1/21.1, and the traceability Gap. No boundary changed because each task already owns its `package.json`.
+- LOW fix: README now states that the pre-commit hook needs a mise-activated shell for `pnpm` and `gitleaks`, and fails closed otherwise.
