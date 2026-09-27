@@ -120,18 +120,18 @@ _Traces:_ REQ-001, C3
 
 テストの実行モード固定、ネットワーク遮断、`local` 限定テストの分類、空振り検出を提供する。
 
-_Boundary:_ `tooling/vitest/setup-hermetic.ts`, `tooling/vitest/setup-hermetic.test.ts`, `tooling/vitest/global-setup-local.ts`, `tooling/vitest/gate-reporter.ts`, `tooling/vitest/gate-reporter.test.ts`
+_Boundary:_ `tooling/vitest/setup-hermetic.ts`, `tooling/vitest/setup-hermetic.test.ts`, `tooling/vitest/global-setup-local.ts`, `tooling/vitest/gate-reporter.ts`, `tooling/vitest/gate-reporter.test.ts`, `tooling/vitest/network-guard.ts`, `tooling/vitest/ollama.ts`, `tooling/vitest/hermetic-registration.test.ts`, `tooling/vitest/global-setup-local.test.ts`
 _Depends:_ 1
 _Requirements:_ 1.5, 1.12, 1.13, 1.14, 1.15, 1.16, 2.5, 2.11, NFR-03
 _Traces:_ REQ-001, REQ-002, C18
 
 - [x] 4.1 (P) `setup-hermetic.ts`: `fetch`・`node:net`（`Socket.prototype.connect`）・`node:dns`（`lookup`/`promises.lookup`/`resolve*`）を接続先を含む `NetworkBlockedError` で遮断し、`AI_TEST_RUN_MODE=local` の時だけ `OLLAMA_BASE_URL` 宛てを許可する + `setup-hermetic.test.ts`
-  _Boundary:_ `tooling/vitest/setup-hermetic.ts`, `tooling/vitest/setup-hermetic.test.ts`
+  _Boundary:_ `tooling/vitest/setup-hermetic.ts`, `tooling/vitest/setup-hermetic.test.ts`, `tooling/vitest/network-guard.ts`, `tooling/vitest/ollama.ts`, `tooling/vitest/hermetic-registration.test.ts`
   _Depends:_ 1
   _Requirements:_ 1.5, 2.11, 2.5, NFR-03
   _Traces:_ REQ-001, REQ-002, C18
 - [x] 4.2 `global-setup-local.ts`: `AI_TEST_RUN_MODE=local` の時だけ Ollama の到達性と必要モデルの取得済みを確認し、`provide("localAvailability", ...)` で渡す
-  _Boundary:_ `tooling/vitest/global-setup-local.ts`
+  _Boundary:_ `tooling/vitest/global-setup-local.ts`, `tooling/vitest/ollama.ts`, `tooling/vitest/global-setup-local.test.ts`
   _Depends:_ 4.1
   _Requirements:_ 1.13, 1.14
   _Traces:_ REQ-001, C18
@@ -155,7 +155,7 @@ _Traces:_ REQ-001, REQ-002, C18
 設定では表現できないリポジトリ規約（モデルID一元管理、9つの constitution 規則、先行版監視）を
 機械的に検査し、W1 の締めとして gate を結線する。
 
-_Boundary:_ `scripts/check-model-ids.mjs`, `scripts/check-model-ids.test.mjs`, `scripts/check-repo-rules.mjs`, `scripts/check-repo-rules.test.mjs`, `scripts/check-updates.mjs`, `scripts/check-updates.test.mjs`, `scripts/gate/count-biome.mjs`, `scripts/gate/count-tsc.mjs`, `scripts/gate/count.test.mjs`, `mise.toml`, `.githooks/pre-commit`
+_Boundary:_ `scripts/check-model-ids.mjs`, `scripts/check-model-ids.test.mjs`, `scripts/check-repo-rules.mjs`, `scripts/check-repo-rules.test.mjs`, `scripts/check-updates.mjs`, `scripts/check-updates.test.mjs`, `scripts/gate/count-biome.mjs`, `scripts/gate/count-tsc.mjs`, `scripts/gate/count.test.mjs`, `mise.toml`, `.githooks/pre-commit`, `scripts/lib/cli.mjs`, `scripts/lib/cli.test.mjs`, `scripts/lib/scan-exclusions.mjs`
 _Depends:_ 1（5.5 は 2、3、4 にも依存する）
 _Requirements:_ 1.4, 1.15, 2.10, 2.18
 _Traces:_ REQ-001, REQ-002, C20, C1

@@ -1627,3 +1627,14 @@ $ (echo ::tsconfig::tsconfig.json; pnpm exec tsc -p tsconfig.json --listFilesOnl
 
 - ユーザーが、W1 レビュー対応での plan（C1 の mise タスク表、C18、C20、File Structure）と research（依存表）の改訂を承認した（L-9）。
 - 同時に、W1 の移行を2コミット（1つ目は `tasks.md` → `tasks-comp-w1.md` の名前の変更だけ、2つ目で `tasks-w2.md` → `tasks.md` と索引の移動）で行う方式と、`tasks.md` の「完了した波の移行手順」5 の改訂を承認した。理由: Git はリネームを記録せず、削除されたパスだけを類似度で追跡する。1コミットでは `tasks.md` が前後に存在するため、W1 の履歴を `tasks-comp-w1.md` から追えなくなる。
+
+### 2026-09-27 Validation: W1 (`/sdd-validate-impl`)
+
+- 対象: 大タスク 1〜5（サブタスク17件すべて `[x]`、`_Depends:_` もすべて完了）。
+- `mise run gate` exit 0。`turbo run test --force`（キャッシュなし）で `executed=212 passed=212 failed=0 skipped=0`（1件は `hermetic-registration.test.ts` の正当な `it.fails`）。`tsc -p tsconfig.json --noEmit` exit 0。
+- トレーサビリティ: W1 の要件（1.1、1.3〜1.8、1.11〜1.16、1.18、2.5、2.10、2.11、2.18、NFR-03/05/07/11）はすべて traceability.md にテストとコミット付きで記録済み（100%）。
+- 非空振り監査（新規コンテキストの `sdd-reviewer`）: `.sdd/reviews/001-agentic-ai-platform-impl-w1-vacuous-audit-2026-09-27.md`。APPROVE_WITH_NOTES、CRITICAL なし、MEDIUM 3件（`toThrow` の部分一致が走査0件の拒否にも一致する、CLI の exit code 経路が未テスト、`check-repo-rules` の一部規則に PROVE がない）、LOW 10件。MEDIUM は W2 の締め（13.7）で該当規則を gate に入れる前に対応する。
+- CRITICAL（初回判定 NO-GO）:
+  - C-1: `7ac44e3` で加えた7ファイルが Task 4・5 の `_Boundary:_` に宣言されていなかった（Implementation Notes と承認済みの plan には記録あり）。ユーザーの指示により、`tasks-comp-w1.md` の Task 4（大タスク、4.1、4.2）と Task 5（大タスク。共有ヘルパは 5.1〜5.4 のすべてが使う）の `_Boundary:_` に追記した。
+  - C-2: W1 の締めの状態で CI の `ci-status` が一度も実行されていなかった（最後の成功は `5bb0b47`）。push して `ci-status` を確認する。
+- 警告: `9418a09` は Task 2 の作業中に Task 1 の境界のファイル（`pnpm-workspace.yaml`、`pnpm-lock.yaml`）を変更した（W1 の境界の中で、do.md に記録済み）。
