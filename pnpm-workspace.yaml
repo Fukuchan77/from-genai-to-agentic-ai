@@ -1,0 +1,16 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+# Do not resolve releases published less than 24 hours ago.
+minimumReleaseAge: 1440
+
+allowBuilds:
+  # Biome 2.5.14 ships prebuilt platform packages and requires no lifecycle script.
+  "@biomejs/biome": false
+
+overrides:
+  # typed-rest-client 2.3.1 (via @stryker-mutator/core 10.0.0) pins qs 6.15.1, which is affected by
+  # GHSA-q8mj-m7cp-5q26, GHSA-x5fp-wj9c-mxmx, and GHSA-4mjr-xmp4-gh2g. Remove once Stryker ships a
+  # typed-rest-client release that depends on qs >=6.16.0.
+  "typed-rest-client>qs": "^6.16.0"

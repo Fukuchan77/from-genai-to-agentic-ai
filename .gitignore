@@ -141,3 +141,21 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# mise
+.mise/
+
+# AI coding agent
+.serena/
+
+# Turborepo cache
+.turbo/
+
+# Test and mutation reports
+playwright-report/
+test-results/
+reports/
+
+# Temporary cassette recordings
+packages/ai-core/fixtures/cassettes/.tmp/
+packages/ai-core/fixtures/cassettes/**/*.tmp

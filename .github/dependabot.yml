@@ -1,0 +1,37 @@
+version: 2
+
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    # Keep automated proposals aligned with pnpm's 24-hour minimum release age.
+    cooldown:
+      default-days: 1
+    # Playwright prereleases are checked by the repository's release-date-aware update script.
+    ignore:
+      - dependency-name: "@playwright/test"
+    groups:
+      # Keep AI SDK packages on one compatible provider-utils resolution.
+      ai-sdk:
+        patterns:
+          - "ai"
+          - "@ai-sdk/*"
+      # Consolidate frequently published prerelease toolchain builds.
+      prerelease-toolchain:
+        patterns:
+          - "next"
+          - "typescript"
+      react:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "@types/react"
+          - "@types/react-dom"
+      dev-tooling:
+        dependency-type: "development"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
