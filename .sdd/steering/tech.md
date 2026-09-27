@@ -30,6 +30,8 @@
   ツール入力は `inputSchema`。`generateObject` / `streamObject` は使わない。
 - **エージェント生成は `createGuardedAgent` に一本化** — 3種の停止条件と停止理由を強制し、
   1回の実行につき1回生成する（状態をリクエスト間で共有しない）。ツールは 20 個以下（ADR-6）。
+  渡せるツールは `buildToolSet` の戻り値 `GuardedToolSet`（ブランド型）だけで、リスク区分の検査を
+  迂回できない（plan C8、C9）。
 - **後続 milestone は拡張点から差し込む** — トレース（004 Req 5）と評価レポートは
   `createGuardedAgent` の `observers`（`RunObserver.onRunEnd(summary)`）を実装して接続する。承認ゲート
   （004 Req 4）は `toolApproval` 等を `createGuardedAgent` の options に足すだけで、`/api/agent/tools`

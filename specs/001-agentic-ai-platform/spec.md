@@ -115,7 +115,7 @@ Python / LangChain / LangGraph ベースの3冊の教材（AIアプリ開発入�
   - `mise run gate` と PR CI は `mock` モードで実行し、Docker を使わずに完走する（Req 1.11）。データベース依存のテストは、インプロセス DB で実行できるものに限って gate に含める（Req 1.12）
   - 各モジュールの自動テストは `mock` で完走できる。比較・品質評価のテスト（精度比較、RAG 品質評価、Capability 評価、LLM-as-a-Judge）は、`local` モードで実行可能な場合に限り実行し、実行できない場合はスキップとして報告する（Req 1.13、Req 1.14）
   - モジュールの実行（ハンズオン）自体は、`local` / `live` を原則とする（Req 2.12、Req 7.5）
-- 未決: 既定の実 API プロバイダ、Evals の実行頻度と予算上限（設計フェーズで決定）
+- 設計で決定済み: 既定の実 API プロバイダは Anthropic（001 research ADR-4）。Evals の実行頻度と予算上限は、M1 に Evals の実体がないため 004 の設計で決める（constitution TODO(EVALS_THRESHOLD)）
 
 ## Module → Requirement Mapping
 
@@ -434,7 +434,7 @@ Python / LangChain / LangGraph ベースの3冊の教材（AIアプリ開発入�
 | 3_genai-agent 第10章 | 企業の導入事例、サーバーレス基盤（AWS ECS/Lambda、Cloudflare Workers）の選定基準 | 本番デプロイと同じく対象外 |
 | 3_genai-agent 第8章、Guide モジュール5 | Braintrust 連携、Human SME による A/B テスト運用 | 評価基盤は Vitest と Langfuse に統一する。Human SME はレビュー用出力（004 Req 3.6）までとする |
 
-- **設計フェーズで決定**: 既定の `live` プロバイダ、Capability Evals の実行頻度と予算上限、Node v26 / Next.js 等の先行版起因のツールチェーン非互換時の代替策（TypeScript は Technical Constraints の方針に従う）、Req 6 の停止条件の既定値、Web 検索ツール（Req 5.3）の提供元
+- **設計フェーズで決定**（001 plan / research で決定済み）: 既定の `live` プロバイダは Anthropic（ADR-4）、Req 6 の停止条件の既定値はステップ 10・累積トークン 50,000・実行時間 120 秒・ツール 1 回 15 秒（ADR-6）、Web 検索ツール（Req 5.3）の提供元は Tavily、先行版起因のツールチェーン非互換時の代替策は research の Risks に記録（TypeScript は Technical Constraints の方針に従う）。Capability Evals の実行頻度と予算上限は 004 の設計で決める
 
 ---
 

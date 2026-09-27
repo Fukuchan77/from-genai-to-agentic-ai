@@ -133,6 +133,7 @@ New feature（greenfield、full discovery）。リポジトリにはソースコ
 - **Findings**: `shadcn@4.21.0`（CLI）、`ai-elements@1.9.0`（shadcn/ui 上のレジストリ。ソースをプロジェクトへコピーする方式）。参照リポジトリはどちらも shadcn/ui を使っていない（Carbon と CSS Modules）。`ai-elements` の AI SDK v7 対応は確認できなかった。
 - **Decision**: UI の基本部品は shadcn/ui（Tailwind CSS v4）とする。チャット、推論、ツール表示の部品は、教材としてコードを読ませるために自前で実装する。`ai-elements` は参考実装として解説で紹介するに留める（ADR-11）。
 - **Evidence**: https://registry.npmjs.org/shadcn/latest 、https://registry.npmjs.org/ai-elements/latest 。
+- **追記（2026-09-27、`/sdd-analyze` C-2）**: shadcn 4.21.0 の生成コード（`button.tsx` は `class-variance-authority` と `radix-ui` の `Slot` を import する）と手動インストール手順（`tw-animate-css`、`lucide` のアイコン）から、生成した部品の実行時依存を確認した。`apps/web` のコンポーネントテストは、Next.js の Vitest ガイド（`vitest`、`@vitejs/plugin-react`、`jsdom`、`@testing-library/react`、`@testing-library/dom`、`vite-tsconfig-paths`）に従う。どちらも [External dependencies](#external-dependencies) に宣言した（constitution 原則 10）。Evidence: Context7 `/shadcn-ui/ui/shadcn_4.21.0`（`apps/v4/content/docs/installation/manual.mdx`、`registry/new-york-v4/ui/button.tsx`）、`/vercel/next.js`（`docs/01-app/02-guides/testing/vitest.mdx`）。
 
 ### I-14: ドラフト・レビュー・後続 spec からの設計入力
 
@@ -162,7 +163,7 @@ New feature（greenfield、full discovery）。リポジトリにはソースコ
 | 注入可能な `env` 引数で Zod 検証する設定読み込み | `vaz-agentic-ai-next/packages/schemas/src/env.ts`、`next-agentic-stack/src/lib/ai/env.ts` | Req 1.9。テストで偽の env を渡せる |
 | Zod を含まないクライアント共有型と、サーバー専用モジュールの分離 | `next-agentic-stack/AGENTS.md`（`providers.ts`） | Req 1.10、3.8 |
 | `next typegen && tsc --noEmit` による型検査 | `next-agentic-stack/package.json#typecheck` | TypeScript 7 のもとで Next.js の型検査を通す実績のある手順 |
-| Vitest の `projects` による集約とカバレッジ閾値 | `vaz-agentic-ai-next/vitest.config.ts` | ワークスペースごとのテスト環境（node / jsdom）とネットワーク遮断を分けられる |
+| ワークスペースごとの Vitest 設定とカバレッジ閾値 | `vaz-agentic-ai-next/vitest.config.ts` | ワークスペースごとのテスト環境（node / jsdom）とネットワーク遮断を分けられる。本 spec はルートの `projects` による集約を採らず、turbo がワークスペースごとに1回ずつ実行する（plan C18「テストの実行単位」） |
 | Playwright の `page.route` による LLM のモックと、0 件検出のガード | `next-agentic-stack/playwright.config.ts`、`vaz-agentic-ai-next/.github/workflows/tests.yml` | Req 1.17、1.15。本 spec では WebKit を加えて3エンジンにする |
 | SHA 固定の Actions、`permissions: contents: read`、独立ジョブ + 必須の集約ジョブ | `vaz-agentic-ai-next/.github/workflows/tests.yml` | Req 1.7、NFR サプライチェーン |
 | `gitleaks git --redact` と `--staged`、`.githooks/` + `core.hooksPath` | 両リポジトリの `mise.toml`、`vaz-agentic-ai-next/package.json#prepare` | Req 1.18。依存が増えない |
@@ -203,6 +204,11 @@ New feature（greenfield、full discovery）。リポジトリにはソースコ
 | @stryker-mutator/core + vitest-runner | 10.0.0 | ミューテーションテスト（Req 1.16） | partial（Vitest 5 との組み合わせは未検証） |
 | gitleaks | 8.30.1 | シークレットスキャン（mise で導入） | yes |
 | shadcn（CLI）/ Tailwind CSS | 4.21.0 / 4.x | UI の基本部品 | partial（Next 16.4 canary との組み合わせは未検証） |
+| radix-ui / class-variance-authority / clsx / tailwind-merge / lucide-react | 実装時に確定 | shadcn/ui が生成する基本部品の実行時依存（アクセシブルな基本要素、バリアント、クラス結合、アイコン） | partial（shadcn 4.21.0 の生成コードと手動インストール手順で確認。版はレジストリで確定する） |
+| tw-animate-css | 実装時に確定 | shadcn/ui の Tailwind v4 用アニメーション（`tailwindcss-animate` の後継） | partial（同上） |
+| server-only | 実装時に確定 | `apps/web/lib/server/` をクライアントから import できないようにする（Req 1.10） | partial（Next.js 公式ドキュメント） |
+| @testing-library/react / @testing-library/dom | 実装時に確定 | `apps/web` のコンポーネントテスト（jsdom） | partial（Next.js の Vitest ガイドの推奨構成） |
+| @vitejs/plugin-react / vite-tsconfig-paths | 実装時に確定 | Vitest で TSX（Next.js の `jsx: preserve`）を変換し、`@/` のパス別名を解決する | partial（同上） |
 | pgvector/pgvector | pg17 | Postgres + pgvector（Docker） | yes（参照リポジトリ） |
 | Langfuse | v4（web / worker / clickhouse 25.12 / redis 7 / minio） | トレース収集基盤（Docker） | yes（公式 Compose） |
 | Ollama | v0.34.4（2026-09-23） | ローカル LLM | yes（GitHub Releases） |
@@ -301,6 +307,7 @@ New feature（greenfield、full discovery）。リポジトリにはソースコ
 - ⚠️ Turborepo 2.11 と pnpm 12 の組み合わせが未検証 — mitigation: 最初のタスクで検証する。失敗したら mise + `pnpm -r` へ後退する（ADR-1）。
 - ⚠️ Vitest 5 の mock 状態リセットの挙動変更（`vaz-agentic-ai-next` で認証 spec を壊した） — mitigation: M1 は next-auth を使わない。`vi.restoreAllMocks` などの利用規約をテストヘルパに集約する。
 - ⚠️ Stryker 10 と Vitest 5 / TypeScript 7 の組み合わせが未検証 — mitigation: `typescript-checker` なしで実行する。動かない場合は、手書きの「壊した制御ロジック」fixture によるテスト（Req 1.16 の代替手段）へ切り替える。
+- ⚠️ TypeScript 7.1 先行版（ネイティブ `tsc`）が `--listFilesOnly` を持つかは未検証 — mitigation: 5.4 で実測する。持たない場合は、`count-tsc` が tsconfig の `files`・`include`・`exclude` を `node:fs` で展開して数える（plan C20）。
 - ⚠️ Playwright の WebKit エンジンは参照リポジトリで実績がない（両リポジトリとも Chromium と Firefox のみ） — mitigation: CI のマトリクスで早期に実行する。
 - ⚠️ YouTube 字幕の取得は非公式 API に依存し、仕様変更で壊れやすい — mitigation: `TranscriptSource` ポートの背後に置く。`mock` では fixture を使う。取得失敗は Req 4.11 のエラーとして扱う。
 - ⚠️ `watsonx-ai-provider` が `ai@^6` のみ対応 — mitigation: Req 2.10 に従い除外する。`mise run outdated` で peerDependencies を監視する。
