@@ -265,27 +265,27 @@ _Depends:_ 1（5.5 は 2、3、4 にも依存する）
 _Requirements:_ 1.4, 1.15, 2.10, 2.18
 _Traces:_ REQ-001, REQ-002, C20, C1
 
-- [ ] 5.1 (P) `check-model-ids.mjs`: モデル系列の接頭辞を持つ文字列リテラルを走査対象（`apps/`、`packages/`、`scripts/`、`tooling/` の `*.ts`/`*.tsx`/`*.mjs`、`docs/`、`README.md`）から検出し、許可場所（`catalog.ts`、`env-schema.ts` の既定値、自身とそのテスト）を除外し、走査0件で失敗する + テスト
+- [x] 5.1 (P) `check-model-ids.mjs`: モデル系列の接頭辞を持つ文字列リテラルを走査対象（`apps/`、`packages/`、`scripts/`、`tooling/` の `*.ts`/`*.tsx`/`*.mjs`、`docs/`、`README.md`）から検出し、許可場所（`catalog.ts`、`env-schema.ts` の既定値、自身とそのテスト）を除外し、走査0件で失敗する + テスト
   _Boundary:_ `scripts/check-model-ids.mjs`, `scripts/check-model-ids.test.mjs`
   _Depends:_ 1
   _Requirements:_ 2.18
   _Traces:_ REQ-002, C20
-- [ ] 5.2 (P) `check-repo-rules.mjs`: 9規則（`no-deprecated-object-api`、`guarded-agent-only`、`ai-core-no-ui-deps`、`no-dynamic-eval`、`tool-risk-declared`、`actions-pinned`、`frozen-lockfile`、`allow-builds-reasoned`、`no-sensitive-logging`）を、plan C20 の規則表の走査対象・除外どおりに検査し、規則ごとの走査件数（**走査したファイル数**。plan C20）を出力し、いずれか0件なら失敗する。コードを対象とする規則は、文字列リテラル・テンプレートリテラル・コメントの中身を検査しない。`check-repo-rules.mjs` 自身とそのテストは全規則の走査から除外する。`--only <rule,...>` で実行する規則を限定できる + テスト（規則ごとの違反の検出、許可リストの除外、文字列・コメント内の一致を違反としないこと、自身とテストの除外、0件での失敗、`--only`。違反例のファイルはテスト内で一時ディレクトリに書き出す）
+- [x] 5.2 (P) `check-repo-rules.mjs`: 9規則（`no-deprecated-object-api`、`guarded-agent-only`、`ai-core-no-ui-deps`、`no-dynamic-eval`、`tool-risk-declared`、`actions-pinned`、`frozen-lockfile`、`allow-builds-reasoned`、`no-sensitive-logging`）を、plan C20 の規則表の走査対象・除外どおりに検査し、規則ごとの走査件数（**走査したファイル数**。plan C20）を出力し、いずれか0件なら失敗する。コードを対象とする規則は、文字列リテラル・テンプレートリテラル・コメントの中身を検査しない。`check-repo-rules.mjs` 自身とそのテストは全規則の走査から除外する。`--only <rule,...>` で実行する規則を限定できる + テスト（規則ごとの違反の検出、許可リストの除外、文字列・コメント内の一致を違反としないこと、自身とテストの除外、0件での失敗、`--only`。違反例のファイルはテスト内で一時ディレクトリに書き出す）
   _Boundary:_ `scripts/check-repo-rules.mjs`, `scripts/check-repo-rules.test.mjs`
   _Depends:_ 1
   _Requirements:_ 1.15
   _Traces:_ REQ-001, C20
-- [ ] 5.3 (P) `check-updates.mjs`: TypeScript 7.1 先行版の新しいビルドと `watsonx-ai-provider` の `ai@^7` 対応状況を npm レジストリで確認する（取得処理は注入可能にする）+ `check-updates.test.mjs`（レジストリ応答の fixture で、新しいビルドの検出、公開24時間未満の除外、`ai@^7` 対応の判定）
+- [x] 5.3 (P) `check-updates.mjs`: TypeScript 7.1 先行版の新しいビルドと `watsonx-ai-provider` の `ai@^7` 対応状況を npm レジストリで確認する（取得処理は注入可能にする）+ `check-updates.test.mjs`（レジストリ応答の fixture で、新しいビルドの検出、公開24時間未満の除外、`ai@^7` 対応の判定）
   _Boundary:_ `scripts/check-updates.mjs`, `scripts/check-updates.test.mjs`
   _Depends:_ 1
   _Requirements:_ 2.10
   _Traces:_ REQ-002, C20
-- [ ] 5.4 (P) `scripts/gate/count-biome.mjs`・`count-tsc.mjs`: Biome の JSON 出力と、ルートと各ワークスペースの tsconfig ごとの `tsc -p <tsconfig> --listFilesOnly` の出力から走査件数を取り出し、どれかが0件なら失敗する。先に、1.2 で固定した TypeScript 7.1 先行版が `--listFilesOnly` を持つかを実測する。持たない場合は、`count-tsc.mjs` が tsconfig の `files`・`include`・`exclude`（`extends` を解決する）を `node:fs` で展開して数える方式にし、結果を research.md の Risks に記録する（plan C20）+ `scripts/gate/count.test.mjs`（出力または tsconfig の fixture で件数の抽出と0件での失敗）
+- [x] 5.4 (P) `scripts/gate/count-biome.mjs`・`count-tsc.mjs`: Biome の JSON 出力と、ルートと各ワークスペースの tsconfig ごとの `tsc -p <tsconfig> --listFilesOnly` の出力から走査件数を取り出し、どれかが0件なら失敗する。先に、1.2 で固定した TypeScript 7.1 先行版が `--listFilesOnly` を持つかを実測する。持たない場合は、`count-tsc.mjs` が tsconfig の `files`・`include`・`exclude`（`extends` を解決する）を `node:fs` で展開して数える方式にし、結果を research.md の Risks に記録する（plan C20）+ `scripts/gate/count.test.mjs`（出力または tsconfig の fixture で件数の抽出と0件での失敗）
   _Boundary:_ `scripts/gate/count-biome.mjs`, `scripts/gate/count-tsc.mjs`, `scripts/gate/count.test.mjs`
   _Depends:_ 1
   _Requirements:_ 1.15
   _Traces:_ REQ-001, C20
-- [ ] 5.5 W1 の締め: `mise.toml` の `gate` に W1 の段と規則（上記「gate と CI の段階的な結線」）を加える。`.githooks/pre-commit` から `check:model-ids` の暫定の延期分岐（スクリプトがなければスキップ）を外し、常に `mise run check:model-ids` を実行する
+- [x] 5.5 W1 の締め: `mise.toml` の `gate` に W1 の段と規則（上記「gate と CI の段階的な結線」）を加える。`.githooks/pre-commit` から `check:model-ids` の暫定の延期分岐（スクリプトがなければスキップ）を外し、常に `mise run check:model-ids` を実行する
   _Boundary:_ `mise.toml`, `.githooks/pre-commit`
   _Depends:_ 2, 3, 4, 5.1, 5.2, 5.3, 5.4
   _Requirements:_ 1.4, 1.15
@@ -293,3 +293,7 @@ _Traces:_ REQ-001, REQ-002, C20, C1
   _Verify:_ `mise run gate` が成功し、各段が走査件数（ファイル数・テスト数）を出力する。W1 の4規則はどれも1件以上を走査する（`no-dynamic-eval` は `scripts/`・`tooling/` を走査する）。一時的に規則の対象ファイルをなくすと、その段が0件で失敗することを1回確認する
 
 ### Implementation Notes
+
+- W1 gate は `lint`（Biome JSON の非空走査検査）→ `check:model-ids` → W1 の4規則に限定した `check:repo-rules` → root test の順で直列実行する。
+- Biome のJSONは一時ファイル経由で `count-biome.mjs` に渡し、Biome自身の非ゼロ終了をパイプで隠さない。
+- pre-commit のモデルID検査はTask 5.1の存在確認分岐を廃止し、常に実行する。

@@ -1179,3 +1179,138 @@
 - `2085577 test(platform): add hermetic Vitest harness`
 - Pre-commit protection: IBM Vault Radar、staged Biome、gitleaks、Task 5.1-aware model-ID deferral all passed。
 - Traceability の関連Test/Commit列とGapsを更新した。
+
+### 2026-09-27 Tasks 5.1–5.4 Started
+
+- Objective: W1 の規約検査・先行版監視・非空走査カウンターを、外部依存なしの決定論的スクリプトとして実装する。
+- Success criteria:
+  - Task fidelity: Task 5.1〜5.4 の走査対象、許可場所、9規則、24時間待機、0件失敗を満たす。
+  - Consistency: ファイル列挙とレポート順を決定的にし、fixture と注入した時刻・fetch だけでテストする。
+  - Safety: `child_process` と追加依存を使わず、テストからネットワークへ接続しない。
+  - Non-vacuous: 各タスクで実装を意図的に破壊し、要求に対応するアサーションが失敗することを確認する。
+  - Verification: focused tests、`mise run test`、`mise run typecheck`、`mise run gate` を成功させる。
+- Execution: 互いに境界が重ならない4タスクをサブエージェントへ分割し、統合判断と最終検証はメインセッションで行った。
+
+### 2026-09-27 Task 5.1 TDD Evidence
+
+- RED: 実装前の `scripts/check-model-ids.test.mjs` は `Cannot find module './check-model-ids.mjs'` で失敗。
+- GREEN: `apps/`・`packages/`・`scripts/`・`tooling/` の対象拡張子、`docs/**/*.md`、`README.md` を決定的に列挙し、モデル系列接頭辞を持つリテラルを報告する検査を実装。`catalog.ts`、`env-schema.ts` の `.default(...)`、検査本体とテストを許可場所として除外した。
+- PROVE: モデルID正規表現の無効化で期待6件が空になり失敗。許可場所・既定値・コメント除外も個別に無効化し、対応する4テストの失敗を確認後に復元。
+- VERIFY: focused 5/5 passed。`mise run check:model-ids` は `Model ID check: scanned 13 files.`。
+
+### 2026-09-27 Task 5.2 TDD Evidence
+
+- RED: 実装前の `scripts/check-repo-rules.test.mjs` は `Cannot find module './check-repo-rules.mjs'` で失敗。
+- GREEN: plan C20 の9規則、規則別の走査ファイル数、0件失敗、`--only`、コード字句の除外、検査本体・テストの除外を実装。
+- PROVE: `eval` 検出を無効化し、違反fixtureが reject されず `promise resolved ... instead of rejecting` で失敗することを確認後に復元。
+- Coordinator RED: `defineAciTool({ metadata: { risk: ... } })` が誤って合格する境界ケースを追加し、同じ reject assertion の失敗を確認。
+- Coordinator GREEN: `risk:` を第1引数オブジェクト直下だけで認識するよう括弧・オブジェクト深度を追跡。focused 19/19 passed。
+- W1 rule smoke: `no-dynamic-eval` 12 files、`actions-pinned` 1 file、`frozen-lockfile` 1 file、`allow-builds-reasoned` 1 fileを走査して成功。
+
+### 2026-09-27 Task 5.3 TDD Evidence
+
+- RED: 実装前の `scripts/check-updates.test.mjs` は `Cannot find module './check-updates.mjs'` で失敗。
+- GREEN: npm registry fetch と時刻を注入可能にし、TypeScript 7.1 の新しい先行ビルド、公開24時間待機、`watsonx-ai-provider` の `ai@^7` peer互換性をfixtureで判定。
+- PROVE: `newerEligible` を意図的に `undefined` に変更し、期待版 `7.1.0-dev.20260926.10` との差で1テストが失敗することを確認後に復元。
+- VERIFY: focused 4/4 passed。テストは注入fetchだけを呼び、実ネットワークを使用しない。
+
+### 2026-09-27 Task 5.4 TDD Evidence
+
+- TypeScript probe: 固定版 `7.1.0-dev.20260926.1` の `--help --all` に `--listFilesOnly` があり、`pnpm exec tsc -p tsconfig.json --listFilesOnly` は exit 0 / 289 files。fallback と research.md 更新は不要。
+- RED: 実装前の `scripts/gate/count.test.mjs` は `Cannot find module './count-biome.mjs'` で失敗。
+- GREEN: Biome JSON の `summary.changed + summary.unchanged` と、`::tsconfig::<path>` で区切った `tsc --listFilesOnly` 出力をstdinから集計し、全対象で0件を拒否するCLIを実装。
+- PROVE: Biomeの`unchanged`除外、Biome 0件判定の無効化、tsc加算の無効化、tsc 0件判定の無効化で、それぞれ期待値またはthrow assertionが失敗することを確認後に復元。
+- Integration smoke: 実Biome JSONは21 files、実root tsconfigは289 filesとして集計成功。focused 4/4 passed。
+
+### 2026-09-27 Error Encountered: zsh reserved parameter
+
+**Error**: Biome JSON probeのshellで `status=$?` を代入し、`read-only variable: status` で終了した。
+
+**Root Cause Investigation**:
+
+1. zshでは`status`が終了状態を表す読み取り専用特殊パラメータである。
+2. Biomeや実装の失敗ではなく、probe用shell変数名の衝突だった。
+
+**Solution**: 変数名を`exit_code`へ変更して再実行。
+
+**Result**: BiomeのJSON schema（`summary.changed` / `summary.unchanged`）を実出力で確認できた。
+
+### 2026-09-27 Error Encountered: Verification gate formatting
+
+**Error**: Coordinator追加テストのオブジェクト記法だけがBiome format差分となり、最初の`mise run gate`が1 errorで失敗した。
+
+**Root Cause Investigation**:
+
+1. `mise run test` 48/48 と `mise run typecheck` は成功しており、機能・型の問題ではない。
+2. `mise run gate` のdiffは `scripts/check-repo-rules.test.mjs` の1箇所だけを指定した。
+
+**Solution**: リポジトリ既定の `mise run lint:fix` を実行し、Biomeにその1ファイルを整形させた。
+
+**Result**: 1 file fixed。実装ロジックの変更なし。最終gateを再実行する。
+
+### 2026-09-27 Tasks 5.1–5.4 Verification
+
+- Focused script suite: 4 files / 32 tests passed。
+- Full root test: `mise run test` → 6 files / 48 tests passed、`executed=48 passed=48 failed=0 skipped=0`。
+- Type check: `mise run typecheck` → 1/1 Turbo task successful。
+- Gate: formatting修正後の最終結果を下記の最終検証で記録する。
+- Status: Task 5.1〜5.4を`[x]`へ更新。Task 5.5は未着手のまま維持。
+
+### 2026-09-27 Tasks 5.1–5.4 Final Gate
+
+- `mise run gate` → Biome checked 21 files、no fixes、exit 0。
+- `mise run test` → 6 files / 48 tests passed、`executed=48 passed=48 failed=0 skipped=0`。
+- `mise run typecheck` → 1/1 Turbo task successful。
+- `git diff --check` → exit 0。
+- Final status: Task 5.1〜5.4 complete。Task 5.5（W1 gate結線）は未着手。
+
+### 2026-09-27 Task 5.5 Started
+
+- Objective: W1で対象がそろった品質段を`mise run gate`へ直列結線し、pre-commitのモデルID検査を常時有効化する。
+- Success criteria:
+  - Task fidelity: `lint` + Biome非空検査、`check:model-ids`、W1の4規則、root testを順に実行する。
+  - Non-vacuous: 各段が走査・実行件数を出し、規則対象0件ならgateが非ゼロ終了する。
+  - Safety: Docker・APIキー・ネットワークを必要とせず、Biome自身の失敗を出力パイプで隠さない。
+  - Consistency: `gate:repeat`を10回実行し、10回とも同じ成功判定になる。
+  - Hook enforcement: pre-commitは存在確認や延期分岐なしで`mise run check:model-ids`を呼ぶ。
+
+### 2026-09-27 Task 5.5 TDD Evidence
+
+**SCAN baseline**:
+
+- 変更前の`mise run gate`はlintだけを実行し、Biome 21 filesで成功した。
+- `.githooks/pre-commit`のshell構文は有効だったが、Task 5.1以前の延期分岐が残っていた。
+
+**RED**:
+
+- 6項目の一時的な構成契約検査を実行。
+- Failure: `lint counts Biome files`、gateの`model IDs`・`repository rules`・`tests`、W1規則選択、pre-commit延期廃止の全6項目が不足して非ゼロ終了した。
+
+**GREEN / REFACTOR**:
+
+- `lint`はBiome JSONを一時ファイルへ保存し、Biome成功時だけ`count-biome.mjs`へ渡す。これによりパイプでBiomeの終了コードを隠さない。
+- `check:repo-rules`はW1の`no-dynamic-eval,actions-pinned,frozen-lockfile,allow-builds-reasoned`だけを選択する。
+- `gate`はmiseのrun配列で`lint`→`check:model-ids`→`check:repo-rules`→`test`を直列実行する。
+- pre-commitからTask 5.1の存在確認・延期分岐を削除し、モデルID検査を直接呼ぶ。
+- 構成契約は6/6 passed、`sh -n .githooks/pre-commit`も成功した。
+
+**PROVE**:
+
+1. `check:repo-rules`を対象ファイル0件の`tool-risk-declared`だけへ意図的に変更してgateを実行。
+   - exit 1。
+   - `tool-risk-declared: scanned 0 FILES`と`[gate] ERROR task failed`を確認。
+2. pre-commitの直接呼び出しを延期メッセージへ意図的に戻して契約検査を実行。
+   - exit 1。
+   - `pre-commit still permits model-ID deferral`を確認。
+3. 両ファイルをGREEN状態へ復元し、gate成功を再確認した。
+
+**VERIFY**:
+
+- `mise run gate`:
+  - Biome: 21 files。
+  - Model ID: 13 files。
+  - W1 rules: no-dynamic-eval 12、actions-pinned 1、frozen-lockfile 1、allow-builds-reasoned 1 files。
+  - Tests: 6 files / 48 tests passed、executed=48、failed=0、skipped=0。
+- `mise run gate:repeat`: 10/10 runs successful with the same verdict。
+- `git diff --check`: exit 0。
+- Status: Task 5.5を`[x]`へ更新し、Task 5のImplementation Notesを記入した。

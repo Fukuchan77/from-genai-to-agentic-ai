@@ -12,7 +12,16 @@ run = [
 
 [tasks.lint]
 description = "Check formatting and lint rules with Biome"
-run = "pnpm exec biome ci ."
+run = '''
+report_file="$(mktemp)"
+trap 'rm -f "$report_file"' EXIT HUP INT TERM
+if pnpm exec biome ci . --reporter=json > "$report_file"; then
+  node scripts/gate/count-biome.mjs < "$report_file"
+else
+  cat "$report_file"
+  exit 1
+fi
+'''
 
 [tasks."lint:fix"]
 description = "Apply safe formatting and lint fixes with Biome"
@@ -53,7 +62,12 @@ run = "pnpm exec turbo run test:coverage"
 
 [tasks.gate]
 description = "Run the deterministic quality gate"
-depends = ["lint"]
+run = [
+  "mise run lint",
+  "mise run check:model-ids",
+  "mise run check:repo-rules",
+  "mise run test",
+]
 
 [tasks."gate:repeat"]
 description = "Run the quality gate ten times to check determinism"
@@ -112,4 +126,4 @@ run = "node scripts/check-model-ids.mjs"
 
 [tasks."check:repo-rules"]
 description = "Validate repository governance rules"
-run = "node scripts/check-repo-rules.mjs"
+run = "node scripts/check-repo-rules.mjs --only no-dynamic-eval,actions-pinned,frozen-lockfile,allow-builds-reasoned"
