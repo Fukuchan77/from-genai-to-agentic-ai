@@ -23,19 +23,19 @@ ID 規約は `tasks.md` の「ID 対応表」を参照する（この spec の p
 | 1.1 | C1, C13, C21 | T-1.2, T-7.1, T-8.1, T-8.2, T-8.3, T-19.1 | T-1.2: `mise run setup`、Turbo pnpm-workspace dry-run | T-1.2: `10c3b48`、修正（T-1.2）: `01dc364` |
 | 1.2 | C1 | T-6.1, T-6.3 |  |  |
 | 1.3 | C1 | T-1.1, T-1.2 | T-1.1: `mise tasks validate`（23件）、T-1.2: frozen install | T-1.1/T-1.2: `10c3b48`、修正（T-1.1/T-1.2）: `01dc364` |
-| 1.4 | C1 | T-1.1, T-1.4, T-5.5, T-13.7, T-19.3, T-29.1 | T-1.1: 初期gate、T-1.4: Vitest/Stryker構造検査・`tsc` | T-1.1: `10c3b48`、T-1.4: `ee05b10`、修正（T-1.1/T-1.4）: `01dc364` |
-| 1.5 | C1, C18 | T-4.1, T-29.2 |  |  |
+| 1.4 | C1 | T-1.1, T-1.4, T-5.5, T-13.7, T-19.3, T-29.1 | T-1.1: 初期gate、T-1.4: Vitest/Stryker構造検査・`tsc`、T-5.5: W1 gate 4段・10/10反復 | T-1.1: `10c3b48`、T-1.4: `ee05b10`、修正（T-1.1/T-1.4）: `01dc364`、T-5.5: `e18f7dd` |
+| 1.5 | C1, C18 | T-4.1, T-29.2 | T-4.1: hermetic network guard 9件・API key不要のmock実行 | T-4.1: `2085577` |
 | 1.6 | C1 | T-1.3 | unused-import 負例、`tsc --noEmit`、`mise run gate` | T-1.3: `10c3b48` |
 | 1.7 | C2 | T-2.1, T-19.3, T-29.1 | T-2.1: CI構造検査、`ci-status` 成功/失敗シミュレーション | T-2.1: `f9e7aca`、修正（T-2.1）: `956b3df` |
-| 1.8 | C3, C22 | T-3.1, T-3.2, T-28.5 |  |  |
+| 1.8 | C3, C22 | T-3.1, T-3.2, T-28.5 | T-3.1: Compose構造34 assertion・6/6 healthy・Langfuse health/UI、T-3.2: 新規volumeでentrypoint自動実行・`vector`・カスタムDB・wiring PROVE | T-3.1/T-3.2: `dbf1300` |
 | 1.9 | C4, C13 | T-12.2, T-12.4, T-20.2 |  |  |
 | 1.10 | C2, C13, C14, C16, C20 | T-20.1, T-21.1, T-25.2, T-29.1 |  |  |
 | 1.11 | C1 | T-1.1, T-29.2 | T-1.1: offline lint-only gate（Docker/API key 不要） | T-1.1: `10c3b48` |
-| 1.12 | C1, C18 | T-1.4, T-4.3 | T-1.4: test suffix include/exclude構成検査 | T-1.4: `ee05b10`、修正（T-1.4）: `01dc364` |
-| 1.13 | C6, C18, C21 | T-4.2, T-7.2, T-7.3, T-11.1, T-11.2, T-14.5, T-19.1, T-19.2 |  |  |
-| 1.14 | C18, C21 | T-4.2, T-4.3, T-7.2, T-11.2, T-14.5, T-19.2, T-29.2 |  |  |
-| 1.15 | C1, C18, C19, C20 | T-1.4, T-4.3, T-5.2, T-5.4, T-5.5, T-13.7, T-19.3, T-25.3, T-29.1 | T-1.4: `passWithNoTests: false`・reporter登録 | T-1.4: `ee05b10`、修正（T-1.4）: `01dc364` |
-| 1.16 | C1, C2, C18 | T-1.4, T-4.3, T-19.3, T-29.3 | T-1.4: Stryker対象・runner・閾値の構造検査 | T-1.4: `ee05b10` |
+| 1.12 | C1, C18 | T-1.4, T-4.3 | T-1.4: test suffix include/exclude構成検査、T-4.3: 実行/skip理由/DB未実行件数7件 | T-1.4: `ee05b10`、修正（T-1.4）: `01dc364`、T-4.3: `2085577` |
+| 1.13 | C6, C18, C21 | T-4.2, T-7.2, T-7.3, T-11.1, T-11.2, T-14.5, T-19.1, T-19.2 | T-4.2: local availability一時単体5件・globalSetup統合1件 | T-4.2: `2085577` |
+| 1.14 | C18, C21 | T-4.2, T-4.3, T-7.2, T-11.2, T-14.5, T-19.2, T-29.2 | T-4.2: 理由付きavailability、T-4.3: skip理由集計・全件skipのgate/local統合probe | T-4.2/T-4.3: `2085577` |
+| 1.15 | C1, C18, C19, C20 | T-1.4, T-4.3, T-5.2, T-5.4, T-5.5, T-13.7, T-19.3, T-25.3, T-29.1 | T-1.4: `passWithNoTests: false`・reporter登録、T-4.3: gate実行0件のexit 1、T-5.2: 9規則19件、T-5.4: count 4件、T-5.5: 各段件数・0件exit 1 | T-1.4: `ee05b10`、修正（T-1.4）: `01dc364`、T-4.3: `2085577`、T-5.2/T-5.4/T-5.5: `e18f7dd` |
+| 1.16 | C1, C2, C18 | T-1.4, T-4.3, T-19.3, T-29.3 | T-1.4: Stryker対象・runner・閾値の構造検査、T-4.3: 集計/空実行/DB件数のPROVE 5種 | T-1.4: `ee05b10`、T-4.3: `2085577` |
 | 1.17 | C2, C19 | T-25.1, T-25.3, T-26.1, T-26.2, T-27.1, T-27.2, T-29.1 |  |  |
 | 1.18 | C1, C2 | T-1.5, T-2.1, T-29.3 | T-1.5: staged dummy secret rejection（redact）、T-2.1: `fetch-depth: 0`・`mise run secret-scan` | T-1.5: `d9cec30`、T-2.1: `f9e7aca` |
 | 1.19 | C19 | T-26.3, T-27.3 |  |  |
@@ -48,20 +48,20 @@ ID 規約は `tasks.md` の「ID 対応表」を参照する（この spec の p
 | 2.2 | C5, C6 | T-9.2, T-14.1 |  |  |
 | 2.3 | C6 | T-14.2, T-14.5 |  |  |
 | 2.4 | C7 | T-13.1, T-13.2 |  |  |
-| 2.5 | C4, C18 | T-4.1, T-12.3 |  |  |
+| 2.5 | C4, C18 | T-4.1, T-12.3 | T-4.1: mock既定でfetch/net/dnsを遮断 | T-4.1: `2085577` |
 | 2.6 | C6 | T-14.1 |  |  |
 | 2.7 | C6 | T-14.2 |  |  |
 | 2.8 | C4, C5 | T-9.2, T-12.1 |  |  |
 | 2.9 | C6 | T-14.3 |  |  |
-| 2.10 | C5, C6, C20, C22 | T-5.3, T-9.2, T-14.3, T-28.5 |  |  |
-| 2.11 | C18 | T-4.1 |  |  |
+| 2.10 | C5, C6, C20, C22 | T-5.3, T-9.2, T-14.3, T-28.5 | T-5.3: registry fixture 4件（新build・24時間待機・AI SDK v7互換） | T-5.3: `e18f7dd` |
+| 2.11 | C18 | T-4.1 | T-4.1: fetch/net/dns/Resolver遮断・接続先error・local限定例外9件 | T-4.1: `2085577` |
 | 2.12 | C4 | T-12.3 |  |  |
 | 2.13 | C4, C6, C7, C13 | T-12.4, T-13.4, T-14.3, T-20.1 |  |  |
 | 2.14 | C7 | T-13.3 |  |  |
 | 2.15 | C7, C10 | T-10.2, T-10.3, T-10.4, T-13.6 |  |  |
 | 2.16 | C7, C22 | T-13.5, T-28.7 |  |  |
 | 2.17 | C5 | T-9.1, T-9.2 |  |  |
-| 2.18 | C1, C4, C5, C20 | T-1.5, T-5.1, T-9.2, T-12.4 | T-1.5: pre-commit順序・T-5.1自動有効化 | T-1.5: `d9cec30` |
+| 2.18 | C1, C4, C5, C20 | T-1.5, T-5.1, T-9.2, T-12.4 | T-1.5: pre-commit順序、T-5.1: モデルID検査5件・gate 13 files、T-5.5: pre-commit常時実行 | T-1.5: `d9cec30`、T-5.1/T-5.5: `e18f7dd` |
 
 ## Requirement 3: ストリーミングチャット
 
@@ -144,7 +144,7 @@ Task 列に記載する。
 |---|---|---|---|---|
 | NFR-01（検証速度） | C1 | T-29.2 |  |  |
 | NFR-02（決定性） | C1, C7 | T-13.1, T-13.2, T-29.2 |  |  |
-| NFR-03（オフライン動作） | C7, C18 | T-4.1, T-13.6, T-29.2 |  |  |
+| NFR-03（オフライン動作） | C7, C18 | T-4.1, T-13.6, T-29.2 | T-4.1: mock hermetic network guard 9件 | T-4.1: `2085577` |
 | NFR-04（ストリーミング応答性） | C19 | T-26.3, T-27.4 |  |  |
 | NFR-05（型安全性） | C1 | T-1.3, T-6.3 | T-1.3: TypeScript 7.1 strict root typecheck | T-1.3: `10c3b48`、修正（T-1.3）: `01dc364` |
 | NFR-06（テストカバレッジ） | C18 | T-6.2 |  |  |
@@ -158,6 +158,9 @@ Task 列に記載する。
 
 ## Gaps
 
+- 2026-09-27 の `/sdd-ship`（T-5.1〜T-5.5）では、新しい要件・設計ギャップは検出しなかった。恒久テストは16件から48件へ32件増加し、新規スクリプト5ファイルのstatement coverageは合計84.50%。W1 gateは4段すべてで非空件数を表示し、10/10回同じ成功判定だった。`mise run test:coverage`のworkspace taskはW2のT-6.3以降で結線されるため現時点では0 taskであり、ship検証ではroot Vitestを直接coverage実行した。
+- 2026-09-27 の `/sdd-ship`（T-4.1〜T-4.3）では、新しい要件・設計ギャップは検出しなかった。hermetic network guard、local availability、gate reporterを20件のship検証（恒久16件 + T-4.2一時4件）と行カバレッジ93.56%で確認した。T-4.2の恒久的な受け取り側skipテストとOllama停止時統合確認は、承認済みタスクどおりT-11.2/T-29.2へ引き継ぐ。
+- 2026-09-27 の `/sdd-ship`（T-3.1〜T-3.2）では、新しい要件・設計ギャップは検出しなかった。Composeは6サービスのhealthy状態とLangfuse UI/health、Postgresは新規volumeからのinit SQL自動実行・`vector`・カスタムLangfuse DBを実測した。Rancher Desktopの`/Users/Shared` mount手順は端末ローカルのGit除外memoryにのみ保存した。
 - 2026-09-27 の `/sdd-ship`（T-2.1〜T-2.2）では、新しい要件・設計ギャップは検出しなかった。PR の `ci-status` と GitHub Insights の Dependabot 設定確認は、設定を push した後のホスト側検証として残る。
 - 2026-09-27 の `/sdd-ship`（T-1.1〜T-1.3）では、新しい要件・設計ギャップは検出しなかった。`pnpm-lock.yaml` は T-1.2 の frozen install を成立させる派生成物として追跡する（2026-09-27 の `/sdd-validate-impl` で境界外と判定し、T-1・T-1.2 の `_Boundary:_` と plan のルートの表に加えた）。
 - 2026-09-27 の `/sdd-ship`（T-1.4〜T-1.5）でも新しい要件・設計ギャップは検出しなかった。Vitest hook と mutation の実行検証は、承認済みタスクどおり T-4.1/T-4.3/T-29.3 へ引き継ぐ。

@@ -11,19 +11,52 @@
 		},
 		"test": {
 			"dependsOn": ["^build"],
-			"env": ["AI_TEST_RUN_MODE", "AI_TEST_SUITE", "OLLAMA_BASE_URL"],
+			"env": [
+				"AI_TEST_RUN_MODE",
+				"AI_TEST_SUITE",
+				"AI_RUN_MODE",
+				"AI_LIVE_PROVIDER",
+				"AI_MODEL_CHAT",
+				"AI_MODEL_STRUCTURED",
+				"AI_MODEL_EMBEDDING",
+				"AI_MODEL_JUDGE",
+				"OLLAMA_BASE_URL",
+				"POSTGRES_PORT"
+			],
 			"outputs": ["coverage/**"]
 		},
 		"test:coverage": {
 			"dependsOn": ["^build"],
-			"env": ["AI_TEST_RUN_MODE", "AI_TEST_SUITE", "OLLAMA_BASE_URL"],
+			"env": [
+				"AI_TEST_RUN_MODE",
+				"AI_TEST_SUITE",
+				"AI_RUN_MODE",
+				"AI_LIVE_PROVIDER",
+				"AI_MODEL_CHAT",
+				"AI_MODEL_STRUCTURED",
+				"AI_MODEL_EMBEDDING",
+				"AI_MODEL_JUDGE",
+				"OLLAMA_BASE_URL",
+				"POSTGRES_PORT"
+			],
 			"outputs": ["coverage/**"]
 		},
 		"//#typecheck": {
 			"outputs": []
 		},
 		"//#test": {
-			"env": ["AI_TEST_RUN_MODE", "AI_TEST_SUITE", "OLLAMA_BASE_URL"],
+			"env": [
+				"AI_TEST_RUN_MODE",
+				"AI_TEST_SUITE",
+				"AI_RUN_MODE",
+				"AI_LIVE_PROVIDER",
+				"AI_MODEL_CHAT",
+				"AI_MODEL_STRUCTURED",
+				"AI_MODEL_EMBEDDING",
+				"AI_MODEL_JUDGE",
+				"OLLAMA_BASE_URL",
+				"POSTGRES_PORT"
+			],
 			"outputs": ["coverage/**"]
 		}
 	}

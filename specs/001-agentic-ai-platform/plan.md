@@ -292,7 +292,8 @@ flowchart LR
 
 - **Responsibility**: テストの実行モードの固定、ネットワーク遮断、`local` 限定テストの分類、空振りの検出、モックのファクトリを提供する。
 - **Public interface**:
-  - `tooling/vitest/setup-hermetic.ts`: `globalThis.fetch`、`node:net` の `Socket.prototype.connect`、`node:dns` の `lookup` / `promises.lookup` / `resolve*` を、接続先を含む `NetworkBlockedError` で失敗させる。`AI_TEST_RUN_MODE=local` のときだけ、`OLLAMA_BASE_URL` のホストへの接続を許可する。
+  - `tooling/vitest/setup-hermetic.ts`: `globalThis.fetch`、`node:net` の `Socket.prototype.connect`、`node:dns` の `lookup` / `promises.lookup` / `resolve*` / `lookupService`、`node:dgram` の `Socket.prototype.send` / `connect` を、接続先を含む `NetworkBlockedError` で失敗させる。`AI_TEST_RUN_MODE=local` のときだけ、`OLLAMA_BASE_URL`（未設定なら既定値）の origin への接続を許可する。`AI_TEST_SUITE=pg` のときだけ、`127.0.0.1` / `localhost` の `POSTGRES_PORT`（既定 5432）への接続を許可する（002 の `*.pg.test.ts`。W1 レビュー M-14）。遮断した接続先は記録し、setup ファイルの `afterEach` が未消費の記録があればテストを失敗させる（被テストコードが例外を捕捉しても緑にしない。Req 2.11、W1 レビュー H-7）。遮断を意図的に検証するテストは `consumeBlockedConnections()` で記録を消費する。遮断の本体は副作用のない `tooling/vitest/network-guard.ts` に置き、`setup-hermetic.ts` はインストールと `afterEach` の登録だけを行う。登録そのものは install を呼ばない `hermetic-registration.test.ts` で検証する（W1 レビュー M-4）。
+  - `tooling/vitest/ollama.ts`: Ollama の既定 URL（`http://127.0.0.1:11434`）と、`OLLAMA_BASE_URL` の正規化（末尾の `/` と `/api` を除く）を1か所で定義し、guard と global setup の両方が使う（W1 レビュー H-3・M-8）。
   - `tooling/vitest/global-setup-local.ts`: `AI_TEST_RUN_MODE=local` のときだけ Ollama の到達性と必要モデルを確認し、結果を `provide("localAvailability", ...)` で渡す。
   - `@platform/ai-core/testing`: `describeLocal(name, fn)`、`itLocal(name, fn)`（`localAvailability` が不可なら理由付きでスキップする）、`createTextStreamModel`、`createToolCallingModel`、`createObjectModel`（`MockLanguageModelV4` + `simulateReadableStream`）、`createFakeClock`。
   - `tooling/vitest/gate-reporter.ts`: 実行・成功・失敗・スキップ（理由別）の件数と、DB 依存で未実行の件数（`*.pg.test.ts` のファイル数）を表示する。実行件数が 0 なら終了コードを非ゼロにする。
@@ -317,7 +318,9 @@ flowchart LR
 - **Public interface**:
   - `scripts/check-model-ids.mjs`: モデル系列の接頭辞（`claude-`、`gpt-`、`gemini-`、`llama`、`qwen`、`gemma`、`granite`、`mistral` 等）を持つ文字列を検出する。走査ファイル数が 0 なら失敗。走査範囲と例外は次のとおり（constitution 原則 8。1.0.2 で解説の例外を廃止した）:
     - 走査対象: `apps/`、`packages/`、`scripts/`、`tooling/` の `*.ts`、`*.tsx`、`*.mjs` の文字列リテラルと、`docs/` と `README.md` の Markdown 本文。
-    - 許可する場所: C5 の `catalog.ts`、C4 の `env-schema.ts`（既定値）、`check-model-ids` 自身とそのテスト。
+    - 許可する場所: C5 の `catalog.ts`、C4 の `env-schema.ts`（既定値）、`check-model-ids` 自身とそのテスト。リポジトリ相対の完全なパス（`packages/ai-core/src/models/catalog.ts`、`packages/ai-core/src/config/env-schema.ts` の `.default(...)` の引数、`scripts/check-model-ids{,.test}.mjs`）で判定し、ほかの場所にある同名のファイルは走査する（2026-09-27、W1 レビュー M-1）。
+    - 検出する系列（W1 レビュー M-1・L-2 で確定）: 接尾辞を問わない系列は `claude-`、`gemini-`、`text-embedding-`、`nomic-embed-`、`mxbai-embed-`、`snowflake-arctic-embed`、`embeddinggemma`、`deepseek-`、`jamba-`、`nova-`、`mixtral`、`codestral`。一般の語と衝突する系列はモデル ID の形を要求する: `llama`・`qwen`・`gemma`・`granite`・`mistral`・`phi` は数字、または `-`/`:` の後に数字かバリアント語（`small`、`mini`、`instruct`、`embed` 等）。`gpt-` は数字か `oss`・`image`・`realtime`・`audio`（`gpt-tokenizer` は検出しない）、`chatgpt-` は接尾辞を問わない。o 系列は単独の `o<数字>`（`o3`）か `o<数字>-<英字>`（`o3-mini`）で、`o3lint` や `foo3` は検出しない（W1 再レビュー N-1）。`command-r` は直後が英字でないもの。系列は C5・C6 のプロバイダ（anthropic、openai、azure、google、ollama）のカタログと同期させる。
+    - import / export の `from`、`import("x")`、`require("x")` の引数はパッケージ名なので走査しない（`gpt-tokenizer` の誤検出を防ぐ。W1 レビュー H-2）。生成物のディレクトリ（`node_modules`、`.next`、`dist`、`coverage`、`.turbo`、`.stryker-tmp` 等。`scripts/lib/scan-exclusions.mjs`）は走査しない。
     - 解説にも例外を設けない。Req 7.4 の差分表では、採用したモデルをカタログへの参照（例: `catalog: live.anthropic.chat`）で書く（2026-09-27 に、ドラフトの削除に伴い `model-id-allow` の囲みを廃止した）。
     - JSON（カセット等）は走査しない。代わりに `catalog.test.ts` がカセットの `modelId` をカタログと突き合わせる（C7）。
   - `scripts/check-repo-rules.mjs`: constitution の MUST 原則のうち、Biome の設定では表現できないリポジトリ規約を検査する。規則ごとに走査件数を出力し、どれかの規則で走査件数が 0 なら失敗させる。**走査件数は、その規則の対象として走査したファイルの数**とする（違反や一致の件数ではない。例: `guarded-agent-only` は `apps/` と `packages/` の `*.ts` / `*.tsx` の数）。`--only <rule,...>` で実行する規則を限定でき、gate は C1 の「gate と CI の段階的な結線」に従って、対象が揃った規則だけを渡す（2026-09-27、`/sdd-analyze` H-3）。
@@ -327,13 +330,13 @@ flowchart LR
     | `no-deprecated-object-api` | `ai` から `generateObject` / `streamObject` を import していない | `apps/`、`packages/` の `*.ts` / `*.tsx` | W2 | 1 |
     | `guarded-agent-only` | `new ToolLoopAgent` が `packages/ai-core/src/agents/guarded-agent.ts` 以外にない | `apps/`、`packages/` の `*.ts` / `*.tsx` | W2 | 2 |
     | `ai-core-no-ui-deps` | `packages/ai-core/package.json` の依存と `src/` の import に `react`、`react-dom`、`next`、`@ai-sdk/react` がない | `packages/ai-core/package.json`、`packages/ai-core/src/**/*.ts` | W2 | 5 |
-    | `no-dynamic-eval` | `eval(`、`new Function(`、`node:child_process` / `child_process` の import が、許可リスト（M1 は空。003 がサンドボックスのアダプタを追加する）以外にない | `apps/`、`packages/`、`scripts/`、`tooling/` の `*.ts` / `*.tsx` / `*.mjs` | W1 | 6 |
+    | `no-dynamic-eval` | `eval(`、`new Function(` / `Function(`、`node:child_process` / `child_process` の import（静的・動的 `import()`・`require()`・`export ... from`）が、許可リスト（M1 は空。003 がサンドボックスのアダプタを追加する）以外にない | `apps/`、`packages/`、`scripts/`、`tooling/` の `*.ts` / `*.tsx` / `*.mjs` | W1 | 6 |
     | `tool-risk-declared` | `defineAciTool(` の呼び出しがすべて `risk:` を持つ（型でも強制するが、走査で二重に確認する） | `packages/ai-core/src/aci/**/*.ts` | W3 | 6 |
-    | `actions-pinned` | `.github/workflows/*.yml` の `uses:` がすべて 40 桁のコミット SHA で固定され、各ジョブまたはワークフローに `permissions:` がある | `.github/workflows/*.yml` | W1 | 7 |
-    | `frozen-lockfile` | ワークフロー内の依存インストールが `mise run setup` または `--frozen-lockfile` 付きである | `.github/workflows/*.yml` | W1 | 7 |
-    | `allow-builds-reasoned` | `pnpm-workspace.yaml` の `allowBuilds` の各エントリの直前に理由のコメントがある | `pnpm-workspace.yaml` | W1 | 7 |
-    | `no-sensitive-logging` | `console.*` と `logger.*` の呼び出しに、`prompt`、`messages`、`input`（ツール引数）、`apiKey` を名前に含む識別子を渡していない（ロギング方針。[Error Handling](#error-handling--edge-cases) を参照） | `apps/`、`packages/` の `*.ts` / `*.tsx` | W2 | 7 |
-  - `scripts/check-client-bundle.mjs`（`next build` 後の `.next/static` を走査し、秘密情報の環境変数名と、CI で注入した番兵値が含まれていれば失敗。クライアントのコードに環境変数名を書かない規約（C16）と組み合わせる）、`scripts/check-updates.mjs`（先行版と `watsonx-ai-provider` の peerDependencies を npm レジストリで確認する）、`scripts/gate/count-*.mjs`（Biome と `tsc` の走査件数の検査）。`count-tsc` は、ルートと各ワークスペースの tsconfig ごとに走査件数を数え、どれかが 0 なら失敗する。主な手段は、mise タスクがパイプで渡す `tsc -p <tsconfig> --listFilesOnly` の出力とする。TypeScript 7.1 先行版（ネイティブ `tsc`）が `--listFilesOnly` を持つかは未検証のため（constitution 原則 8）、5.4 で実測する。持たない場合は、`count-tsc` 自身が tsconfig の `files`・`include`・`exclude`（`extends` を解決する）を `node:fs` で展開して数える方式に切り替え、research.md の Risks に結果を記録する（2026-09-27、3回目の `/sdd-analyze` M-2）。
+    | `actions-pinned` | `.github/workflows/*.{yml,yaml}` の `uses:` がすべて 40 桁のコミット SHA で固定され、各ジョブまたはワークフローに `permissions:` があり、`write-all` と `<scope>: write` を含まない（M1 は書き込み権限を必要としない。W1 レビュー M-3） | `.github/workflows/*.{yml,yaml}` | W1 | 7 |
+    | `frozen-lockfile` | ワークフローの `run:` にある依存インストールがすべて `mise run setup` か `pnpm install --frozen-lockfile` である（npm / yarn / bun のインストール、`--frozen-lockfile=false`、`--no-frozen-lockfile` は違反）。`mise.toml` の `[tasks.setup]` が `pnpm install --frozen-lockfile` を実行する（タスクがなければ違反。W1 レビュー M-2） | `.github/workflows/*.{yml,yaml}`、`mise.toml` | W1 | 7 |
+    | `allow-builds-reasoned` | `pnpm-workspace.yaml` の `allowBuilds` の各エントリの直前に理由のコメントがある（ブロック形式だけを受け付け、flow 形式・シーケンス・入れ子は違反。W1 レビュー L-3） | `pnpm-workspace.yaml` | W1 | 7 |
+    | `no-sensitive-logging` | `console.*` と `logger.*` の呼び出しに、`prompt`、`messages`、`input`（ツール引数）、`apiKey` を名前に含む識別子を渡していない。識別子は camelCase / snake_case の語に分けて照合し、直後の語がメタデータ（`tokens`、`count`、`length`、`size`、`schema`、`id`、`ms` 等）なら許可する（`inputTokens` は可、`promptText` は違反。W1 レビュー M-6）。機密の識別子への `.length`・`.size`・`.count` のアクセスは件数なので許可する（`messages.length` は可、`messages[0]`・`prompt.text` は違反。W1 再レビュー N-6）（ロギング方針。[Error Handling](#error-handling--edge-cases) を参照） | `apps/`、`packages/` の `*.ts` / `*.tsx` | W2 | 7 |
+  - `scripts/check-client-bundle.mjs`（`next build` 後の `.next/static` を走査し、秘密情報の環境変数名と、CI で注入した番兵値が含まれていれば失敗。クライアントのコードに環境変数名を書かない規約（C16）と組み合わせる）、`scripts/check-updates.mjs`（先行版と `watsonx-ai-provider` の peerDependencies を npm レジストリで確認する）、`scripts/gate/count-*.mjs`（Biome と `tsc` の走査件数の検査）。`count-tsc` は、ルートと各ワークスペースの tsconfig ごとに走査件数を数え、どれかが 0 なら失敗する。入力は `::tsconfig::<path>` の行に続く `tsc -p <path> --listFilesOnly` の出力で、数えるのはその tsconfig のディレクトリ配下にあり `node_modules` を含まないパスだけ（lib・`@types` の `.d.ts` は数えない）。`error TS` の行やパスでない行があれば失敗する（W1 レビュー H-1）。主な手段は、mise タスクがパイプで渡す `tsc -p <tsconfig> --listFilesOnly` の出力とする。TypeScript 7.1 先行版（ネイティブ `tsc`）が `--listFilesOnly` を持つかは未検証のため（constitution 原則 8）、5.4 で実測する。持たない場合は、`count-tsc` 自身が tsconfig の `files`・`include`・`exclude`（`extends` を解決する）を `node:fs` で展開して数える方式に切り替え、research.md の Risks に結果を記録する（2026-09-27、3回目の `/sdd-analyze` M-2）。
 - **Owns**: 検査の規則と許可リスト。
 - **Does NOT own**: lint のルール本体（Biome）。
 - **Requirements**: 1.10, 1.15, 2.10, 2.18, Technical Constraints（`mise run outdated`）, constitution 原則 1、2、5、6、7
@@ -496,7 +499,7 @@ erDiagram
 | `test:e2e` | `pnpm --filter web exec playwright test`（3エンジン） | 不要 | 不要 |
 | `test:mutation` | `pnpm exec stryker run` | 不要 | 不要 |
 | `test:coverage` | 全ワークスペースのカバレッジの HTML レポート（閾値の強制は gate の `test` 段。C18） | 不要 | 不要 |
-| `gate:repeat` | `gate` を10回実行し、合否が同一であることを確認（NFR 決定性） | 不要 | 不要 |
+| `gate:repeat` | `gate` を10回実行し、合否が同一であることを確認（NFR 決定性）。`TURBO_FORCE=true` で Turborepo のキャッシュを使わず、毎回テストを実行する。通常の `gate` は検証速度（NFR-01）のため、入力が同じならキャッシュの結果を再生する（W1 レビュー H-5、再レビュー N-8） | 不要 | 不要 |
 | `secret-scan` / `secret-scan:staged` | `gitleaks git --redact` / `gitleaks git --staged --redact` | 不要 | 不要 |
 | `audit` | `pnpm audit --audit-level=moderate` | 不要 | 要 |
 | `outdated` | `pnpm outdated` + `scripts/check-updates.mjs` | 不要 | 要 |
@@ -527,7 +530,7 @@ erDiagram
 | File | Create/Modify | Responsibility |
 |------|---------------|----------------|
 | `mise.toml` | Modify | ツール（node、pnpm、gitleaks）の版固定と、[mise タスク](#mise-タスク学習者と-ci-の入口)の定義。 |
-| `package.json` | Create | ルートの開発依存（typescript、turbo、biome、vitest、stryker）を完全一致で固定し、`packageManager` と `engines` を宣言する。 |
+| `package.json` | Create | ルートの開発依存（typescript、turbo、biome、vitest、stryker、`@types/node`）を完全一致で固定し、`packageManager` と `engines` を宣言する。 |
 | `pnpm-workspace.yaml` | Create | `apps/*`、`packages/*` の宣言、`minimumReleaseAge: 1440`、監査済みの `allowBuilds`。 |
 | `pnpm-lock.yaml` | Create | pnpm が生成するロックファイル。`--frozen-lockfile` によるクリーンな clone での再現（Req 1.3）の前提。 |
 | `turbo.json` | Create | `typecheck`、`test`、`build` のタスクグラフと入出力（キャッシュ対象）の定義。 |
@@ -577,7 +580,11 @@ erDiagram
 
 | File | Create/Modify | Responsibility |
 |------|---------------|----------------|
-| `tooling/vitest/setup-hermetic.ts` | Create | `fetch`・`node:net`・`node:dns` の遮断と、テスト中の実行モードの固定。 |
+| `tooling/vitest/setup-hermetic.ts` | Create | 遮断のインストールと、未消費の遮断でテストを失敗させる `afterEach` の登録。テスト中の実行モードの固定は C4 の `resolveRunMode`（12.3）が担う。 |
+| `tooling/vitest/network-guard.ts` | Create | `fetch`・`node:net`・`node:dns`・`node:dgram` の遮断、許可リスト（local の Ollama、pg の Postgres）、遮断の記録（W1 レビューで分離）。 |
+| `tooling/vitest/ollama.ts` | Create | Ollama の既定 URL と `OLLAMA_BASE_URL` の正規化。 |
+| `tooling/vitest/hermetic-registration.test.ts` | Create | `vitest.config.ts` が setup を登録していることを、install を呼ばずに検証する。 |
+| `tooling/vitest/global-setup-local.test.ts` | Create | URL の正規化、tags の解析、必要モデル、HTTP エラーの判定を、注入した fetch で検証する。 |
 | `tooling/vitest/setup-hermetic.test.ts` | Create | 遮断が名前解決を含めて機能し、接続先がエラーに含まれることを検証する。 |
 | `tooling/vitest/global-setup-local.ts` | Create | `local` のときだけ Ollama の到達性と必要モデルを確認して提供する。 |
 | `tooling/vitest/gate-reporter.ts` | Create | 実行・スキップ（理由別）・未実行（DB）の件数の表示と、実行 0 件の失敗。 |

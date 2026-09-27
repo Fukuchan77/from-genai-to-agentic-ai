@@ -73,9 +73,9 @@
 - **Non-vacuous gate**: 各段で実行件数・走査件数が 0 なら失敗。スキップは合格に数えない。
 - **Language**: spec・解説・UI 文言は日本語。コード、識別子、コメント、コミット、PR は英語。
 - **Commands**: `mise run <task>` → `pnpm exec <cmd>` の順。
-- **Gate command**: `mise run gate`（計画: `lint` → `check:model-ids` → `check:repo-rules` →
-  `typecheck` → `test` → `docs:check`）。Docker・API キー・ネットワーク不要。**現時点では未定義**
-  （足場づくりで `mise.toml` に追加する）。
+- **Gate command**: `mise run gate`。現在の W1 構成は `lint`（Biome の非空走査を含む）→
+  `check:model-ids` → `check:repo-rules`（W1 の4規則）→ `test`。Docker・API キー・ネットワーク不要。
+  後続の波で `typecheck` と残りの規則を加え、W5 で `docs:check` を結線する。
 - **Preflight command**: なし。`local` の可否は Vitest の global setup が Ollama の到達性で判定する。
 
 ## Constraints

@@ -12,7 +12,17 @@ run = [
 
 [tasks.lint]
 description = "Check formatting and lint rules with Biome"
-run = "pnpm exec biome ci ."
+run = '''
+report_file="$(mktemp)"
+trap 'rm -f "$report_file"' EXIT HUP INT TERM
+if pnpm exec biome ci . --reporter=json > "$report_file"; then
+  node scripts/gate/count-biome.mjs < "$report_file"
+else
+  # Re-run with the default reporter so failures are readable instead of raw JSON.
+  pnpm exec biome ci .
+  exit 1
+fi
+'''
 
 [tasks."lint:fix"]
 description = "Apply safe formatting and lint fixes with Biome"
@@ -53,10 +63,17 @@ run = "pnpm exec turbo run test:coverage"
 
 [tasks.gate]
 description = "Run the deterministic quality gate"
-depends = ["lint"]
+run = [
+  "mise run lint",
+  "mise run check:model-ids",
+  "mise run check:repo-rules",
+  "mise run test",
+]
 
 [tasks."gate:repeat"]
 description = "Run the quality gate ten times to check determinism"
+# Bypass the Turborepo cache so every run executes the tests instead of replaying logs.
+env = { TURBO_FORCE = "true" }
 run = '''
 for run_number in $(seq 1 10); do
   echo "gate run ${run_number}/10"
@@ -86,16 +103,28 @@ exit "$status"
 '''
 
 [tasks."services:up"]
-description = "Start database and tracing services"
-run = "docker compose --profile db --profile trace up -d"
+description = "Start database and tracing services and wait until they are healthy"
+run = '''
+set --
+if [ -f .env.local ]; then set -- --env-file .env.local; fi
+docker compose "$@" --profile db --profile trace up -d --wait
+'''
 
 [tasks."services:up:db"]
-description = "Start the database service"
-run = "docker compose --profile db up -d"
+description = "Start the database service and wait until it is healthy"
+run = '''
+set --
+if [ -f .env.local ]; then set -- --env-file .env.local; fi
+docker compose "$@" --profile db up -d --wait
+'''
 
 [tasks."services:down"]
 description = "Stop local dependency services"
-run = "docker compose --profile db --profile trace down"
+run = '''
+set --
+if [ -f .env.local ]; then set -- --env-file .env.local; fi
+docker compose "$@" --profile db --profile trace down
+'''
 
 [tasks.record]
 description = "Run the web app with cassette recording enabled"
@@ -112,4 +141,4 @@ run = "node scripts/check-model-ids.mjs"
 
 [tasks."check:repo-rules"]
 description = "Validate repository governance rules"
-run = "node scripts/check-repo-rules.mjs"
+run = "node scripts/check-repo-rules.mjs --only no-dynamic-eval,actions-pinned,frozen-lockfile,allow-builds-reasoned"
