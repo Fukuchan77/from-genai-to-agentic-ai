@@ -28,6 +28,11 @@ mise run gate
 `mock`モードで実行できる設計です。現在の初期gateは段階的結線方針に従い、Biomeの
 lint・format検査だけを実行します。
 
+`mise run setup`はpre-commitフック（`.githooks/pre-commit`）を有効にします。フックは
+`pnpm`と`gitleaks`をPATHから呼ぶため、miseを有効にしたシェル（`mise activate`）から
+commitしてください。miseを有効にしていないGitクライアントでは、フックがコマンドを
+見つけられずにcommitを拒否します。
+
 ## 主なコマンド
 
 ```bash
