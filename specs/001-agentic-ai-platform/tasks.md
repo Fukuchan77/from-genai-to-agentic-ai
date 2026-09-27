@@ -119,19 +119,19 @@ _Depends:_ none
 _Requirements:_ 1.1, 1.3, 1.4, 1.6, 1.11, 1.12, 1.15, 1.16, 1.18, 2.18, NFR-05, NFR-07, NFR-11
 _Traces:_ REQ-001, C1
 
-- [ ] 1.1 `mise.toml` にツール（node、pnpm、gitleaks）の版を固定し、plan の [mise タスク](plan.md#mise-タスク学習者と-ci-の入口) と C1 の Public interface に挙げた全タスク（`setup`、`lint`、`lint:fix`、`typecheck`、`test`、`test:local`、`test:db`、`test:e2e`、`test:mutation`、`test:coverage`、`gate:repeat`、`secret-scan`、`secret-scan:staged`、`audit`、`outdated`、`services:up`、`services:up:db`、`services:down`、`record`、`docs:check`、`check:model-ids`、`check:repo-rules`）を plan のコマンドどおりに定義する。対象がまだないタスクは、その波までは実行できなくてよい。`gate` は初期構成（`lint` のみ。上記「gate と CI の段階的な結線」）で定義する
+- [x] 1.1 `mise.toml` にツール（node、pnpm、gitleaks）の版を固定し、plan の [mise タスク](plan.md#mise-タスク学習者と-ci-の入口) と C1 の Public interface に挙げた全タスク（`setup`、`lint`、`lint:fix`、`typecheck`、`test`、`test:local`、`test:db`、`test:e2e`、`test:mutation`、`test:coverage`、`gate:repeat`、`secret-scan`、`secret-scan:staged`、`audit`、`outdated`、`services:up`、`services:up:db`、`services:down`、`record`、`docs:check`、`check:model-ids`、`check:repo-rules`）を plan のコマンドどおりに定義する。対象がまだないタスクは、その波までは実行できなくてよい。`gate` は初期構成（`lint` のみ。上記「gate と CI の段階的な結線」）で定義する
   _Boundary:_ `mise.toml`
   _Depends:_ none
   _Requirements:_ 1.3, 1.4, 1.11
   _Traces:_ REQ-001, C1
   _Verify:_ `mise tasks` に全タスクが列挙され、`mise run gate` が初期構成で成功する
-- [ ] 1.2 pnpm workspace 宣言（`minimumReleaseAge`、理由付き `allowBuilds`）とルート `package.json`、Turborepo のタスクグラフ（ルートの `tooling/`・`scripts/` のテストはルートタスク `//#test`（ルートの `vitest.config.ts` だけを使い、ワークスペースのテストは含めない。plan C18「テストの実行単位」）、ルートの型検査はルートタスク `//#typecheck`（`tsc -p tsconfig.json --noEmit`））を定義する。ADR-1 の確認（Turborepo 2.11 が pnpm 12 のワークスペースとロックファイルを解決できるか）を行い、失敗したら mise + `pnpm -r` へ後退して理由を `package.json` のコメントに記録する
+- [x] 1.2 pnpm workspace 宣言（`minimumReleaseAge`、理由付き `allowBuilds`）とルート `package.json`、Turborepo のタスクグラフ（ルートの `tooling/`・`scripts/` のテストはルートタスク `//#test`（ルートの `vitest.config.ts` だけを使い、ワークスペースのテストは含めない。plan C18「テストの実行単位」）、ルートの型検査はルートタスク `//#typecheck`（`tsc -p tsconfig.json --noEmit`））を定義する。ADR-1 の確認（Turborepo 2.11 が pnpm 12 のワークスペースとロックファイルを解決できるか）を行い、失敗したら mise + `pnpm -r` へ後退して理由を `package.json` のコメントに記録する
   _Boundary:_ `pnpm-workspace.yaml`, `package.json`, `turbo.json`
   _Depends:_ 1.1
   _Requirements:_ 1.1, 1.3, NFR-11
   _Traces:_ REQ-001, C1
   _Verify:_ クリーンな clone で `mise run setup`（`--frozen-lockfile`）が成功する
-- [ ] 1.3 Biome の規約（ADR-3: タブ・ダブルクォート・行幅100・セミコロン、`noUnusedVariables`/`noUnusedImports` を error）と `tsconfig.base.json`（strict）、ルートの `tsconfig.json`（ベースを継承し、どのワークスペースにも属さない `tooling/**/*.ts` とルートの設定ファイル（`vitest.config.ts` 等）を `include` する。`noEmit`）を定義する
+- [x] 1.3 Biome の規約（ADR-3: タブ・ダブルクォート・行幅100・セミコロン、`noUnusedVariables`/`noUnusedImports` を error）と `tsconfig.base.json`（strict）、ルートの `tsconfig.json`（ベースを継承し、どのワークスペースにも属さない `tooling/**/*.ts` とルートの設定ファイル（`vitest.config.ts` 等）を `include` する。`noEmit`）を定義する
   _Boundary:_ `biome.json`, `tsconfig.base.json`, `tsconfig.json`
   _Depends:_ 1.2
   _Requirements:_ 1.6, NFR-05
@@ -151,6 +151,10 @@ _Traces:_ REQ-001, C1
   _Verify:_ `.env.example` とスキーマの一致は 12.4 の `load.test.ts` が検査する。フックはダミーの秘密値をステージして拒否されることを1回確認する
 
 ### Implementation Notes
+
+- 1.1〜1.3 は依存関係に従って一体で bootstrap した。固定 package / lockfile と Biome policy が揃った後、初期 `gate` はネットワーク・Docker・API key なしで実ファイル5件を走査して成功した。
+- Turborepo 2.11.4 は pnpm 12.6.0 の workspace / lockfile と root tasks（`//#test`・`//#typecheck`）を解決できたため、`pnpm -r` への後退は不要だった。
+- `.turbo` は Biome の強制除外に含め、`typecheck` 後も連続した `gate` が同じ結果になるようにした。
 
 ---
 
