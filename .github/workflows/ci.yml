@@ -9,13 +9,21 @@ on:
 permissions:
   contents: read
 
+# Cancel superseded runs on the same pull request; never cancel runs on main.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   gate:
     name: Quality gate
+    timeout-minutes: 15
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
       - name: Install mise and toolchain
         uses: jdx/mise-action@7e36c90d9ab29c415a2384db3006f3ec8a8cc654 # v4.2.4
         with:
@@ -29,12 +37,14 @@ jobs:
 
   secret-scan:
     name: Secret scan
+    timeout-minutes: 10
     runs-on: ubuntu-latest
     steps:
       - name: Check out full history
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: Install mise and toolchain
         uses: jdx/mise-action@7e36c90d9ab29c415a2384db3006f3ec8a8cc654 # v4.2.4
         with:
@@ -48,10 +58,13 @@ jobs:
 
   audit:
     name: Dependency audit
+    timeout-minutes: 10
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
       - name: Install mise and toolchain
         uses: jdx/mise-action@7e36c90d9ab29c415a2384db3006f3ec8a8cc654 # v4.2.4
         with:
@@ -65,6 +78,7 @@ jobs:
 
   ci-status:
     name: CI status
+    timeout-minutes: 5
     if: ${{ always() }}
     needs: [gate, secret-scan, audit]
     runs-on: ubuntu-latest
