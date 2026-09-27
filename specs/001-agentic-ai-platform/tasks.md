@@ -137,13 +137,13 @@ _Traces:_ REQ-001, C1
   _Requirements:_ 1.6, NFR-05
   _Traces:_ REQ-001, C1
   _Verify:_ 未使用 import を含む一時ファイルで `biome ci` が失敗することを1回確認してから、一時ファイルを消す。ルートの型検査は W2 の締め（13.7）で gate に入るまで、W1 の各タスクの完了時に `pnpm exec tsc -p tsconfig.json --noEmit` で確認する
-- [ ] 1.4 ルート `vitest.config.ts`（対象は `tooling/`・`scripts/` のテストだけ。ワークスペースを `projects` で集約しない。`setup-hermetic` と `gate-reporter` の登録。plan C18「テストの実行単位」）と `stryker.config.mjs`（制御ロジックに限定した対象、`vitest.configFile` は `packages/ai-core/vitest.config.ts`、閾値70）を定義する
+- [x] 1.4 ルート `vitest.config.ts`（対象は `tooling/`・`scripts/` のテストだけ。ワークスペースを `projects` で集約しない。`setup-hermetic` と `gate-reporter` の登録。plan C18「テストの実行単位」）と `stryker.config.mjs`（制御ロジックに限定した対象、`vitest.configFile` は `packages/ai-core/vitest.config.ts`、閾値70）を定義する
   _Boundary:_ `vitest.config.ts`, `stryker.config.mjs`
   _Depends:_ 1.2
   _Requirements:_ 1.4, 1.12, 1.15, 1.16
   _Traces:_ REQ-001, C1, C18
   _Verify:_ Vitest の構成は 4.1・4.3 のテストの実行で、Stryker の構成は 29.3 の `test:mutation` で確認する
-- [ ] 1.5 pre-commit フック（`biome check` → `gitleaks git --staged --redact` → `check:model-ids`）、`.gitignore`/`.gitleaksignore`、`.env.example`（plan の[環境変数](plan.md#環境変数env-example-に名前だけを列挙する)の表の全変数を名前だけで一度に作る。`AI_*`、`OLLAMA_BASE_URL`、各プロバイダの認証情報、`TAVILY_API_KEY`、`AGENT_*`、`CHAT_RATE_LIMIT_*`、`POSTGRES_*`、`LANGFUSE_*`）、README/AGENTS.md の更新
+- [x] 1.5 pre-commit フック（`biome check` → `gitleaks git --staged --redact` → `check:model-ids`）、`.gitignore`/`.gitleaksignore`、`.env.example`（plan の[環境変数](plan.md#環境変数env-example-に名前だけを列挙する)の表の全変数を名前だけで一度に作る。`AI_*`、`OLLAMA_BASE_URL`、各プロバイダの認証情報、`TAVILY_API_KEY`、`AGENT_*`、`CHAT_RATE_LIMIT_*`、`POSTGRES_*`、`LANGFUSE_*`）、README/AGENTS.md の更新
   _Boundary:_ `.githooks/pre-commit`, `.gitignore`, `.gitleaksignore`, `.env.example`, `README.md`, `AGENTS.md`
   _Depends:_ 1.1
   _Requirements:_ 1.18, 2.18, NFR-07, NFR-11
@@ -152,9 +152,9 @@ _Traces:_ REQ-001, C1
 
 ### Implementation Notes
 
-- 1.1〜1.3 は依存関係に従って一体で bootstrap した。固定 package / lockfile と Biome policy が揃った後、初期 `gate` はネットワーク・Docker・API key なしで実ファイル5件を走査して成功した。
-- Turborepo 2.11.4 は pnpm 12.6.0 の workspace / lockfile と root tasks（`//#test`・`//#typecheck`）を解決できたため、`pnpm -r` への後退は不要だった。
-- `.turbo` は Biome の強制除外に含め、`typecheck` 後も連続した `gate` が同じ結果になるようにした。
+- Node.js 26.10.0・pnpm 12.6.0・gitleaks 8.30.1 と全依存を固定し、Turborepo 2.11.4 が pnpm 12 の workspace / lockfile / root tasks を解決できることを実測した。
+- Biome・TypeScript・Vitest・Stryker のルート設定を分離し、`.turbo` 生成後も初期 lint gate が決定的に成功するようにした。
+- staged-only の Biome / gitleaks とモデルID検査を pre-commit に並べ、環境変数名だけの `.env.example` とセットアップ文書を整備した。モデルID検査は対象スクリプトを作る Task 5.1 まで明示的に延期する。
 
 ---
 

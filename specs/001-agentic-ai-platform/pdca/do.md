@@ -288,3 +288,103 @@
 - Included: mise task interface and exact tools, root package/lock/workspace, Turborepo graph, Biome policy, and strict TypeScript configs.
 - Secret-protection hook: passed (`Block Secrets powered by IBM Vault Radar`).
 - Remaining workflow records and traceability are prepared for a separate documentation commit.
+
+### 2026-09-27 Task 1.4 Started
+
+- Objective: Define the isolated root Vitest execution unit and the control-logic-only Stryker configuration.
+- Success criteria:
+  - Root Vitest includes only `tooling/` and `scripts/` tests and defines no `projects` aggregation.
+  - `setup-hermetic.ts` and `gate-reporter.ts` are registered by path without prematurely importing Task 4 implementations.
+  - Local-quality and Docker-backed `*.pg.test.ts` files are excluded from the root mock gate unit; `*.db.test.ts` remains eligible.
+  - Stryker mutates only the seven C18 control-logic files, uses the Vitest runner/config under `packages/ai-core`, uses no TypeScript checker, and breaks below 70.
+  - Biome, root TypeScript checking, and the current staged gate remain green.
+
+### 2026-09-27 Task 1.4 RED Evidence
+
+- `vitest.config.ts` and `stryker.config.mjs` were absent.
+- `pnpm exec vitest run --config vitest.config.ts` failed during startup with `Cannot resolve entry module vitest.config.ts`.
+- Per the approved task, executing the registered setup/reporter and the mutation dry run is deferred to Tasks 4.1/4.3 and 29.3, where their owned target files exist.
+
+### 2026-09-27 Task 1.4 Verification Evidence
+
+- Biome: `pnpm exec biome check vitest.config.ts stryker.config.mjs` → 2 files checked, no diagnostics.
+- Root typecheck: `pnpm exec tsc -p tsconfig.json --noEmit` → exit 0; this confirms the Vitest 5 configuration API is type-compatible with TypeScript 7.1.
+- Vitest structure inspection:
+  - environment: `node`.
+  - include: root `tooling/**/*.test.ts` and `scripts/**/*.test.{ts,mts,mjs}` only.
+  - no `projects` property; workspaces are not aggregated.
+  - `setup-hermetic.ts` and `gate-reporter.ts` registered as deferred file paths.
+  - `*.local.test.ts` and `*.pg.test.ts` excluded; `passWithNoTests` is false.
+- Stryker structure inspection:
+  - exactly seven C18 control-logic mutation targets.
+  - `testRunner: "vitest"`, explicit Vitest runner plugin, and `coverageAnalysis: "perTest"`.
+  - `vitest.configFile` points to `packages/ai-core/vitest.config.ts`.
+  - `checkers` is empty, so no TypeScript checker is used.
+  - mutation score `break` threshold is 70.
+- Full current gate: `mise run gate` → `Checked 7 files ... No fixes applied.`, exit 0.
+- PROVE: no automated test was added by this configuration-only task. The approved `_Verify:` intentionally defers executing the registered Vitest hooks to Tasks 4.1/4.3 and mutation execution to Task 29.3; the absent-config startup failure is the RED evidence for this task.
+- VDD review: skipped; all product changes are inside the declared Task 1.4 boundary, no dependency or existing test changed, and no new test lacks PROVE evidence.
+- Task 1.4 marked `[x]` after verification.
+
+### 2026-09-27 Task 1.5 Started
+
+- Objective: Add secret-safe local configuration examples, pre-commit protection, generated-artifact ignores, and accurate setup documentation.
+- Success criteria:
+  - The pre-commit hook runs Biome, staged gitleaks with redaction, then the model-ID repository check in that order.
+  - `.env.example` contains names only for every environment-variable group approved in the plan, including provider, agent, rate-limit, Postgres, and Langfuse settings.
+  - `.gitignore` covers Turborepo, test/mutation reports, and temporary cassette recordings; `.gitleaksignore` starts empty.
+  - README setup uses mise entry points and accurately describes the staged gate and run modes.
+  - AGENTS.md no longer claims the repository has no package or mise tasks.
+  - A staged dummy credential is rejected by gitleaks with the secret value redacted.
+
+### 2026-09-27 Task 1.5 RED Evidence
+
+- `.githooks/pre-commit`, `.gitleaksignore`, and `.env.example` were absent.
+- README contained only the project title and one-line English description.
+- AGENTS.md still stated that the repository was pre-implementation with no `package.json`, test suite, or mise tasks.
+
+### 2026-09-27 Task 1.5 Tooling Observation
+
+- `biome check --write` reported zero processed files for Markdown, `.env.example`, shell hooks, and `.gitignore` because those formats are outside the configured Biome languages.
+- Root cause: Biome correctly ignored unsupported/unknown files under `files.ignoreUnknown: true`; this was not a formatting defect.
+- Resolution: retained manual, line-oriented formatting for those files and kept the repository gate as the authoritative supported-file check.
+- Pre-commit refinement: used Biome's official `--staged` option so the hook checks only staged supported files, matching the approved design.
+
+### 2026-09-27 Task 1.5 Verification Evidence
+
+- Environment example:
+  - 38 unique keys; every assignment is blank.
+  - All explicit plan keys for run modes, model purposes, providers, tools, agent limits, and chat rate limits are present.
+  - Postgres and Langfuse groups are present for the later Compose/config tasks; schema equality remains intentionally assigned to Task 12.4.
+- Hook syntax/order:
+  - executable POSIX shell script; `sh -n` passes.
+  - runs `biome check --staged`, then `gitleaks git --staged --redact`, then `check:model-ids`.
+  - model-ID execution is deferred only while the Task 5.1-owned script is absent; a clean staged run exits 0 and reports the deferral.
+- Required secret negative proof:
+  - staged a temporary fake GitHub token.
+  - pre-commit ran Biome first, then gitleaks reported `leaks found: 1` and exited 1.
+  - output did not disclose the token value because `--redact` was active.
+  - temporary file was unstaged and deleted immediately.
+- Ignore policy: `.turbo/`, Playwright/test/mutation reports, and temporary cassette recordings are ignored; `.env.example` remains explicitly trackable while `.env*` stays ignored.
+- Documentation: README now provides Japanese setup/run-mode guidance; AGENTS.md reflects the implemented root toolchain and staged gate.
+- PROVE: the required staged fake-secret rejection is the task's non-vacuous negative evidence; the same hook without the fake secret subsequently passed.
+- VDD review: skipped; product edits are all within Task 1.5's boundary, no dependency or existing test changed, and no new test was added.
+- Task 1.5 marked `[x]` after verification.
+
+### 2026-09-27 Ship Validation: Tasks 1.4–1.5
+
+- Verdict: GO pending scoped commits.
+- Completion/dependencies: T-1.4 and T-1.5 are `[x]`; T-1.2 and T-1.1 dependencies are shipped.
+- Design/requirements: root Vitest isolation and Stryker targets align with C18; pre-commit, env example, ignore policy, and documentation align with C1, Req 1.18/2.18, NFR-07, and NFR-11.
+- Boundary review: implementation files are within each task's declared boundary; SDD state/PDCA/traceability are workflow records.
+- Test evidence: these tasks add configuration and protection scripts, not automated test cases. Evidence consists of config-object assertions, TypeScript checking, Biome scanned-file counts, shell syntax, and the required staged fake-secret rejection with redaction.
+- Deferred integrations: Vitest setup/reporter execution and Stryker mutation execution remain assigned to T-4.1/T-4.3/T-29.3. The model-ID hook step becomes active automatically when T-5.1 creates its scanner; no model-ID-bearing source exists yet.
+- Mechanical finding and auto-fix: docs/security-only commits can contain no Biome-supported staged files, so `--no-errors-on-unmatched` was added to staged Biome checking. This preserves gitleaks enforcement while avoiding a false hook failure on unsupported file types.
+- Traceability Test cells and Gaps were refreshed; Commit cells will be filled after scoped implementation commits.
+
+### 2026-09-27 Ship Commits: Tasks 1.4–1.5
+
+- `ee05b10 test(platform): configure root test tooling` — root Vitest and Stryker configuration.
+- `d9cec30 chore(platform): add local security scaffolding` — staged pre-commit protection, names-only env example, ignores, and setup documentation.
+- Both commits passed IBM Vault Radar, the repository pre-commit hook, staged gitleaks, and the Task 5.1-aware model-ID deferral.
+- Traceability Commit cells were updated with the scoped implementation hashes.
