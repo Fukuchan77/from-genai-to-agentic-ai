@@ -860,3 +860,316 @@
 - `dbf1300 feat(platform): add local database and tracing services`
 - Pre-commit protection: IBM Vault Radar、staged Biome、gitleaks、Task 5.1-aware model-ID deferral all passed。
 - Traceability Req 1.8 Commit列へ実装SHAを記録した。
+
+### 2026-09-27 Task 4.1 Started
+
+- Objective: Vitest の全テストで `fetch`、`Socket.prototype.connect`、`dns.lookup`、`dns.promises.lookup`、`dns.resolve*` を既定拒否し、`local` モードでは設定済み Ollama 宛てだけを許可する。
+- Success criteria:
+  1. 各ネットワーク API が、接続先と `NETWORK_BLOCKED` コードを持つ `NetworkBlockedError` で実通信前に失敗する。
+  2. `local` + 有効な `OLLAMA_BASE_URL` の完全一致 origin/endpoint だけが元 API へ委譲され、別 host/port は拒否される。
+  3. 全 `dns.resolve*` export を列挙テストで覆い、実装を壊した PROVE で期待する失敗を確認する。
+  4. Task 4.1 のテスト、型検査、`mise run gate` が成功し、API キーや外部サービスを必要としない。
+- SCAN: 対象シンボル・ファイルを参照する既存テストはなし。`vitest.config.ts` が未作成の setup/reporter を参照するため、Task 4.1 単体の RED は一時 Vitest config で分離して実行する。
+
+### 2026-09-27 Task 4.1 RED Harness Error
+
+**Error**: `/tmp/task-4-1-vitest.config.ts` が絶対パスの `node_modules/vitest/config` を解決できず、テスト収集前に startup error となった。
+
+**Context**: 実装ファイルが存在しないことによる RED を、未実装の共通 reporter/setup から分離して観測しようとした。
+
+**Root Cause Investigation**:
+
+1. Documentation: Vitest config は `defineConfig` の使用が必須ではなく、config object を default export できる。
+2. Codebase: ルート config は `vitest/config` を package export から解決しているが、`/tmp` の config はリポジトリの package 解決起点外だった。
+3. Hypothesis: 一時 config から import を除き、plain object を export すれば同じ分離条件で収集まで進める。
+
+**Solution Design**: `/tmp` config を依存 import のない default object に置き換える。テストや実装の境界ファイルは変更しない。
+
+**Learning**: リポジトリ外の一時 config は、そのファイル位置を起点に bare/absolute package subpath を解決するため、自己完結した config にする。
+
+### 2026-09-27 Task 4.1 Static Check Errors
+
+**Error**: Biome が import 順序・整形差分を2件検出し、TypeScript が `mockImplementation` と `guardedConnect` の `this` を暗黙の `any` として2件拒否した。
+
+**Context**: GREEN 後の lint/typecheck 初回実行。
+
+**Root Cause Investigation**:
+
+1. Documentation: `noImplicitThis` を含む strict 設定では function 式の receiver を `this: Type` 疑似引数で注釈する。
+2. Codebase: `tsconfig.base.json` は `strict: true`、Biome は organize imports と formatter を gate で強制する。
+3. Hypothesis: 両 function 式へ `this: net.Socket` を付け、リポジトリ定義の `mise run lint:fix` を適用すれば、動作を変えず規約へ整合する。
+
+**Solution Design**: receiver 型を明示し、Biome の safe formatter/organizer だけを適用する。
+
+### 2026-09-27 Task 4.1 PROVE Script Error
+
+**Error**: zsh の予約済み read-only parameter `status` へ終了コードを代入し、PROVE script が中断した。
+
+**Context**: destination mutation の失敗結果を保存してから実装を復元する shell script。
+
+**Root Cause Investigation**:
+
+1. Documentation: zsh では `$status` は直前の終了ステータスを表す read-only special parameter。
+2. Codebase: 実装バックアップとテストログは `/tmp` に正常作成されていた。
+3. Hypothesis: 変数名を `exit_code` に変更し、復元を shell の終了経路より前に明示すれば証跡を取得できる。
+
+**Solution Design**: まずバックアップから実装を復元し、以降は `exit_code` を使う。mutation ごとに必ず復元してから結果を表示する。
+
+**Result**: 実装はバックアップから復元済み。テスト自体のログは再実行して正式な PROVE 証跡とする。
+
+### 2026-09-27 Task 4.1 Test Evidence
+
+**RED evidence** (before implementation):
+
+- Test: `tooling/vitest/setup-hermetic.test.ts`
+- Command: `mise exec -- pnpm exec vitest run --config /tmp/task-4-1-vitest.config.ts`
+- Failure: `Cannot find module './setup-hermetic'`（1 suite failed、0 tests）。
+- Additional RED: promise-based `dns.promises.resolve*` を安全な spy へ置換して実行し、`promise resolved "[]" instead of rejecting`（1 failed、6 passed）を確認した。
+
+**GREEN / REFACTOR**:
+
+- `NetworkBlockedError` は `code: "NETWORK_BLOCKED"` と接続先 `destination` を保持する。
+- `fetch` は Ollama の完全一致 origin、`Socket.connect` は正規化 host + port、DNS は正規化 hostname を比較し、`local` かつ有効な `OLLAMA_BASE_URL` の時だけ元 API へ委譲する。
+- callback / promise の `lookup` と双方の `resolve*` export を列挙して遮断し、install/restore を冪等にしてテスト分離を可能にした。
+
+**PROVE evidence** (after GREEN):
+
+1. Break applied: `NetworkBlockedError.destination` を固定値 `"redacted"` に変更。
+   - Failure observed: 5 tests failed。代表メッセージは `Expected destination https://example.com/api?q=1; Received redacted`。fetch、Socket、callback/promise lookup、callback resolve、local の別 origin 拒否が接続先を検査していることを確認した。
+2. Break applied: Ollama socket allow 判定を常に `false` に変更。
+   - Failure observed: `delegates matching socket and DNS destinations only in local mode` が `NetworkBlockedError: ... 127.0.0.1:11434` で失敗した。
+3. Break applied: promise `resolve*` の patch 対象列挙を空に変更。
+   - Failure observed: `blocks every exported dns.promises.resolve* function` が `promise resolved "[]" instead of rejecting` で失敗した。
+- Restored: yes。各 mutation 後にバックアップから復元し、最終 targeted run は 7/7 passed。
+
+**Verification**:
+
+- `mise exec -- pnpm exec vitest run --config /tmp/task-4-1-vitest.config.mjs` → 1 file / 7 tests passed。
+- `mise run typecheck` → 1 task successful。
+- `mise run gate` → Biome checked 9 files、no fixes、exit 0。
+- `git diff --check` → exit 0。
+- Note: W1 の段階的 gate は現在 lint のみ。root Vitest config が参照する `gate-reporter.ts` は Task 4.3 の境界であり未実装のため、Task 4.1 の RED/GREEN/PROVE は reporter を登録しない一時 config で分離した。
+
+**Status**: Task 4.1 を `[x]` に更新した。
+
+**Learning**: hermetic guard は callback API だけでなく promise namespace の `resolve*` も塞がないと、`dns.promises.resolve4` 等からオフライン契約を迂回できる。列挙テストは Node の export 追加にも追随できる。
+
+### 2026-09-27 Task 4.1 Independent Review: REQUEST_CHANGES
+
+- Report: `.sdd/reviews/agentic-ai-platform-4.1.md`。
+- Findings:
+  1. `resolve*` の正規表現が数字接尾辞を除外し、`resolve4` / `resolve6` を実装・テストとも見逃した。
+  2. builtin default export の置換後に `syncBuiltinESMExports()` を呼ばず、named/namespace import が元関数を保持した。
+  3. callback / promise の `Resolver.prototype.resolve*` が未遮断だった。
+  4. top-level `net.connect` / `createConnection` が prototype へ渡す正規化済み配列を解析せず、接続先を `localhost` と誤認した。
+- Root cause: テストが実装と同じ列挙条件・直接 `new Socket().connect` 経路だけを使い、Node builtin の別公開形態（数字付き export、live named binding、Resolver、正規化済み net 引数）を独立に列挙していなかった。
+- Action: Task 4.1 を一旦 `[ ]` に戻し、各迂回路を安全な stub で RED にするテストを追加してから修正・再レビューする。
+
+### 2026-09-27 Task 4.1 Review Remediation
+
+**RED evidence for review findings**:
+
+- Expanded tests with safe stubs produced 6 failed / 3 passed before remediation:
+  - top-level `net.connect` expected `example.com:443` but received `localhost`。
+  - callback `resolve4` did not throw。
+  - promise `resolve4` resolved `[]` instead of rejecting。
+  - ESM named `lookup` did not throw。
+  - `Resolver.resolve4` did not throw。
+  - local top-level net route was blocked as `localhost`。
+
+**Fixes**:
+
+- resolver method selection now uses actual function names beginning with `resolve`（including `resolve4` / `resolve6`）and also blocks `reverse`。
+- module-level callback/promise functions and callback/promise `Resolver.prototype` methods are all saved, guarded, and restored。
+- `syncBuiltinESMExports()` runs after installation and restoration so named/namespace builtin imports follow the guard lifecycle。
+- `Socket.prototype.connect` unwraps the normalized argument array passed by top-level `net.connect` / `createConnection` before deriving destination, while forwarding the original arguments unchanged。
+
+**Additional PROVE evidence**:
+
+1. Resolver selector reduced to exact `resolve` only → callback `resolve4` failed to throw; promise `resolve4` resolved `[]`（2 failed）。
+2. install-time `syncBuiltinESMExports()` removed → named export test failed with `expected function to throw an error, but it didn't`。
+3. both Resolver prototype patch loops disabled → Resolver instance test failed with `expected function to throw an error, but it didn't`。
+4. normalized net argument unwrapping removed → top-level destination became `localhost`; local Ollama top-level connection was rejected（2 failed）。
+- Restored: yes。Final targeted run: 1 file / 9 tests passed。
+
+**Final verification after remediation**:
+
+- `mise exec -- pnpm exec vitest run --config /tmp/task-4-1-vitest.config.mjs` → 9/9 passed。
+- `mise run typecheck` → 1 task successful。
+- `mise run gate` → Biome checked 9 files、no fixes、exit 0。
+- `git diff --check` → exit 0。
+- Status: Task 4.1 を再度 `[x]` に更新し、独立再レビューへ進む。
+
+### 2026-09-27 Task 4.1 Final Adversarial Re-review
+
+- Report: `.sdd/reviews/agentic-ai-platform-4.1.md`（Re-review 節）。
+- Verdict: `APPROVE_WITH_NOTES`。
+- Confirmed: callback/promise `resolve4` / `resolve6`、ESM named/namespace binding、callback/promise Resolver、top-level `net.connect` / `createConnection`、local の host/origin/port 制限、全 hook の復元。
+- Independent evidence: targeted 9/9 passed、typecheck success、gate success、`git diff --check` success。
+- Non-blocking note: namespace、local Resolver 委譲、全 hook の復元を恒久テスト本文へさらに明示する余地がある。独立プローブではすべて成功し、Task 4.1 の受け入れは阻害しない。
+
+### 2026-09-27 Task 4.2 Started
+
+- Objective: Vitest global setup で `local` モード時だけ Ollama `/api/tags` を確認し、到達性と明示設定された用途別モデルの取得済み状態を `localAvailability` として提供する。
+- Success criteria:
+  1. `AI_TEST_RUN_MODE` が `local` 以外なら通信せず、理由付きの unavailable を provide する。
+  2. `local` では既定または設定済み `OLLAMA_BASE_URL` の `/api/tags` だけを短い timeout 付きで取得し、到達不能・非2xx・不正応答をテスト失敗ではなく理由付き unavailable に写像する。
+  3. `AI_MODEL_CHAT` / `STRUCTURED` / `EMBEDDING` / `JUDGE` に明示された重複なしの必要モデルを tags と照合し、不足モデルを列挙する。モデル未指定時は到達性のみを判定する（catalog は Task 9 で作成されるためハードコードしない）。
+  4. `project.provide("localAvailability", ...)` の値は structured-clone 可能で、後続 Task 11.2 の理由付き skip に十分な型と情報を持つ。
+  5. Task 4.1 の9テスト、Task 4.2の一時TDDテスト、型検査、`mise run gate` が成功する。
+- SCAN: `global-setup-local.ts` / `localAvailability` の既存実装・テストはなし。恒久的な受け取り側テストは Task 11.2、Ollama停止時の統合確認は Task 29.2 に割り当て済み。Task 4.2は単一ファイルboundaryのため、RED/GREEN/PROVEには削除前提の一時テストを使用する。
+
+### 2026-09-27 Task 4.2 TDD Refinement Error
+
+**Error**: non-local + invalid `OLLAMA_BASE_URL` のRED追加時、期待値変更で `DEFAULT_OLLAMA_BASE_URL` import が未使用になり、`mise run lint:fix` が `noUnusedImports` で失敗した。
+
+**Context**: 「local の時だけOllama設定を検査する」を明示するため、mock mode のテストへ不正URLを与えた。
+
+**Root Cause Investigation**:
+
+1. Documentation: Biome の unsafe unused-import削除は `check --write` では自動適用されない。
+2. Codebase: `biome.json` は `noUnusedImports: error` を明示している。
+3. Hypothesis: 不要になった named import を手動削除し、実装側で mode 判定をURL検査より先にすれば、規約と要件の両方に整合する。
+
+**Solution Design**: 一時テストの未使用importを削除し、non-localでは設定値を通信・URL検証せず理由表示用にだけ保持する。localに入ってからURLを検証する。
+
+### 2026-09-27 Task 4.2 Test Evidence
+
+**RED evidence** (before implementation):
+
+- Temporary test: `tooling/vitest/.task-4-2.test.ts`（Task 4.2完了時に削除）。
+- Initial failure: `Cannot find module './global-setup-local'`（1 suite failed、0 tests）。
+- Refinement RED: mock mode + invalid `OLLAMA_BASE_URL` が local mode 理由ではなくURLエラーを返し、`expected Local tests require AI_TEST_RUN_MODE=local; received OLLAMA_BASE_URL must be...` で失敗した。
+- Missing-model guidance RED: `ollama pull embedding-model` の案内がなく、期待する reason と不一致になった。
+
+**GREEN / REFACTOR**:
+
+- `AI_TEST_RUN_MODE !== "local"` はURL検証・通信より先に理由付き unavailable を返す。
+- local mode は `OLLAMA_BASE_URL`（既定 `http://127.0.0.1:11434`）の `{baseUrl}/api/tags` を2秒 timeout付きで取得する。
+- 到達不能、HTTPエラー、不正なtags応答を `LocalAvailability.reason` へ写像し、global setup自体は失敗させない。
+- 明示された用途別 `AI_MODEL_*` を重複排除してtagsと照合し、不足モデルと `ollama pull` コマンドを返す。Task 9より前のためモデルIDはハードコードしない。
+- `ProvidedContext.localAvailability` を型拡張し、structured-clone可能な値だけを `project.provide` する。
+
+**PROVE evidence** (after GREEN):
+
+1. `checkLocalAvailability` を固定のavailable結果へ置換 → non-local、到達成功、モデル不足、接続/応答失敗の4 testsが期待どおり失敗（4 failed / 1 passed）。
+2. provide keyを `brokenAvailability` へ変更 → `expected vi.fn() to be called with localAvailability` でprovide testが失敗（1 failed / 4 skipped）。
+- Restored: yes。復元後の一時テストは5/5 passed。
+
+**Verification**:
+
+- Temporary unit run: `mise exec -- pnpm exec vitest run --config /tmp/task-4-2-vitest.config.mjs` → 1 file / 5 tests passed。
+- Vitest globalSetup integration: `AI_TEST_RUN_MODE=mock mise exec -- pnpm exec vitest run --config /tmp/task-4-2-integration-vitest.config.mjs` → `inject("localAvailability")`、1/1 passed。
+- Temporary test files: verification後に削除済み。恒久的な受け取り側テストは予定どおりTask 11.2で追加する。
+- Existing Task 4.1 regression: 1 file / 9 tests passed。
+- `mise run typecheck` → 1 task successful。
+- `mise run gate` → Biome checked 10 files、no fixes、exit 0。
+- `git diff --check` → exit 0。
+
+**Status**: Task 4.2 を `[x]` に更新した。
+
+**Learning**: global setupのavailabilityは「テストを落とすpreflight」ではなく、理由付きskipのためのserializableな事実として提供する。catalog作成前はモデルIDを持ち込まず、明示された用途別設定だけを必要モデルとして扱う。
+
+### 2026-09-27 Task 4.3 Reporter Probe Error
+
+**Error**: reporter runtime probe が `TypeError: (intermediate value) is not a constructor` で起動前に失敗した。
+
+**Context**: Vitest 5 の skip reason の実際の格納場所を確認するため、一時 custom reporter を config の文字列パスで登録した。
+
+**Root Cause Investigation**:
+
+1. Documentation: Reporter API の例は reporter object / instance を示す場合がある。
+2. Installed runtime: Vitest 5.0.2 の custom reporter loader は文字列パスの default export を `new CustomReporter(options)` で生成する。
+3. Hypothesis: 一時 reporter を object default export ではなく class default export にすれば、probe が実行される。
+
+**Solution Design**: class reporterへ変更して同じprobeを1回だけ再実行する。Task 4.3本体もroot configの文字列パス登録に合わせ、default class exportとする。
+
+### 2026-09-27 Task 4.3 Started
+
+- Objective: Vitest実行単位ごとに実行・成功・失敗・スキップ理由別・未実行DBテスト件数を決定論的に表示し、gate suiteの実行件数0を非ゼロ終了にする。
+- Success criteria:
+  1. `TestModule.children.allTests()` の最終状態から passed / failed / skipped と `result.note` を集計し、実行件数は passed + failed とする（skip/todoを合格に数えない）。
+  2. skip理由は動的noteを優先し、static skip / todo / pendingにも安定したfallback理由を割り当て、理由名順で表示する。
+  3. project root配下の `*.pg.test.*` を無視ディレクトリを除いて数え、gate/localでは「DB tests not run」、pg suiteでは0を表示する。
+  4. `AI_TEST_SUITE=gate`（未指定時を含む）かつ executed=0の時だけexit code 1を設定し、local/pgの0件は許可する。
+  5. reporter単体テスト、root Vitest実行、型検査、`mise run gate` が成功する。
+- SCAN: reporter実装・テストは未作成。`vitest.config.ts` は文字列パスでdefault exportを読み込む。Vitest 5.0.2実測ではcustom reporterはclass constructorが必要で、動的skip理由は`testCase.result().note`、static skip/todoにはnoteがない。
+
+### 2026-09-27 Task 4.3 Type Error
+
+**Error**: `mise run typecheck` が `Property '0' does not exist on type 'Generator<TestCase, undefined, void>'` で失敗した。
+
+**Context**: `skipReason` 引数型を `ReturnType<allTests>[0]` で導出しようとした。
+
+**Root Cause Investigation**:
+
+1. Documentation: Vitest 5 の `allTests()` は配列ではなく `Generator<TestCase, undefined, void>` を返す。
+2. Installed types: `TestCase` は `vitest/node` からexportされ、`result()`・`options`を公開する。
+3. Hypothesis: 配列indexによる型抽出をやめ、`TestCase`を直接importすれば実装とReporter APIの型が一致する。
+
+**Solution Design**: `skipReason(test: TestCase)`へ変更し、`onTestRunEnd`のunhandled errorsも公式の`SerializedError`型に合わせる。local/pgテストの標準出力は注入writerで抑える。
+
+### 2026-09-27 Task 4.3 Test Evidence
+
+**RED evidence** (before implementation):
+
+- Test: `tooling/vitest/gate-reporter.test.ts`。
+- Failure: `Cannot find module './gate-reporter'`（1 suite failed、0 tests）。
+- Runtime probe: Vitest 5.0.2では文字列パスのcustom reporterをconstructorとして生成し、動的skip理由は`testCase.result().note`、static skip/todoにはnoteがないことを実測した。
+
+**GREEN / REFACTOR**:
+
+- `summarizeTestModules` はpassed / failedだけをexecutedとして数え、skipped/pending/todoを理由別に集計する。
+- `formatGateSummary` はskip理由をlocale非依存の文字列順で表示する。
+- `countUnexecutedPgTests` はproject rootを再帰走査し、生成物・依存ディレクトリを除外して `*.pg.test.*` を数える。pg suite自身は0とする。
+- default exportはVitest 5のloaderに合わせたclass constructor。`onInit`で実行単位のrootを取得する。
+- gate suiteだけ、executed=0でexit code 1と明示エラーを出す。local / pgは0件を許可する。
+
+**PROVE evidence** (after GREEN):
+
+1. 集計を固定0へ変更 → count testが`expected executed=2... received 0`で失敗。
+2. skip理由のsortを除去 → deterministic format testが順序差で失敗。
+3. gate/local/pg条件を反転 → gateが失敗せず、local/pgが誤って失敗（3 tests failed）。
+4. pg suiteの0件特例を無効化 → `expected 0; received 2`で失敗。
+5. `onInit`のroot更新を無効化 → temporary projectの`DB tests not run: 1` assertionが失敗。
+- Restored: yes。復元後は7/7 passed。
+
+**Integration evidence**:
+
+- Root configの文字列パスからreporter classをロード: `mise run test` → 2 files / 16 tests passed。
+- Output: `Gate test summary: executed=16 passed=16 failed=0 skipped=0`; `DB tests not run: 0`。
+- 全件skipの一時統合probe:
+  - `AI_TEST_SUITE=gate` → exit 1、`Gate reporter error: no tests executed in the gate suite.`。
+  - `AI_TEST_SUITE=local` → exit 0、executed=0 / skipped=1を理由付き表示。
+
+**Verification**:
+
+- `mise run test` → 1 Turbo task successful、16/16 tests passed。
+- `mise run typecheck` → 1 task successful。
+- `mise run gate` → Biome checked 12 files、no fixes、exit 0。
+- `git diff --check` → exit 0。
+
+**Status**: Task 4.3 を `[x]` に更新した。Task 4の全サブタスク完了に伴いImplementation Notesを記入した。
+
+**Learning**: Vitest 5のcustom reporterはconfigの文字列パスからclassとして生成される。skip理由は公開`TestCase.result().note`で取得でき、全件skipをexecuted=0として扱うことで空振りのgreenを防げる。
+
+### 2026-09-27 Ship Validation: Tasks 4.1–4.3
+
+- Target: `agentic-ai-platform` T-4.1 / T-4.2 / T-4.3。
+- Verdict: GO（自動修正後の最終gate待ち）。
+- Task completion: 3/3 `[x]`、Task 4 Implementation Notes記入済み、依存Task 1完了。
+- Boundary: 実装変更は各Task boundary内。`tasks.md`・`pdca/do.md`・独立reviewはSDD必須管理成果物として確認した。
+- Requirements/design: Req 1.5、1.12〜1.16、2.5、2.11、NFR-03、plan C18に整合。新しい要件・設計ギャップなし。
+- Non-vacuous evidence: T-4.1は遮断/ESM/Resolver/net正規化のmutation、T-4.2はavailability/provide mutation、T-4.3は集計/順序/空実行/DB件数/root mutationの失敗証跡あり。false-green patternなし。
+- Independent review: T-4.1初回`REQUEST_CHANGES`の4件を修正し、再レビュー`APPROVE_WITH_NOTES`。残るLOW noteは独立probeで正常確認済み。
+- Execution evidence: ship用verbose runでテスト名20件を確認（恒久16件 + T-4.2一時4件）、20/20 passed。恒久テストはTask 4前の0件から16件へ増加。
+- Coverage: touched source合計 lines 93.56%（setup-hermetic 91.47%、global-setup-local 94%、gate-reporter 98.14%）。
+- Mechanical remediation: `traceability.md` のT-4.1〜T-4.3関連Test列とGapsを更新した。Commit列は実装commit作成後にSHAを記録する。
+
+### 2026-09-27 Ship Gate Final: Tasks 4.1–4.3
+
+- Final verdict: GO。
+- Auto-fix: `traceability.md` の関連Test列・Gapsを更新。実装・テストの変更なし。
+- Final gate after remediation: `mise run test` 16/16 passed、`mise run typecheck` 1/1 successful、`mise run gate` Biome 12 files / no fixes、`git diff --check` exit 0。
+- Supplemental execution proof: verbose 20/20 passed（恒久16 + T-4.2 ship probe 4）、touched source lines coverage 93.56%。
+- Staging note: sandbox内の`git add`は`.git/index.lock`作成権限で拒否されたため、同一の明示的file listを承認付きGit操作でstageする。

@@ -230,24 +230,28 @@ _Depends:_ 1
 _Requirements:_ 1.5, 1.12, 1.13, 1.14, 1.15, 1.16, 2.5, 2.11, NFR-03
 _Traces:_ REQ-001, REQ-002, C18
 
-- [ ] 4.1 (P) `setup-hermetic.ts`: `fetch`・`node:net`（`Socket.prototype.connect`）・`node:dns`（`lookup`/`promises.lookup`/`resolve*`）を接続先を含む `NetworkBlockedError` で遮断し、`AI_TEST_RUN_MODE=local` の時だけ `OLLAMA_BASE_URL` 宛てを許可する + `setup-hermetic.test.ts`
+- [x] 4.1 (P) `setup-hermetic.ts`: `fetch`・`node:net`（`Socket.prototype.connect`）・`node:dns`（`lookup`/`promises.lookup`/`resolve*`）を接続先を含む `NetworkBlockedError` で遮断し、`AI_TEST_RUN_MODE=local` の時だけ `OLLAMA_BASE_URL` 宛てを許可する + `setup-hermetic.test.ts`
   _Boundary:_ `tooling/vitest/setup-hermetic.ts`, `tooling/vitest/setup-hermetic.test.ts`
   _Depends:_ 1
   _Requirements:_ 1.5, 2.11, 2.5, NFR-03
   _Traces:_ REQ-001, REQ-002, C18
-- [ ] 4.2 `global-setup-local.ts`: `AI_TEST_RUN_MODE=local` の時だけ Ollama の到達性と必要モデルの取得済みを確認し、`provide("localAvailability", ...)` で渡す
+- [x] 4.2 `global-setup-local.ts`: `AI_TEST_RUN_MODE=local` の時だけ Ollama の到達性と必要モデルの取得済みを確認し、`provide("localAvailability", ...)` で渡す
   _Boundary:_ `tooling/vitest/global-setup-local.ts`
   _Depends:_ 4.1
   _Requirements:_ 1.13, 1.14
   _Traces:_ REQ-001, C18
   _Verify:_ 受け取り側のスキップ判定は 11.2 の `local-only.test.ts` が検証する。本体は、Ollama を止めた状態の `mise run test:local` で `*.local.test.ts` が理由付きでスキップされることを 29.2 で確認する
-- [ ] 4.3 `gate-reporter.ts`: 実行・成功・失敗・スキップ（理由別）の件数と DB 依存の未実行件数を表示し、実行件数0件で非ゼロ終了する。0件での失敗は `AI_TEST_SUITE=gate`（既定）のときだけ適用し、`local`・`pg` では対象のない実行単位を許す（plan C18「テストの実行単位」）+ テスト
+- [x] 4.3 `gate-reporter.ts`: 実行・成功・失敗・スキップ（理由別）の件数と DB 依存の未実行件数を表示し、実行件数0件で非ゼロ終了する。0件での失敗は `AI_TEST_SUITE=gate`（既定）のときだけ適用し、`local`・`pg` では対象のない実行単位を許す（plan C18「テストの実行単位」）+ テスト
   _Boundary:_ `tooling/vitest/gate-reporter.ts`, `tooling/vitest/gate-reporter.test.ts`
   _Depends:_ 4.1
   _Requirements:_ 1.12, 1.14, 1.15, 1.16
   _Traces:_ REQ-001, C18
 
 ### Implementation Notes
+
+- hermetic guard は builtin ESM named export・Resolver・top-level net API まで遮断し、local 例外を Ollama の origin/host/port に限定した。
+- local availability は global setup を失敗させず、到達性・明示された必要モデル・理由・復旧コマンドを serializable な context として渡す。
+- gate reporter は実行件数を passed + failed と定義し、skip理由と未実行 `*.pg.test.*` を決定論的に表示して、gate の空振りだけを失敗させる。
 
 ---
 
