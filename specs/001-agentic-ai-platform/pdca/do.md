@@ -1314,3 +1314,33 @@
 - `mise run gate:repeat`: 10/10 runs successful with the same verdict。
 - `git diff --check`: exit 0。
 - Status: Task 5.5を`[x]`へ更新し、Task 5のImplementation Notesを記入した。
+
+### 2026-09-27 Ship Validation: Tasks 5.1–5.5
+
+- Target: `agentic-ai-platform` T-5.1〜T-5.5。
+- Verdict: GO（機械的な追跡文書の同期後にfull gateを再実行する）。
+- Task completion: 5/5 `[x]`、Task 5 Implementation Notes記入済み、依存Task 1〜4完了。
+- Requirements/design: Req 1.4、1.15、2.10、2.18、plan C1/C20と一致。新しい要件・設計ギャップなし。
+- Boundary: 実装変更はTask 5親boundary内。`tasks.md`・`pdca/do.md`・`traceability.md`はSDD管理成果物として同期する。
+- Non-vacuous evidence: T-5.1〜T-5.4の各実装mutationと、T-5.5の0-file gate・hook deferral mutationに期待どおりの失敗証跡あり。false-green patternなし。
+- Execution evidence: verbose coverage runで全48テスト名を確認。Task 5前の恒久16件から32件増加した。
+- Coverage: 新規source 5ファイルのstatement合計507/600 = 84.50%（model IDs 84.54%、repo rules 89.47%、updates 76.64%、Biome count 63.64%、tsc count 71.88%）。全体lines 87.89%。
+- Determinism: `mise run gate:repeat` 10/10 successful。
+- Supplemental typecheck: `mise run typecheck` 1/1 successful。
+- Deferred coverage entry point: `mise run test:coverage`はworkspace scriptがT-6.3以降で追加されるまで0 task。shipでは`pnpm exec vitest run --config vitest.config.ts --reporter=verbose --coverage`で実行証跡を取得した。
+- Mechanical remediation: `AGENTS.md`、`README.md`、`.sdd/steering/tech.md`の初期gate記述をW1構成へ更新し、`traceability.md`のT-5関連Test列とGapsを更新した。
+- Commit列は実装commit作成後にSHAを記録する。
+
+### 2026-09-27 Ship Commit: Tasks 5.1–5.5
+
+- `e18f7dd chore(platform): add W1 repository quality checks`
+- Pre-commit protection: IBM Vault Radar、staged Biome（9 files）、gitleaks、常時有効化したmodel-ID検査（13 files）が成功した。
+- `traceability.md`のReq 1.4、1.15、2.10、2.18へTest証跡と実装SHAを記録した。
+- 残る機械的同期（AGENTS/README/steering、traceability、ship log）はdocs commitとして記録する。
+
+### 2026-09-27 Ship Traceability Remediation Error
+
+- Error: commit SHAの機械的置換が同じ既存suffixを持つReq 1.12へ最初に一致し、T-5.2/T-5.4/T-5.5のSHAを誤った行へ追加した。
+- Root cause: requirement IDを含まない短い置換needleを使ったため。
+- Solution: Req 1.12を復元し、Req 1.15の行全体をキーにして`e18f7dd`を追加した。
+- Result: Req 1.4、1.15、2.10、2.18だけがTask 5のSHAを持つことを`rg`で確認した。
