@@ -11,14 +11,19 @@
 		},
 		"test": {
 			"dependsOn": ["^build"],
-			"env": ["AI_TEST_RUN_MODE"],
+			"env": ["AI_TEST_RUN_MODE", "AI_TEST_SUITE", "OLLAMA_BASE_URL"],
+			"outputs": ["coverage/**"]
+		},
+		"test:coverage": {
+			"dependsOn": ["^build"],
+			"env": ["AI_TEST_RUN_MODE", "AI_TEST_SUITE", "OLLAMA_BASE_URL"],
 			"outputs": ["coverage/**"]
 		},
 		"//#typecheck": {
 			"outputs": []
 		},
 		"//#test": {
-			"env": ["AI_TEST_RUN_MODE"],
+			"env": ["AI_TEST_RUN_MODE", "AI_TEST_SUITE", "OLLAMA_BASE_URL"],
 			"outputs": ["coverage/**"]
 		}
 	}

@@ -24,19 +24,19 @@ run = "pnpm exec turbo run typecheck"
 
 [tasks.test]
 description = "Run deterministic mock-mode tests"
-env = { AI_TEST_RUN_MODE = "mock" }
+env = { AI_TEST_RUN_MODE = "mock", AI_TEST_SUITE = "gate" }
 run = "pnpm exec turbo run test"
 
 [tasks."test:local"]
 description = "Run local-model comparison and quality tests"
-env = { AI_TEST_RUN_MODE = "local" }
-run = 'pnpm exec turbo run test -- --run ".local.test.ts"'
+env = { AI_TEST_RUN_MODE = "local", AI_TEST_SUITE = "local" }
+run = "pnpm exec turbo run test"
 
 [tasks."test:db"]
 description = "Start Postgres and run Docker-backed database tests"
 depends = ["services:up:db"]
-env = { AI_TEST_RUN_MODE = "mock" }
-run = 'pnpm exec turbo run test -- --run ".pg.test.ts"'
+env = { AI_TEST_RUN_MODE = "mock", AI_TEST_SUITE = "pg" }
+run = "pnpm exec turbo run test"
 
 [tasks."test:e2e"]
 description = "Run Playwright tests in Chromium, Firefox, and WebKit"
@@ -48,7 +48,7 @@ run = "pnpm exec stryker run"
 
 [tasks."test:coverage"]
 description = "Generate workspace coverage reports"
-env = { AI_TEST_RUN_MODE = "mock" }
+env = { AI_TEST_RUN_MODE = "mock", AI_TEST_SUITE = "gate" }
 run = "pnpm exec turbo run test:coverage"
 
 [tasks.gate]
