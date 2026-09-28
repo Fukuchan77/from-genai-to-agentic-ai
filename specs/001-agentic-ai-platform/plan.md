@@ -134,7 +134,7 @@ flowchart LR
 #### C5 ModelCatalog（`ai-core/src/models/catalog.ts`）
 
 - **Responsibility**: モデル ID、プロバイダ、対応機能、コンテキスト上限、入出力トークン単価、実行モード・用途ごとの既定モデルを1か所で定義する。
-- **Public interface**: `MODEL_CATALOG`（`as const satisfies ModelCatalog`）、`getModelEntry(id: ModelId): ModelEntry`、`listModels(filter: { mode: RunMode; provider?: ProviderId; capability?: Capability }): readonly ModelEntry[]`、`defaultModelFor(mode, provider, purpose): ModelId`、`estimateCost(usage, entry): CostEstimate | undefined`。型 `ProviderId`、`ModelId`、`Capability`、`ModelPurpose` は Zod を含まない（クライアントでも import できる）。
+- **Public interface**: `MODEL_CATALOG`（`as const satisfies ModelCatalog`）、`getModelEntry(id: CatalogModelId): ModelEntry`、`listModels(filter: { mode: RunMode; provider?: ProviderId; capability?: Capability }): readonly ModelEntry[]`、`defaultModelFor(mode, provider, purpose): CatalogModelId`（宣言していない mode / provider / purpose の組み合わせ、たとえば埋め込みモデルを持たない Anthropic・Azure の `embedding` は `RangeError`）、`estimateCost(usage, entry): CostEstimate | undefined`。型 `ProviderId`、`ModelId`（`string`）、`Capability`、`ModelPurpose` は `types.ts` に置き、Zod を含まない（クライアントでも import できる）。カタログのキーから導出したリテラル union は `CatalogModelId`（`keyof typeof MODEL_CATALOG`）として `catalog.ts` が export する。`types.ts` は `catalog.ts` に依存しない（2026-09-28、T-9 ship）。
 - **Owns**: カタログのデータ。モデル ID の文字列リテラルを書いてよいのは、このファイルと C4 の `env-schema.ts`（既定値）だけ（Req 2.18）。
 - **Does NOT own**: モデル実装の生成（C6）、コストの表示（004）。
 - **Requirements**: 2.2, 2.8, 2.10, 2.17, 2.18, NFR（コスト可視化の算出元）
@@ -384,7 +384,7 @@ erDiagram
 
 | Entity | Field | Type | Notes |
 |--------|-------|------|-------|
-| ModelEntry | id | `ModelId`（カタログのキーから導出したリテラル union） | プロバイダ上の実モデル ID。値は実装時に各社公式ドキュメントで確認する |
+| ModelEntry | id | `ModelId`（`string`。カタログ内では `CatalogModelId` のリテラル union に絞られる） | プロバイダ上の実モデル ID。値は実装時に各社公式ドキュメントで確認する |
 | | provider | `"anthropic" \| "openai" \| "azure" \| "google" \| "ollama" \| "mock"` | watsonx は v7 対応の実装が出るまで含めない（Req 2.10） |
 | | modes | `readonly RunMode[]` | `mock` / `local` / `live` のどれで選べるか |
 | | capabilities | `{ tools: boolean; structuredOutput: boolean; reasoning: boolean; imageInput: boolean; embedding: boolean; promptCache: "explicit" \| "automatic" \| "none" }` | Req 2.9、2.17、4.8 |
@@ -392,7 +392,7 @@ erDiagram
 | | maxOutputTokens | `number` | 分割判断の出力予約に使う |
 | | pricing | `{ inputPerMTok: number; outputPerMTok: number; cacheReadPerMTok?: number; currency: "USD" } \| null` | `local` / `mock` は `null`。NFR コスト可視化 |
 | | displayName | `string` | UI の選択肢に表示する |
-| ModeDefault | mode × provider × purpose | `Record<RunMode, Partial<Record<ProviderId, Record<ModelPurpose, ModelId>>>>` | `ModelPurpose = "chat" \| "structured" \| "embedding" \| "judge"`（Req 2.8） |
+| ModeDefault | mode × provider × purpose | `Record<RunMode, Partial<Record<ProviderId, Partial<Record<ModelPurpose, ModelId>>>>>` | `ModelPurpose = "chat" \| "structured" \| "embedding" \| "judge"`（Req 2.8）。対応モデルがない用途は省く（Anthropic・Azure の `embedding`） |
 
 **実行サマリとツール結果（C8、C9）**
 

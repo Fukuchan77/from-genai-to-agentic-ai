@@ -45,23 +45,23 @@ ID 規約は `tasks.md` の「ID 対応表」を参照する（この spec の p
 | Requirement | Design | Task | Test | Commit |
 |---|---|---|---|---|
 | 2.1 | C4, C6 | T-12.1, T-14.1, T-14.4 |  |  |
-| 2.2 | C5, C6 | T-9.2, T-14.1 |  |  |
+| 2.2 | C5, C6 | T-9.2, T-14.1 | T-9.2: `catalog.test.ts` 7件（6プロバイダ・watsonx 除外） | T-9.1/T-9.2: `9b4631b` |
 | 2.3 | C6 | T-14.2, T-14.5 |  |  |
 | 2.4 | C7 | T-13.1, T-13.2 |  |  |
 | 2.5 | C4, C18 | T-4.1, T-12.3 | T-4.1: mock既定でfetch/net/dnsを遮断 | T-4.1: `2085577` |
 | 2.6 | C6 | T-14.1 |  |  |
 | 2.7 | C6 | T-14.2 |  |  |
-| 2.8 | C4, C5 | T-9.2, T-12.1 |  |  |
+| 2.8 | C4, C5 | T-9.2, T-12.1 | T-9.2: `catalog.test.ts` 7件（用途別既定値の実在・機能一致） | T-9.1/T-9.2: `9b4631b` |
 | 2.9 | C6 | T-14.3 |  |  |
-| 2.10 | C5, C6, C20, C22 | T-5.3, T-9.2, T-14.3, T-28.5 | T-5.3: registry fixture 4件（新build・24時間待機・AI SDK v7互換） | T-5.3: `e18f7dd` |
+| 2.10 | C5, C6, C20, C22 | T-5.3, T-9.2, T-14.3, T-28.5 | T-5.3: registry fixture 4件（新build・24時間待機・AI SDK v7互換）、T-9.2: `catalog.test.ts`（provider 集合に watsonx なし） | T-5.3: `e18f7dd`、T-9.2: `9b4631b` |
 | 2.11 | C18 | T-4.1 | T-4.1: fetch/net/dns/Resolver遮断・接続先error・local限定例外9件 | T-4.1: `2085577` |
 | 2.12 | C4 | T-12.3 |  |  |
 | 2.13 | C4, C6, C7, C13 | T-12.4, T-13.4, T-14.3, T-20.1 |  |  |
 | 2.14 | C7 | T-13.3 |  |  |
 | 2.15 | C7, C10 | T-10.2, T-10.3, T-10.4, T-13.6 |  |  |
 | 2.16 | C7, C22 | T-13.5, T-28.7 |  |  |
-| 2.17 | C5 | T-9.1, T-9.2 |  |  |
-| 2.18 | C1, C4, C5, C20 | T-1.5, T-5.1, T-9.2, T-12.4 | T-1.5: pre-commit順序、T-5.1: モデルID検査5件・gate 13 files、T-5.5: pre-commit常時実行 | T-1.5: `d9cec30`、T-5.1/T-5.5: `e18f7dd` |
+| 2.17 | C5 | T-9.1, T-9.2 | T-9.2: `catalog.test.ts` 7件（整合性・Zod 非依存型） | T-9.1/T-9.2: `9b4631b` |
+| 2.18 | C1, C4, C5, C20 | T-1.5, T-5.1, T-9.2, T-12.4 | T-1.5: pre-commit順序、T-5.1: モデルID検査5件・gate 13 files、T-5.5: pre-commit常時実行、T-9.2: 同梱カセットの `modelId` 照合 | T-1.5: `d9cec30`、T-5.1/T-5.5: `e18f7dd`、T-9.2: `9b4631b` |
 
 ## Requirement 3: ストリーミングチャット
 
@@ -154,10 +154,11 @@ Task 列に記載する。
 | NFR-10（対応ブラウザ） | C19 | T-26.1, T-27.1, T-27.2 |  |  |
 | NFR-11（サプライチェーン） | C1, C2 | T-1.2, T-1.5, T-2.1, T-2.2 | T-1.2: frozen lockfile、T-1.5: staged secret hook、T-2.1: SHA/permissions/frozen setup、T-2.2: Dependabot構造検査 | T-1.2: `10c3b48`、T-1.5: `d9cec30`、修正（T-1.2）: `01dc364`, `9418a09`、T-2.1/T-2.2: `f9e7aca`、修正（T-2.1）: `956b3df` |
 | NFR-12（UI言語） | C13, C22 | T-20.3, T-28.2 |  |  |
-| NFR-13（コスト可視化） | C5 | T-9.2 |  |  |
+| NFR-13（コスト可視化） | C5 | T-9.2 | T-9.2: `catalog.test.ts` 7件（`estimateCost`、`live` の単価必須） | T-9.1/T-9.2: `9b4631b` |
 
 ## Gaps
 
+- 2026-09-28 の `/sdd-ship`（T-9.1〜T-9.2）では、要件ギャップは検出しなかった。ai-core の gate テストは3件から10件に増え、`catalog.ts` の行カバレッジは100%（分岐は82.35%）。spec drift として、plan C5 の ModeDefault が provider ごとに全用途を必須としていた点（Anthropic・Azure には埋め込みモデルがない）と、`ModelId` をリテラル union としていた点を検出し、承認を得て plan を実装（用途は `Partial`、`ModelId = string` とリテラル union の `CatalogModelId` の分離）に合わせた。同梱カセットの `modelId` 照合は、カセットを追加する T-11 以降で実データに対して働く。
 - 2026-09-28 の `/sdd-ship`（T-8.1〜T-8.3）では、新しい要件・設計ギャップは検出しなかった。root の gate テストは234件から257件へ23件（`check-web-theme.test.mjs`）増加した。`vite-tsconfig-paths` を Vite 8 native `resolve.tsconfigPaths` に置き換えた設計変更は、plan・research に反映済みである。focus ring の computed style のコントラストは T-27.3 のブラウザ検査に、Web の Vitest execution unit の実テストでの確認は T-21.1 に引き継ぐ。
 - 2026-09-28 の `/sdd-ship`（T-7.1〜T-7.3）では、新しい要件・設計ギャップは検出しなかった。eval-suite はテスト0件のため `test` スクリプトを置かず gate の実行単位に入らない（T-19.1 で最初のテストと同時に加える）。7.2 の構成は suite 別の直接実行で確認し、実テストでの確認は T-19.1・T-19.2 に引き継ぐ。敵対的レビューの LOW（README の `*.db.test.ts` 欠落）は修正済み。
 - 2026-09-28 の `/sdd-ship`（T-6.1〜T-6.3）では、新しい要件・設計ギャップは検出しなかった。ai-core の gate テストは0件から3件に増え、`errors.ts` の行カバレッジは100%（6/6）。`/sdd-validate-impl` で `pnpm-lock.yaml` が境界外と判定されたため、T-6・T-7・T-8 と T-6.1・T-7.1・T-8.1 の `_Boundary:_` に加えた。`test:coverage` のスクリプト文面を plan C18 と mise タスク表（閾値の強制は gate の `test` 段）に合わせて `--coverage.thresholds.lines=0` 付きにそろえた（T-6.3、T-19.1、T-21.1）。`PlatformError` をどの公開サブパスから再 export するかは T-21.1 までに決める。

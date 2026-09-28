@@ -2428,3 +2428,12 @@ GREEN 後、7件すべての新規テストについて独立した deliberate b
 - ai-core execution unit: 2 files、10/10 passed（Task 9 で +7 tests）、lines 100%、functions 100%、branches 83.33% overall。`catalog.ts` lines 100%、functions 100%、branches 82.35%。
 - Turbo: 2/2 test tasks successful。既知の `no output files found for @platform/ai-core#test` warning は test task に生成物を宣言していないための非失敗 warning。
 - VDD risk gate: task boundary 外変更なし、依存追加なし、既存テスト変更なし、coverage drop なし、全7新規テストの PROVE evidence あり。独立 reviewer trigger なし。
+
+### 2026-09-28 21:35 Task 9 Validation & Ship
+
+- Verdict: GO（spec drift 1件は人間の判断で plan を実装に合わせて解消）。
+- Spec drift: plan C5 の ModeDefault は provider ごとに全用途必須だったが、Anthropic・Azure は埋め込みモデルを持たないため実装は `Partial` で、未定義の組み合わせは `RangeError`。`ModelId` は plan ではリテラル union だったが、`types.ts` を `catalog.ts` から独立させるため `ModelId = string`、リテラル union は `CatalogModelId`。承認を得て plan.md（C5 Public interface、データモデル表）を更新した。
+- Validation check: `toHaveProperty(id)` にドットを含む ID（`gpt-5.1` など）を渡しても自身のキーとして照合されることを一時テストで確認し、削除した（将来のカセット照合での誤検出はない）。
+- Gate: `mise run gate` → exit 0。ai-core `executed=10 passed=10 failed=0 skipped=0`（`catalog.test.ts` 7 tests）、`catalog.ts` lines 100% / branches 82.35%。root `executed=257 passed=257`。`mise run typecheck` → 4/4 successful。
+- Mechanical fixes: traceability.md（2.2・2.8・2.10・2.17・2.18・NFR-13 の Test/Commit、Gaps）、AGENTS.md（プロジェクト状態にモデルカタログを追加）。
+- Commit: `9b4631b` feat(ai-core): add model catalog with defaults, lookup, and cost estimation。
