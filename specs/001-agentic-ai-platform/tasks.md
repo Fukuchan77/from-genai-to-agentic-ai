@@ -262,33 +262,42 @@ _Traces:_ REQ-002, C5
 時刻と外部サービスへのアクセスをインターフェースとして定義し、実装を差し替え可能にする。
 録画用ラッパ（`recordingHttpFetcher`・`recordingTranscriptSource`・`recordingWebSearch`）は C7 に属する（13.4）。
 
-_Boundary:_ `packages/ai-core/src/ports/clock.ts`, `packages/ai-core/src/ports/clock.test.ts`, `packages/ai-core/src/ports/http.ts`, `packages/ai-core/src/ports/http.test.ts`, `packages/ai-core/src/ports/transcript.ts`, `packages/ai-core/src/ports/transcript.test.ts`, `packages/ai-core/src/ports/web-search.ts`, `packages/ai-core/src/ports/web-search.test.ts`, `packages/ai-core/src/ports/index.ts`
+_Boundary:_ `packages/ai-core/src/ports/clock.ts`, `packages/ai-core/src/ports/clock.test.ts`, `packages/ai-core/src/ports/http.ts`, `packages/ai-core/src/ports/http.test.ts`, `packages/ai-core/src/ports/transcript.ts`, `packages/ai-core/src/ports/transcript.test.ts`, `packages/ai-core/src/ports/web-search.ts`, `packages/ai-core/src/ports/web-search.test.ts`, `packages/ai-core/src/ports/index.ts`, `packages/ai-core/src/ports/abort.ts`
 _Depends:_ 6
 _Requirements:_ 2.15, 5.7
 _Traces:_ REQ-002, REQ-005, C10
 
-- [ ] 10.1 (P) `ports/clock.ts`: `Clock`、`systemClock`、`createFakeClock()` + `clock.test.ts`（時刻の進行、`timeoutSignal` の中断）
+- [x] 10.1 (P) `ports/clock.ts`: `Clock`、`systemClock`、`createFakeClock()` + `clock.test.ts`（時刻の進行、`timeoutSignal` の中断）
   _Boundary:_ `packages/ai-core/src/ports/clock.ts`, `packages/ai-core/src/ports/clock.test.ts`
   _Depends:_ 6
   _Requirements:_ 5.7
   _Traces:_ REQ-005, C10
-- [ ] 10.2 `ports/http.ts`: `HttpFetcher` と `createNodeHttpFetcher()` + `http.test.ts`（注入した `fetch` で、ステータス・ヘッダー・本文の写像と `AbortSignal` の伝播）
+- [x] 10.2 `ports/http.ts`: `HttpFetcher` と `createNodeHttpFetcher()` + `http.test.ts`（注入した `fetch` で、ステータス・ヘッダー・本文の写像と `AbortSignal` の伝播）
   _Boundary:_ `packages/ai-core/src/ports/http.ts`, `packages/ai-core/src/ports/http.test.ts`
   _Depends:_ 10.1
   _Requirements:_ 2.15
   _Traces:_ REQ-002, C10
-- [ ] 10.3 `ports/transcript.ts`: `TranscriptSource` と `createYoutubeiTranscriptSource()` + `transcript.test.ts`（異常理由 `no-captions`/`private`/`fetch-failed` の写像を、`youtubei.js` の応答を模したテスト内のスタブで検証する。C7 の fixture 実装には依存しない）
-  _Boundary:_ `packages/ai-core/src/ports/transcript.ts`, `packages/ai-core/src/ports/transcript.test.ts`
+- [x] 10.3 `ports/transcript.ts`: `TranscriptSource` と `createYoutubeiTranscriptSource()` + `transcript.test.ts`（異常理由 `no-captions`/`private`/`fetch-failed` の写像を、`youtubei.js` の応答を模したテスト内のスタブで検証する。C7 の fixture 実装には依存しない）
+  _Boundary:_ `packages/ai-core/src/ports/transcript.ts`, `packages/ai-core/src/ports/transcript.test.ts`, `packages/ai-core/src/ports/abort.ts`
   _Depends:_ 10.1
   _Requirements:_ 2.15
   _Traces:_ REQ-002, C10
-- [ ] 10.4 `ports/web-search.ts`・`index.ts`: `WebSearchProvider` と `createTavilySearch(apiKey)`、`./ports` の公開API + `web-search.test.ts`（注入した Tavily クライアントのスタブで `SearchHit` への写像と `AbortSignal` の伝播）
-  _Boundary:_ `packages/ai-core/src/ports/web-search.ts`, `packages/ai-core/src/ports/web-search.test.ts`, `packages/ai-core/src/ports/index.ts`
+- [x] 10.4 `ports/web-search.ts`・`index.ts`: `WebSearchProvider` と `createTavilySearch(apiKey)`、`./ports` の公開API + `web-search.test.ts`（注入した Tavily クライアントのスタブで `SearchHit` への写像と `AbortSignal` の伝播）
+  _Boundary:_ `packages/ai-core/src/ports/web-search.ts`, `packages/ai-core/src/ports/web-search.test.ts`, `packages/ai-core/src/ports/index.ts`, `packages/ai-core/src/ports/abort.ts`
   _Depends:_ 10.2, 10.3
   _Requirements:_ 2.15
   _Traces:_ REQ-002, C10
 
 ### Implementation Notes
+
+- `Clock` は epoch milliseconds を返し、fake 実装は `advanceBy` / `set` で決定論的に進行する。期限到来時は native timeout と同じ `TimeoutError` の `DOMException` で中断する。
+- HTTP ポートは Web 標準の `RequestInit` / `fetch` を境界に使い、応答本文を文字列、headers を小文字キーの record に正規化する。
+- YouTube 字幕ポートは `youtubei.js` の `getInfo()` の `basic_info`・`playability_status` と `getTranscript()` の戻り値を Zod で検証してから `TranscriptResult` に変換する（constitution 原則 5。`/sdd-ship` の NO-GO を受けた修正）。検証の失敗（`start_ms` / `end_ms` が数字列でない、終了が開始より前、など）は `fetch-failed` に閉じる。
+- 失敗理由の分類: "This video is private" / "private video"（例外の `info.reason`、または `playability_status.reason`）は `private`。`LOGIN_REQUIRED` だけでは年齢制限の動画も含むため `private` にしない。youtubei の定型文 "Video likely has no transcript" と、字幕パネル・segment が空の応答は `no-captions`。それ以外は `fetch-failed`。例外の `info` は Zod で `status` / `reason` だけを読み、循環参照でも分類中に例外を投げない。
+- section header は `target_id` の有無で segment から除外する。youtubei の parser node が持つ `type`（`TranscriptSegment` / `TranscriptSectionHeader`）による判別は、スタブ全体の変更を伴うため見送った（`.sdd/reviews/agentic-ai-platform-10.3-10.4.md` の L-4。youtubei の更新で `targetId` が欠けた場合は全 segment が `no-captions` になる）。
+- `Innertube.create()` の失敗はキャッシュせず、次の呼び出しで作り直す。
+- Tavily ポートは SDK の応答を `unknown` として受け、Zod（`url` は http/https のみ）で検証してから `SearchHit` に写像する。検証の失敗と SDK の例外（401・429・通信失敗など）は `PlatformError("source-unavailable", { provider: "tavily" })` に閉じる。`publishedDate` の欠落・`null` は省略する。http/https 以外の URL を1件でも含む応答は、結果全体を fail-closed で拒否する（引用元として扱う URL を部分的に信頼しないため）。
+- `@tavily/core` 0.7.13 は未知の option をリクエスト本文へ直列化するため、本番 adapter は `signal` を SDK に渡さず、呼び出し元の中断は abort race で即時に返す（SDK の HTTP 要求自体は止まらない。upstream が中断の option を提供した時点で adapter だけを置き換える）。注入 client の契約には `signal` を残し、中断に対応する client は利用できる。abort race は字幕と Web 検索で共有する内部 helper `ports/abort.ts` に置き、`./ports` からは公開しない（Task 10・10.3・10.4 の境界に追加）。
 
 ---
 

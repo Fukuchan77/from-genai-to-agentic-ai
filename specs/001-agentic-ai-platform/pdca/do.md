@@ -2437,3 +2437,170 @@ GREEN 後、7件すべての新規テストについて独立した deliberate b
 - Gate: `mise run gate` → exit 0。ai-core `executed=10 passed=10 failed=0 skipped=0`（`catalog.test.ts` 7 tests）、`catalog.ts` lines 100% / branches 82.35%。root `executed=257 passed=257`。`mise run typecheck` → 4/4 successful。
 - Mechanical fixes: traceability.md（2.2・2.8・2.10・2.17・2.18・NFR-13 の Test/Commit、Gaps）、AGENTS.md（プロジェクト状態にモデルカタログを追加）。
 - Commit: `9b4631b` feat(ai-core): add model catalog with defaults, lookup, and cost estimation。
+
+### 2026-09-28 Task 10 Started
+
+- Objective: C10 Ports（Clock / HTTP / YouTube transcript / Tavily search）を差し替え可能な公開 API として実装する。
+- Success criteria:
+  1. fake Clock は手動進行で `now()` と期限到来時の `AbortSignal` を決定論的に更新する。
+  2. HTTP ポートは注入した `fetch` の status / headers / body を写像し、呼び出し元の signal を同一参照で渡す。
+  3. YouTube 字幕ポートはタイムスタンプ付き segment を写像し、字幕なし・非公開・その他取得失敗を閉じた理由へ分類する。
+  4. Tavily ポートは result を `SearchHit` へ写像し、signal を注入クライアントへ渡して中断を呼び出し元へ反映する。
+  5. `@platform/ai-core/ports` は UI 依存や `any` を公開せず、全 gate を通過する。
+- Approach: 4サブタスク分の契約テストを先に追加し、RED を確認後、最小実装・個別 PROVE・全 gate の順に進める。
+
+### 2026-09-28 21:39 ❌ Typecheck / Lint Error Encountered
+
+**Error**: `mise run typecheck` が implicit any、`exactOptionalPropertyTypes` 下の youtubei 構造型不一致、未解決 `signal: undefined`、pending Promise の推論 `Promise<unknown>` で失敗。`mise run lint` は import 順・改行など6件の整形違反。
+
+**Context**: GREEN の runtime tests 12件成功後、strict typecheck と Biome を初実行した。
+
+**Root Cause Investigation**:
+
+1. **Documentation / dependency declarations**: インストール済み `youtubei.js@18.1.0` の `VideoInfo.basic_info` はプロパティ自体が必須で値が `undefined` を含む。一方、最初のテスト用構造型は exact optional property として宣言したため代入互換でなかった。Tavily の SDK options は index signature を持つが公式の専用 `AbortSignal` option はない。
+2. **Codebase / compiler output**: `tsconfig.base.json` の strict + `exactOptionalPropertyTypes` により、optional property へ明示的な `undefined` を渡すことと、`Promise(() => {})` の未指定 generic が拒否された。`Object.freeze` の object literal では Clock の contextual typing が失われ `ms` が implicit any になった。
+3. **Hypothesis**: 外部ライブラリ型をテスト用最小 interface へ直接代入しようとしたことと、exact optional の値を常に構築したことが原因。runtime ロジックの失敗ではない。
+
+**Solution Design**:
+
+- youtubei 本番 client は小さな adapter で内部ポート形へ明示写像し、テスト double と本番型を同じ interface に直接代入しない。
+- optional `signal` は存在するときだけ options に加え、pending Promise に結果型を付ける。
+- callback parameter を明示し、Biome は定義済み `mise run lint:fix` で機械整形する。
+
+### 2026-09-28 21:37 Task 10 RED Evidence
+
+- Command: `mise exec -- pnpm --filter @platform/ai-core exec vitest run src/ports/clock.test.ts src/ports/http.test.ts src/ports/transcript.test.ts src/ports/web-search.test.ts --coverage.enabled=false --reporter=verbose`
+- Result: exit 1。4 suite すべてが実装 module 不在の `ERR_MODULE_NOT_FOUND`（`./clock` / `./http` / `./transcript` / `./web-search`）で失敗した。
+- SCAN baseline: 対象 symbol と `src/ports/` は新規で既存 test 参照なし。回帰対象として既存 `errors.test.ts` / `models/catalog.test.ts` を最終 gate で再実行する。
+
+### 2026-09-28 21:38 Task 10 GREEN Evidence
+
+- Minimal implementation: `Clock`、Web 標準 fetch adapter、youtubei adapter と閉じた失敗理由、Tavily adapter、`ports/index.ts` の公開 API を追加した。
+- Targeted verification: 4 files、12/12 passed。
+- Typecheck / lint resolution result: youtubei の外部型を内部の最小 interface へ明示写像し、exact optional property を条件付き spread で構築した。`signal` も存在時だけ option に追加した。`mise run typecheck` は4/4 tasks successful、`mise run lint` は57 files scanned で成功。
+- Learning: 外部 SDK の巨大な戻り型をテスト seam の構造型へ直接代入せず、本番 adapter とテスト double が共有する小さな内部契約へ正規化すると、strict/exact optional を保ったまま差し替え可能になる。
+
+### 2026-09-28 21:39 Task 10 PROVE Evidence
+
+各新規 test について実装を1か所ずつ deliberate break し、対象 test だけを実行して exit 1 と期待 assertion を確認後、毎回復元した。最初の自動化は package-relative test path を root-relative のまま渡して test discovery で失敗したため、原因を確認して `packages/ai-core/` prefix を除くよう修正し、全12件を再実施した。
+
+| Test | Break applied | Failure observed |
+|---|---|---|
+| fake time progression | `currentTime += 0` | `expected 1000 to be 1250` |
+| fake timeout | deadline 判定を常に false | `expected false to be true` |
+| system clock | `now()` を `0` に固定 | 差分が `expected ... to be less than 100` |
+| HTTP mapping | status を `0` に固定 | response object の deep equality failure |
+| HTTP signal | fetch へ空 init を渡す | injected fetch の call arguments mismatch |
+| transcript mapping | `startSeconds` を `0` に固定 | `TranscriptResult` deep equality failure |
+| no-captions mapping | 理由を `fetch-failed` に変更 | expected `no-captions`, received `fetch-failed` |
+| private mapping | 理由を `fetch-failed` に変更 | expected `private`, received `fetch-failed` |
+| fetch-failed mapping | fallback を `no-captions` に変更 | expected `fetch-failed`, received `no-captions` |
+| private metadata | private 判定を無効化 | expected `private`, received `no-captions` |
+| Tavily mapping | snippet を空文字に固定 | `SearchHit[]` deep equality failure |
+| Tavily signal | client へ空 options を渡す | injected client の call arguments mismatch |
+
+- Restore verification: 4 files、12/12 passed。
+
+### 2026-09-28 21:40 Task 10 Verification Evidence
+
+- Targeted tests: 4 files、12/12 passed。
+- Touched-file coverage run: lines 77%。内訳は `clock.ts` 96.42%、`http.ts` 100%、`transcript.ts` 67.27%、`web-search.ts` 71.42%。未実行行の中心は実ネットワーク用 youtubei adapter と abort race の resolve/reject cleanup で、gate 全体の ai-core lines は 81.45% と NFR 80% を維持した。
+- Full gate: `mise run gate` → exit 0。Biome 57 files、model-ID 40 files、repository rules 40 / 1 / 2 / 1 files。root `executed=257 passed=257 failed=0 skipped=0`。ai-core 6 files、22/22 passed、lines 81.45%。
+- Typecheck: `mise run typecheck` → 4/4 tasks successful。
+- Status: 10.1〜10.4 を `[x]` に更新。依存追加・既存 test 変更・task 実装 boundary 外のコード変更なし。全12新規 test の PROVE evidence あり、VDD reviewer trigger なし。
+
+### 2026-09-28 Task 10.3・10.4 Remediation（`/sdd-ship` NO-GO への対応）
+
+- Trigger: `/sdd-ship` が constitution 原則 5（外部 API の応答を Zod で検証する）と plan の原則チェック（C10）への違反で NO-GO。人の判断で「実装を直す」（選択肢 A）を選んだ。
+- Objective: Tavily と youtubei.js の応答を `unknown` として受けて Zod で検証し、検証の失敗を閉じたエラーに写像する。あわせて失敗分類の過剰な一致と `raceWithAbort` の重複を解消する。
+- Success criteria:
+  1. 形式が崩れた Tavily 応答（`results` 欠落、`score` 欠落、http/https 以外の `url`）は `PlatformError("source-unavailable", { provider: "tavily" })` で失敗する。
+  2. 形式が崩れた youtubei 応答（`is_private` の型、`start_ms` の型、`snippet.text` の型）は `TranscriptSourceError("fetch-failed")` で失敗し、`no-captions` や `private` に誤分類されない。
+  3. "transcript" を含むだけのネットワークエラーは `fetch-failed` に分類される。
+  4. 呼び出し元の中断は `TranscriptSourceError` ではなく中断理由のまま伝わる。
+
+#### RED Evidence
+
+- Command: `mise exec -- pnpm exec vitest run src/ports/transcript.test.ts src/ports/web-search.test.ts --coverage.enabled=false`
+- Result: exit 1。16件中8件が期待どおりの assertion で失敗した（Tavily 不正応答3件は `TypeError` または resolve、youtubei 不正応答は `private` / `no-captions` への誤分類または resolve、"Failed to fetch transcript: …" は `no-captions` に誤分類）。中断理由の伝播と `publishedDate` の省略の2件は既存の挙動の特性化テストとして最初から成功し、PROVE で非空虚性を確認した。
+- SCAN: 変更する symbol は `ports/` 内だけで参照され、既存の対象テストは `transcript.test.ts` / `web-search.test.ts`。youtubei のスタブの `snippet` を `{ toString }` から youtubei の `Text` と同じ `{ text }` に改めた（`Text.text` を読む実装に合わせ、スタブを実物の形に近づけた）。
+
+#### GREEN
+
+- `web-search.ts`: `tavilyResponseSchema`（`url` は `z.url({ protocol: /^https?$/ })`、`publishedDate` は `nullish`）で `safeParse` し、失敗は `issues` のパスを details に含めて `source-unavailable`。注入 client の戻り型を `Promise<unknown>` にした。
+- `transcript.ts`: `basicInfoSchema` と `transcriptInfoSchema`（`content` / `body` は youtubei の型どおり `nullish`、`snippet.text` は `optional`）で検証し、失敗は `parseOrFail` が `fetch-failed` を投げる。本番 adapter は手書きの写像をやめ、`innertube.getInfo(videoId)` の `VideoInfo` をそのまま返す（`getTranscript()` は元のインスタンスで呼ぶので `this` を保つ）。`classifyFailure` の `no-captions` 判定を youtubei の定型文 "no transcript" に限定した。
+- `abort.ts`: 共有の `raceWithAbort` を新設し（`./ports` からは公開しない）、tasks.md の Task 10・10.3 の `_Boundary:_` に加えた。
+- Biome の整形違反1件は `mise run lint:fix` で修正した。
+
+#### ❌ Vacuous Test Detected（PROVE 中）
+
+**Error**: 不正な youtubei 応答のケースのうち「`getTranscript()` が `null`」と「segment の `snippet` 欠落」は、検証を無効化しても `TypeError` → `fetch-failed` に分類されて成功し続けた。
+
+**Root Cause**: 検証なしでもプロパティ参照が `TypeError` を投げ、それが `classifyFailure` で `fetch-failed` になるため、その入力では Zod の有無を区別できない。
+
+**Solution**: 検証なしでは例外にならず誤った値が流れる入力（`snippet: { text: 42 }`）に置き換えた。Tavily の破壊も `if (false)`（`parsed.data` が `undefined` になり別の理由で失敗する）から「検証を丸ごと飛ばす」`{ success: true, data: raw }` に改めた。
+
+#### PROVE Evidence
+
+| Test | Break applied | Failure observed |
+|---|---|---|
+| fetch-failed（"Failed to fetch transcript: …"） | `no-captions` 判定を `includes("transcript")` に戻す | expected `fetch-failed`, received `no-captions` |
+| malformed metadata | `parseOrFail` が検証失敗時に値をそのまま返す | expected `fetch-failed`, received `private` |
+| malformed segment timing | 同上 | promise resolved instead of rejecting |
+| malformed segment snippet | 同上 | promise resolved instead of rejecting |
+| caller abort reason | catch 内の `if (signal?.aborted) throw signal.reason` を削除 | expected `{ name: "AbortError" }`, received `TranscriptSourceError` |
+| maps youtubei segments（スタブ変更） | segment の `text` を `""` に固定 | `TranscriptResult` deep equality failure |
+| omits missing/null publishedDate | `publishedDate: result.publishedDate` を常に設定 | `SearchHit[]` deep equality failure |
+| Tavily missing results | `safeParse` を `{ success: true, data: raw }` に置換 | received `TypeError`, expected `PlatformError` |
+| Tavily missing score | 同上 | promise resolved instead of rejecting |
+| Tavily non-http url | `z.url()` から protocol 制限を外す | promise resolved instead of rejecting |
+
+- Restore verification: `cmp` で元ファイルと一致、`src/ports` 21/21 passed。
+
+#### Verification Evidence
+
+- Full gate: `TURBO_FORCE=true mise run gate` → exit 0。Biome 58 files。root `executed=257 passed=257 failed=0 skipped=0`。ai-core `executed=31 passed=31 failed=0 skipped=0`（22件 → 31件、+9: transcript 5→10、web-search 2→6）。
+- Coverage（ai-core lines 81.45% → 94.91%）: `transcript.ts` 67.27% → 93.18%、`web-search.ts` 71.42% → 100%、`abort.ts` 80%（未実行は reject 側の listener 解除）。
+- Typecheck: `mise run typecheck` → 4/4 tasks successful。
+- VDD trigger: 境界外の新規ファイル（`abort.ts`、境界宣言を更新済み）と既存テストのスタブ変更。`sdd-reviewer` で独立レビューを実施（結果は下記）。
+- Learning: 「検証なしでも失敗する」入力は、検証の有無を区別しない。Zod 検証の PROVE では、検証を外したときに誤った値が黙って通る入力を選ぶ。
+
+#### VDD Review（round 1）: REQUEST_CHANGES
+
+- Reviewer: `sdd-reviewer`（`.sdd/reviews/agentic-ai-platform-10.3-10.4.md`）。trigger（境界外の `abort.ts`、スタブ変更）は妥当と判定された。実物の youtubei parser インスタンスで schema が通ることも reviewer が確認した。
+- 指摘: H-1（`@tavily/core` が未知の option を本文へ直列化するため `signal` が `"signal":{}` として送られ、要求も止まらない）、M-1（失敗した `Innertube.create()` の永続キャッシュ）、M-2（`no-captions` の空応答と `private` の分類に test がない）、M-3（`playability_status` で報告される非公開動画を `private` にできない）、L-1〜L-6。
+
+#### Round 1 修正の RED / GREEN / PROVE
+
+- RED: 34件中8件が期待どおりの assertion で失敗した（SDK 例外が raw `Error`、SDK に `{ signal }` が渡る、循環 `info` で `TypeError`、"private member" が `private` に誤分類、年齢制限の LOGIN_REQUIRED が `private` に誤分類、`start_ms: ""` が resolve、playability の非公開が `fetch-failed`、失敗した client が再利用される）。`no-captions` の空応答4件と `info.reason` の非公開1件は既存の挙動の特性化テストとして成功し、PROVE で非空虚性を確認した。
+- GREEN: H-1・M-1・M-2・M-3・L-1・L-2・L-3・L-6 を修正した。L-4（`type` による header 判別）は見送り、L-5（非 http URL の fail-closed）は意図として tasks.md に記録した。plan.md のファイル表に `ports/abort.ts` を追加した。
+
+| Test | Break applied | Failure observed |
+|---|---|---|
+| private（`info.reason`） | `info` の詳細を読まない | expected `private`, received `fetch-failed` |
+| 年齢制限 LOGIN_REQUIRED / private member | 非公開判定を `includes("private") \|\| includes("login_required")` に戻す | 2件とも expected `fetch-failed`, received `private` |
+| 循環 `info` | `JSON.stringify(cause.info)` に戻す | received `TypeError: Converting circular structure`, expected `fetch-failed` |
+| empty segment start | 数字列の regex を外す | promise resolved instead of rejecting |
+| no-captions の空応答4件 | `segments.length === 0` の判定を削除 | 4件とも promise resolved instead of rejecting |
+| playability の非公開 | `playability_status` の判定を削除 | expected `private`, received `fetch-failed` |
+| client の再作成 | 失敗時の cache 解除を削除 | 2回目の呼び出しが reject |
+| SDK 例外の包み | catch で元の例外を再送出 | received `Error`, expected `PlatformError` |
+| 本番 SDK へ signal を渡さない | adapter が options を SDK へ渡す | `sdkSearch` の呼び出し引数の不一致 |
+
+- Restore verification: `cmp` で元ファイルと一致、`src/ports` 34/34 passed。
+- Full gate: `TURBO_FORCE=true mise run gate` → exit 0。Biome 58 files。root `executed=257 passed=257`。ai-core `executed=44 passed=44 failed=0 skipped=0`（31件 → 44件）、lines 96.12%（`transcript.ts` 96%、`web-search.ts` 100%、`abort.ts` 80%）。`mise run typecheck` → 4/4 successful。
+- Learning: 注入 client の契約と本番 SDK の実際の option 処理は一致するとは限らない。SDK の option を通す adapter は、SDK の実装（`__objRest` → body）を読み、本番 adapter 自体を module mock で検証する。
+
+#### VDD Review（round 2）: APPROVE_WITH_NOTES と LOW の解消
+
+- Reviewer は H-1・M-1〜M-3・L-1〜L-3・L-5・L-6 を解消済み、L-4 を記録済みの見送りと判定した。残りの LOW 3件（`end >= start` の refine、"Private video" の文言、`abort.ts` の reject 側の解除）はどれも test の不足だったので、test を加えて解消した。
+
+| Test | Break applied | Failure observed |
+|---|---|---|
+| inverted segment timing | refine を常に true にする | promise resolved instead of rejecting |
+| playability reason "Private video" | 非公開判定を "video is private" だけにする | expected `private`, received `fetch-failed` |
+| Tavily SDK 例外（signal あり） | `raceWithAbort` の reject 側を resolve にする | expected `source-unavailable` の SDK 例外, received 応答形式の `PlatformError` |
+
+- Restore verification: `cmp` で一致、`src/ports` 36/36 passed。
+- Final gate: `TURBO_FORCE=true mise run gate` → exit 0。Biome 58 files、root `executed=257 passed=257`、ai-core `executed=46 passed=46 failed=0 skipped=0`、lines 97.67%（`abort.ts` 100%、`transcript.ts` 96%、`web-search.ts` 100%）。`mise run typecheck` → 4/4 successful。
+- Status: 10.3・10.4 は `[x]` のまま（VERIFY green）。次は `/sdd-ship agentic-ai-platform Task10`。
