@@ -1,0 +1,18 @@
+{
+	"name": "@platform/eval-suite",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"typecheck": "tsc -p tsconfig.json --noEmit"
+	},
+	"dependencies": {
+		"@platform/ai-core": "workspace:*"
+	},
+	"devDependencies": {
+		"@types/node": "26.6.3",
+		"@vitest/coverage-v8": "5.0.2",
+		"typescript": "7.1.0-dev.20260926.1",
+		"vitest": "5.0.2"
+	}
+}
