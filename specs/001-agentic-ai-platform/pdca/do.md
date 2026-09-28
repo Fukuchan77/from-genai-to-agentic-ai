@@ -2604,3 +2604,12 @@ GREEN 後、7件すべての新規テストについて独立した deliberate b
 - Restore verification: `cmp` で一致、`src/ports` 36/36 passed。
 - Final gate: `TURBO_FORCE=true mise run gate` → exit 0。Biome 58 files、root `executed=257 passed=257`、ai-core `executed=46 passed=46 failed=0 skipped=0`、lines 97.67%（`abort.ts` 100%、`transcript.ts` 96%、`web-search.ts` 100%）。`mise run typecheck` → 4/4 successful。
 - Status: 10.3・10.4 は `[x]` のまま（VERIFY green）。次は `/sdd-ship agentic-ai-platform Task10`。
+
+### 2026-09-28 22:28 Task 10 Validation & Ship
+
+- Verdict: GO（spec drift 1件は人間の判断で plan を実装に合わせて解消）。
+- Spec drift: plan C10 に失敗の契約（`TranscriptSourceError` を `./ports` から公開、Tavily の失敗は `PlatformError("source-unavailable", { provider: "tavily" })`、http/https 以外の URL を含む応答は fail-closed）、本番ファクトリの注入用引数、Tavily SDK の HTTP 要求が中断されない制約の記述がなかった。承認を得て plan.md の C10 Public interface を更新した。
+- Review: `.sdd/reviews/agentic-ai-platform-10.3-10.4.md` round 2 APPROVE_WITH_NOTES。残った LOW 3件（逆転した segment 時刻、"Private video" の文言、`raceWithAbort` の reject 経路）はテスト追加で解消済み。
+- Gate: `mise run gate` → exit 0。ai-core `executed=46 passed=46 failed=0 skipped=0`（`--force` の再実行でも同じ）、`src/ports` lines 97.14% / branches 87.67%。root `executed=257 passed=257`。`tsc --noEmit`（ai-core）→ exit 0。
+- Mechanical fixes: traceability.md（2.15・5.7 の Test/Commit、Gaps）、AGENTS.md（プロジェクト状態に ports を追加）。
+- Commit: `fb60281` feat(ai-core): add clock, HTTP, transcript, and web search ports。

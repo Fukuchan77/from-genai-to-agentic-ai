@@ -213,7 +213,7 @@ flowchart LR
 #### C10 Ports（`ai-core/src/ports/`）
 
 - **Responsibility**: 時刻と外部サービスへのアクセスをインターフェースとして定義し、実装を差し替えられるようにする。
-- **Public interface**: `interface Clock { now(): number; timeoutSignal(ms: number): AbortSignal }`（`systemClock`、`createFakeClock()`）。`interface HttpFetcher { fetch(url: string, init?: FetchInit): Promise<HttpResponse> }`、`interface TranscriptSource { fetchTranscript(videoId: string, signal?: AbortSignal): Promise<TranscriptResult> }`、`interface WebSearchProvider { search(query: string, signal?: AbortSignal): Promise<readonly SearchHit[]> }`。実装は `createNodeHttpFetcher()`、`createYoutubeiTranscriptSource()`、`createTavilySearch(apiKey)`。
+- **Public interface**: `interface Clock { now(): number; timeoutSignal(ms: number): AbortSignal }`（`systemClock`、`createFakeClock()`）。`interface HttpFetcher { fetch(url: string, init?: FetchInit): Promise<HttpResponse> }`、`interface TranscriptSource { fetchTranscript(videoId: string, signal?: AbortSignal): Promise<TranscriptResult> }`、`interface WebSearchProvider { search(query: string, signal?: AbortSignal): Promise<readonly SearchHit[]> }`。実装は `createNodeHttpFetcher(fetch?)`、`createYoutubeiTranscriptSource({ createClient? })`、`createTavilySearch(apiKey, { client? })`（省略可能な引数はテストでの注入用で、既定は `globalThis.fetch`・`Innertube.create()`・`tavily({ apiKey })`）。失敗の契約: `fetchTranscript` は `TranscriptSourceError`（`PlatformError` の `source-unavailable`、`reason: "no-captions" | "private" | "fetch-failed"`。`./ports` から公開）で reject し、C12 の `TranscriptUnavailableError` はこの `reason` を写像する。`search` は SDK の例外と Zod 検証の失敗を `PlatformError("source-unavailable", { provider: "tavily" })` に閉じ、http/https 以外の URL を1件でも含む応答は全体を拒否する（fail-closed）。中断: 呼び出し元の `AbortSignal` が中断されると、その `reason` で即時に reject する。`@tavily/core` 0.7.13 は中断の option を持たないため、SDK の HTTP 要求自体は止まらない（2026-09-28、T-10 ship）。
 - **Owns**: ポートの型と本番実装。
 - **Does NOT own**: `mock` 用の fixture 実装と、3つのポートの録画用ラッパ（`recordingHttpFetcher`、`recordingTranscriptSource`、`recordingWebSearch`。どれも C7。伏せ字化の `Redactor` と同じ場所に置くため。2026-09-27、`/sdd-analyze` H-4、2回目の M-2）。後続 spec のポート（Rerank、E2B、arXiv、MCP は各 spec が同じ規約で追加する）。
 - **Requirements**: 2.15, 5.7
@@ -643,6 +643,7 @@ erDiagram
 | `packages/ai-core/src/ports/web-search.ts` | Create | `WebSearchProvider` と Tavily 実装。 |
 | `packages/ai-core/src/ports/web-search.test.ts` | Create | 注入した Tavily クライアントのスタブで、検索結果の `SearchHit` への写像と、`AbortSignal` の伝播を検証する。 |
 | `packages/ai-core/src/ports/index.ts` | Create | `./ports` の公開 API。 |
+| `packages/ai-core/src/ports/abort.ts` | Create | 字幕と Web 検索のポートが共有する中断の race（内部 helper。`./ports` からは公開しない）。2026-09-28 の Task 10 の修正で追加。 |
 | `packages/ai-core/src/ports/transcript.test.ts` | Create | 字幕の各異常理由への写像を、`youtubei.js` の応答を模したテスト内のスタブで検証する（C7 の fixture 実装には依存しない）。 |
 | `packages/ai-core/src/aci/types.ts` | Create | `ToolRisk`、`ToolOutcome`、`ToolFailure`、`ToolRuntime`、`AciToolDefinition`、`GuardedToolSet`（ブランド型）。 |
 | `packages/ai-core/src/aci/define-tool.ts` | Create | `defineAciTool`（タイムアウト合成、例外とタイムアウトのツール結果化）。 |

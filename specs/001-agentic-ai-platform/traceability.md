@@ -58,7 +58,7 @@ ID 規約は `tasks.md` の「ID 対応表」を参照する（この spec の p
 | 2.12 | C4 | T-12.3 |  |  |
 | 2.13 | C4, C6, C7, C13 | T-12.4, T-13.4, T-14.3, T-20.1 |  |  |
 | 2.14 | C7 | T-13.3 |  |  |
-| 2.15 | C7, C10 | T-10.2, T-10.3, T-10.4, T-13.6 |  |  |
+| 2.15 | C7, C10 | T-10.2, T-10.3, T-10.4, T-13.6 | T-10.2: `http.test.ts` 2件（写像・signal 伝播）、T-10.3: `transcript.test.ts` 23件（no-captions/private/fetch-failed・Zod 検証・中断）、T-10.4: `web-search.test.ts` 8件（SearchHit 写像・fail-closed・中断） | T-10.2〜T-10.4: `fb60281` |
 | 2.16 | C7, C22 | T-13.5, T-28.7 |  |  |
 | 2.17 | C5 | T-9.1, T-9.2 | T-9.2: `catalog.test.ts` 7件（整合性・Zod 非依存型） | T-9.1/T-9.2: `9b4631b` |
 | 2.18 | C1, C4, C5, C20 | T-1.5, T-5.1, T-9.2, T-12.4 | T-1.5: pre-commit順序、T-5.1: モデルID検査5件・gate 13 files、T-5.5: pre-commit常時実行、T-9.2: 同梱カセットの `modelId` 照合 | T-1.5: `d9cec30`、T-5.1/T-5.5: `e18f7dd`、T-9.2: `9b4631b` |
@@ -106,7 +106,7 @@ ID 規約は `tasks.md` の「ID 対応表」を参照する（この spec の p
 | 5.4 | C9, C16 | T-15.2, T-23.1, T-23.4 |  |  |
 | 5.5 | C16 | T-23.2, T-23.3 |  |  |
 | 5.6 | C8, C11, C16 | T-16.3, T-17.3, T-23.4 |  |  |
-| 5.7 | C9, C10 | T-10.1, T-15.3 |  |  |
+| 5.7 | C9, C10 | T-10.1, T-15.3 | T-10.1: `clock.test.ts` 3件（fake の決定論的進行・期限での `TimeoutError`） | T-10.1: `fb60281` |
 | 5.8 | C9 | T-15.1 |  |  |
 
 ## Requirement 6: ループ制御と強制停止条件
@@ -158,6 +158,7 @@ Task 列に記載する。
 
 ## Gaps
 
+- 2026-09-28 の `/sdd-ship`（T-10.1〜T-10.4）では、要件ギャップは検出しなかった。ai-core の gate テストは10件から46件に増え、`src/ports` の行カバレッジは97.14%（分岐87.67%）。spec drift として、plan C10 に記述のなかった失敗の契約（`TranscriptSourceError` の公開、Tavily の `source-unavailable` と fail-closed）、注入用の省略可能な引数、Tavily SDK の HTTP 要求が中断されない制約を検出し、承認を得て plan C10 を実装に合わせた。C12 の `TranscriptUnavailableError` への写像は T-18.1 以降で、実 YouTube の文言（"Private video"）の確認は C7 の録画で行う。
 - 2026-09-28 の `/sdd-ship`（T-9.1〜T-9.2）では、要件ギャップは検出しなかった。ai-core の gate テストは3件から10件に増え、`catalog.ts` の行カバレッジは100%（分岐は82.35%）。spec drift として、plan C5 の ModeDefault が provider ごとに全用途を必須としていた点（Anthropic・Azure には埋め込みモデルがない）と、`ModelId` をリテラル union としていた点を検出し、承認を得て plan を実装（用途は `Partial`、`ModelId = string` とリテラル union の `CatalogModelId` の分離）に合わせた。同梱カセットの `modelId` 照合は、カセットを追加する T-11 以降で実データに対して働く。
 - 2026-09-28 の `/sdd-ship`（T-8.1〜T-8.3）では、新しい要件・設計ギャップは検出しなかった。root の gate テストは234件から257件へ23件（`check-web-theme.test.mjs`）増加した。`vite-tsconfig-paths` を Vite 8 native `resolve.tsconfigPaths` に置き換えた設計変更は、plan・research に反映済みである。focus ring の computed style のコントラストは T-27.3 のブラウザ検査に、Web の Vitest execution unit の実テストでの確認は T-21.1 に引き継ぐ。
 - 2026-09-28 の `/sdd-ship`（T-7.1〜T-7.3）では、新しい要件・設計ギャップは検出しなかった。eval-suite はテスト0件のため `test` スクリプトを置かず gate の実行単位に入らない（T-19.1 で最初のテストと同時に加える）。7.2 の構成は suite 別の直接実行で確認し、実テストでの確認は T-19.1・T-19.2 に引き継ぐ。敵対的レビューの LOW（README の `*.db.test.ts` 欠落）は修正済み。
