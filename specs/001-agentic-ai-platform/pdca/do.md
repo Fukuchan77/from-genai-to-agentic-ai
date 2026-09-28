@@ -2351,3 +2351,80 @@ Alias break の failure は `This module cannot be imported from a Client Compon
 - Gate: `mise run gate` → exit 0。model-ID 29 files、repo rules 28/1/2/1、root 10 files `executed=257 passed=257 failed=0 skipped=0`（+23: `scripts/check-web-theme.test.mjs`）、ai-core `executed=3 passed=3 failed=0 skipped=0`（`errors.ts` lines 100%）、turbo 2/2。
 - Mechanical fixes: AGENTS.md（プロジェクト状態に apps/web scaffold を追加）、traceability.md（1.1・NFR-09 の Test/Commit と Gaps）。
 - Commit: `1b456fb` feat(web): scaffold apps/web workspace with Vitest projects and WCAG theme tokens。
+
+### 2026-09-28 21:18 Task 9 Started
+
+- Objective: ModelCatalog の Zod 非依存型、6プロバイダのモデル情報、用途別既定値、検索、コスト見積もりを実装する。
+- Success criteria:
+  1. カタログの全エントリと用途別既定値が mode / provider / capability と整合する。
+  2. `mock` / `local` は単価なし、`live` は入出力単価ありで、watsonx.ai を含めない。
+  3. 検索・既定値解決・コスト見積もりが決定論的で、未知の組み合わせを拒否する。
+  4. 型は Zod 非依存で、モデル ID リテラルの一元管理 gate を通過する。
+- Official documentation checked: Anthropic models overview, OpenAI models/pricing, Microsoft Azure Foundry model catalog/pricing guidance, Google Gemini models/pricing, Ollama qwen3 and embeddinggemma library pages（2026-09-28 閲覧）。
+
+### 2026-09-28 21:18 Task 9 RED Evidence
+
+- Test: `packages/ai-core/src/models/catalog.test.ts`（7 tests を先に作成）
+- Command: `mise exec -- pnpm --filter @platform/ai-core exec vitest run src/models/catalog.test.ts --coverage.enabled=false`
+- Failure: `Cannot find module './catalog' imported from .../catalog.test.ts`、0 tests collected、exit 1。
+- SCAN: `packages/ai-core/src/models/` に既存テスト・実装はなく、回帰対象は `src/errors.test.ts` の3 tests のみだった。GREEN 後に新旧10 tests を同時実行して全件 green を確認した。
+
+### 2026-09-28 21:19 ❌ Error Encountered
+
+**Error**: GREEN 後の `mise run typecheck` で、literal tuple union に対する `includes()` の引数が `never` になり、価格オブジェクト union の optional property 参照も拒否された。`mise run lint` は optional-chain と format の違反を報告した。
+
+**Root Cause Investigation**:
+
+1. **Codebase Search**: エラーは新規 `catalog.ts` / `catalog.test.ts` に限定され、既存コードの型エラーではなかった。
+2. **Hypothesis**: `as const satisfies ModelCatalog` が各エントリの tuple / pricing を精密な union のまま保持するため、TypeScript 7.1 が union 上の `includes` 共通引数を `never` と推論し、全 variant にない `cacheReadPerMTok` の直接参照を許可しなかった。
+3. **Lint evidence**: Biome は同じ narrowing 条件を optional chain に簡約し、長い関数 signature の整形を要求した。
+
+**Solution Design / Execution**:
+
+- `includes` を `some((mode) => mode === target)` に変更し、価格の optional property は `"cacheReadPerMTok" in pricing` で narrow した。
+- mode のテスト cast は `never` でなく公開 `RunMode` 型を使い、`mise run lint:fix` で規約どおり整形した。
+
+**Result**: `mise run typecheck` → 4/4 tasks successful。対象7 tests と既存3 tests → 10/10 passed。
+
+**Learning**: `as const satisfies` で heterogeneous literal object を保持する場合、union の共通メソッド引数と optional property は明示的な predicate / `in` narrowing を使う。
+
+### 2026-09-28 21:20 Task 9 PROVE Evidence
+
+- Break applied: `estimateCost` の `total` を一時的に `0` 固定へ変更した。
+- Failure observed: `estimates input, output, and cache-read cost in USD and omits unpriced modes` が `expected total: 52.2`, `received total: 0` で失敗（1 failed / 6 passed）。
+- Restore incident: PROVE shell の一時変数名 `status` が zsh の read-only parameter と衝突し、restore 行の前で shell が停止した。バックアップ `/tmp/task9-catalog.ts` の存在を確認して即時復元し、同じ対象テストを 7/7 green で再実行した。実装上の不具合ではなく検証 harness の変数名衝突であり、以後 zsh では `status` を一時変数に使わない。
+- Restored: yes。
+
+### 2026-09-28 21:21 Task 9 Verification Evidence
+
+- Targeted regression: `mise exec -- pnpm --filter @platform/ai-core exec vitest run src/errors.test.ts src/models/catalog.test.ts --coverage.enabled=false --reporter=verbose` → 2 files、10/10 passed。新規7 tests は個別名付きで実行された。
+- Touched-file coverage: `mise exec -- pnpm --filter @platform/ai-core exec vitest run src/models/catalog.test.ts --coverage.enabled --coverage.reporter=text --coverage.thresholds.lines=0 --coverage.include=src/models/catalog.ts --coverage.include=src/models/types.ts` → 7/7 passed、`catalog.ts` lines 100%、functions 100%、branches 82.35%。`types.ts` は型のみのため V8 executable coverage 対象外。
+- Typecheck: `mise run typecheck` → root / ai-core / eval-suite / web の4/4 tasks successful。
+- Model ID policy: `mise run check:model-ids` → 31 files scanned、exit 0。
+- Status: 9.1・9.2 を `[x]` に更新。依存追加、既存テスト変更、task boundary 外変更なし。
+
+### 2026-09-28 21:22 Task 9 Complete Non-Vacuous Audit
+
+GREEN 後、7件すべての新規テストについて独立した deliberate break を適用し、対象テストだけを `-t` で実行した。各 mutation は期待した assertion で exit 1 となり、毎回ファイルを復元した。
+
+| Test | Break applied | Failure observed |
+|---|---|---|
+| catalog consistency | 最初の `contextWindow` を `0` | `expected 0 to be greater than 0` |
+| default compatibility | mock structured 既定値を embedding model に変更 | `expected false not to be false` |
+| filter behavior | `listModels` の predicate を常に false に変更 | `expected [] to deeply equal [ …(4) ]` |
+| cost estimate | `total: 0` | expected `52.2`, received `0` |
+| unknown rejection | unknown ID で先頭 entry を返す | `expected function to throw an error, but it didn't` |
+| cassette catalog membership | cassette discovery を常に `[]` に変更 | synthetic cassette に対し `expected [] to deeply equal [ 'claude-sonnet-4-6' ]` |
+| client-safe types | `types.ts` に一時的な `from "zod"` 文字列を追加 | `expected ... not to match /from\\s+["']zod["']/` |
+
+- Cassette test refinement: 現時点では同梱カセットが0件のため将来分の loop だけでは vacuous になる。`MODEL_CATALOG` から動的に得た ID を temporary cassette に書き、scanner が1件を抽出してカタログ照合する assertion を同じテストへ追加した。後続タスクで同梱カセットが追加されると、同じ test が bundled IDs も走査する。
+- Restore verification: audit 後に対象 suite を再実行し 7/7 passed。
+
+### 2026-09-28 21:22 Task 9 Final Gate
+
+- `mise run gate` → exit 0。
+- Biome: 48 files。model-ID: 31 files。repository rules: 31 / 1 / 2 / 1 files。
+- Root execution unit: 10 files、`executed=257 passed=257 failed=0 skipped=0`。
+- ai-core execution unit: 2 files、10/10 passed（Task 9 で +7 tests）、lines 100%、functions 100%、branches 83.33% overall。`catalog.ts` lines 100%、functions 100%、branches 82.35%。
+- Turbo: 2/2 test tasks successful。既知の `no output files found for @platform/ai-core#test` warning は test task に生成物を宣言していないための非失敗 warning。
+- VDD risk gate: task boundary 外変更なし、依存追加なし、既存テスト変更なし、coverage drop なし、全7新規テストの PROVE evidence あり。独立 reviewer trigger なし。

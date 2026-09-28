@@ -237,19 +237,23 @@ _Depends:_ 6
 _Requirements:_ 2.2, 2.8, 2.10, 2.17, 2.18, NFR-13
 _Traces:_ REQ-002, C5
 
-- [ ] 9.1 `models/types.ts`: `ProviderId`・`ModelId`・`Capability`・`ModelPurpose`・`ModelEntry` の Zod 非依存の型（クライアントからも import 可能）
+- [x] 9.1 `models/types.ts`: `ProviderId`・`ModelId`・`Capability`・`ModelPurpose`・`ModelEntry` の Zod 非依存の型（クライアントからも import 可能）
   _Boundary:_ `packages/ai-core/src/models/types.ts`
   _Depends:_ 6
   _Requirements:_ 2.17
   _Traces:_ REQ-002, C5
   _Verify:_ 型のみ。`mise run typecheck` と 9.2 のテストで確認する
-- [ ] 9.2 `models/catalog.ts`・`catalog.test.ts`: `MODEL_CATALOG`（`as const satisfies ModelCatalog`）、`getModelEntry`、`listModels`、`defaultModelFor`、`estimateCost`。watsonx.ai は含めない。テストはカタログ整合性（既定モデルの実在、機能と用途の一致、`live` の単価の存在）と、同梱カセットの `modelId` がカタログに実在することを検証する。モデル ID の値は実装時に各社公式ドキュメントで確認する（constitution 原則 8）
+- [x] 9.2 `models/catalog.ts`・`catalog.test.ts`: `MODEL_CATALOG`（`as const satisfies ModelCatalog`）、`getModelEntry`、`listModels`、`defaultModelFor`、`estimateCost`。watsonx.ai は含めない。テストはカタログ整合性（既定モデルの実在、機能と用途の一致、`live` の単価の存在）と、同梱カセットの `modelId` がカタログに実在することを検証する。モデル ID の値は実装時に各社公式ドキュメントで確認する（constitution 原則 8）
   _Boundary:_ `packages/ai-core/src/models/catalog.ts`, `packages/ai-core/src/models/catalog.test.ts`
   _Depends:_ 9.1
   _Requirements:_ 2.2, 2.8, 2.10, 2.17, 2.18, NFR-13
   _Traces:_ REQ-002, C5
 
 ### Implementation Notes
+
+- 型は Zod に依存させず、`ProviderId`、`RunMode`、`Capability`、`ModelPurpose`、カタログ・単価・使用量・コスト見積もりの構造を `types.ts` に集約した。`CatalogModelId` は `MODEL_CATALOG` のキーから導出し、実行時のモデル ID リテラルは `catalog.ts` だけに置く。
+- 2026-09-28 に Anthropic、OpenAI、Microsoft Azure、Google、Ollama の公式モデル・価格ページを確認し、`mock` / `local` / `live` のモデル、対応機能、コンテキスト上限、出力上限、単価と用途別既定値を登録した。watsonx.ai は Req 2.10 に従って含めていない。
+- `defaultModelFor` は宣言済みの mode / provider / purpose 組み合わせだけを返し、埋め込みモデルを持たない Anthropic / Azure の embedding 既定値などは `RangeError` にする。`estimateCost` はキャッシュ読出し単価が未定義の場合、入力単価を用いる保守的な見積もりを返す。カセット検査は `fixtures/cassettes/` が後続タスクで追加された時点から、その `modelId` を同じテストで検証する。
 
 ---
 
