@@ -534,7 +534,7 @@ erDiagram
 | `pnpm-workspace.yaml` | Create | `apps/*`、`packages/*` の宣言、`minimumReleaseAge: 1440`、監査済みの `allowBuilds`。 |
 | `pnpm-lock.yaml` | Create | pnpm が生成するロックファイル。`--frozen-lockfile` によるクリーンな clone での再現（Req 1.3）の前提。 |
 | `turbo.json` | Create | `typecheck`、`test`、`build` のタスクグラフと入出力（キャッシュ対象）の定義。 |
-| `biome.json` | Create | リポジトリ全体の lint / format 規約（ADR-3）。 |
+| `biome.json` | Create | リポジトリ全体の lint / format 規約（ADR-3）。Tailwind CSS v4 の `@theme` / `@custom-variant` / `@apply` を走査できるよう、Web scaffold 導入時に CSS parser の `tailwindDirectives` を有効化する。 |
 | `tsconfig.base.json` | Create | 全ワークスペース共通の strict な TypeScript 設定。 |
 | `tsconfig.json` | Create | ルートの型検査の設定（ベースを継承し、`tooling/**/*.ts` とルートの設定ファイルを対象にする。`turbo.json` のルートタスク `//#typecheck` が使う）。 |
 | `vitest.config.ts` | Create | ルート直下の `tooling/`・`scripts/` のテストの Vitest 設定（`setup-hermetic` と `gate-reporter` の登録）。ワークスペースは集約しない（C18「テストの実行単位」）。 |
@@ -721,12 +721,14 @@ erDiagram
 
 | File | Create/Modify | Responsibility |
 |------|---------------|----------------|
-| `apps/web/package.json` | Create | 依存（Next.js、React、@ai-sdk/react、`babel-plugin-react-compiler`（`reactCompiler: true` に必要）、`server-only`、Tailwind CSS、shadcn/ui の生成部品の実行時依存（`radix-ui`、`class-variance-authority`、`clsx`、`tailwind-merge`、`lucide-react`、`tw-animate-css`））、開発依存（`jsdom`（コンポーネントテストの環境）、`@testing-library/react`、`@testing-library/dom`、`@vitejs/plugin-react`、`vite-tsconfig-paths`、`@playwright/test`、`@axe-core/playwright`）と、`typecheck`（`next typegen && tsc --noEmit`）などのスクリプト。M1 の依存は scaffold のタスクで一度に宣言する。依存の根拠は research.md の External dependencies。 |
+| `apps/web/package.json` | Create | 依存（Next.js、React、@ai-sdk/react、`babel-plugin-react-compiler`（`reactCompiler: true` に必要）、`server-only`、Tailwind CSS、shadcn/ui の生成部品の実行時依存（`radix-ui`、`class-variance-authority`、`clsx`、`tailwind-merge`、`lucide-react`、`tw-animate-css`））、開発依存（`jsdom`（コンポーネントテストの環境）、`@testing-library/react`、`@testing-library/dom`、`@vitejs/plugin-react`、`@playwright/test`、`@axe-core/playwright`）と、`typecheck`（`next typegen && tsc --noEmit`）などのスクリプト。Vite 8 の native `resolve.tsconfigPaths` を使い、非保守の `vite-tsconfig-paths` / `tsconfck` は導入しない。M1 の依存は scaffold のタスクで一度に宣言する。依存の根拠は research.md の External dependencies。 |
 | `apps/web/tsconfig.json` | Create | Next.js 用の設定（ベースを継承）。 |
+| `apps/web/next-env.d.ts` | Create (generated) | `next typegen` が生成する Next.js の型入口。型検査後も恒常的な未追跡差分を残さないため追跡する。 |
 | `apps/web/next.config.ts` | Create | `reactCompiler`、`typedRoutes`、`serverExternalPackages`（jsdom など）。 |
-| `apps/web/vitest.config.ts` | Create | jsdom 環境のコンポーネントテストと、node 環境の Route Handler テスト（`@vitejs/plugin-react`、`vite-tsconfig-paths`）。両方に `setup-hermetic` と `gate-reporter` を登録する。`server-only` はテストでは空モジュールへ別名解決する。 |
+| `apps/web/vitest.config.ts` | Create | jsdom 環境のコンポーネントテストと、node 環境の Route Handler テスト（`@vitejs/plugin-react`、Vite 8 native `resolve.tsconfigPaths`）。両方に `setup-hermetic` と `gate-reporter` を登録する。`server-only` はテストでは空モジュールへ別名解決する。 |
 | `apps/web/components.json` | Create | shadcn/ui の生成設定。 |
 | `apps/web/app/globals.css` | Create | Tailwind CSS v4 とデザイントークン（WCAG 2.2 AA のコントラスト）。 |
+| `scripts/check-web-theme.test.mjs` | Create | `globals.css` の light/dark token を OKLCH から相対輝度へ変換し、テキスト 4.5:1・UI 境界 3:1 の最小コントラストを決定論的に検査する。Web の `test` script を 21.1 より前に追加せず、root execution unit で scaffold の静的契約だけを検査する。 |
 | `apps/web/instrumentation.ts` | Create | 起動時の設定検証とエラーの整形出力。 |
 | `apps/web/app/layout.tsx` | Create | 日本語のルートレイアウトとナビゲーション。 |
 | `apps/web/app/page.tsx` | Create | モジュール一覧と現在の実行モードの表示。 |
@@ -794,7 +796,7 @@ erDiagram
 | `apps/web/e2e/agent-tools.spec.ts` | Create | ツール状態の表示とカードの描画。 |
 | `apps/web/e2e/summarize.spec.ts` | Create | カードの逐次描画と取得失敗の表示。 |
 | `apps/web/e2e/keyboard.spec.ts` | Create | 主要操作をキーボードだけで行えること。 |
-| `apps/web/e2e/a11y.spec.ts` | Create | 各画面の axe 検査。 |
+| `apps/web/e2e/a11y.spec.ts` | Create | 各画面の axe 検査。代表的な focusable component をキーボード focus し、`getComputedStyle` で outline / ring の実効色と隣接背景を取得して 3:1 以上であることも3エンジンで検査する。 |
 | `apps/web/e2e/latency.spec.ts` | Create | 反映遅延が 100 ms 以内であること（NFR ストリーミング応答性）。 |
 
 ### docs（C22）

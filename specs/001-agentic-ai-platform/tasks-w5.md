@@ -86,7 +86,7 @@ _Traces:_ REQ-001, REQ-003, C19
   _Depends:_ 26
   _Requirements:_ 1.17, 3.3, NFR-10
   _Traces:_ REQ-001, REQ-003, C19
-- [ ] 27.3 (P) `keyboard.spec.ts`・`a11y.spec.ts`: 主要操作をキーボードだけで行えること、各画面の axe 検査（WCAG 2.2 AA）
+- [ ] 27.3 (P) `keyboard.spec.ts`・`a11y.spec.ts`: 主要操作をキーボードだけで行えること、各画面の axe 検査（WCAG 2.2 AA）。代表的な focusable component を focus し、`getComputedStyle` の outline / ring 実効色と隣接背景のコントラストが3:1以上であることを3エンジンで検証する
   _Boundary:_ `apps/web/e2e/keyboard.spec.ts`, `apps/web/e2e/a11y.spec.ts`
   _Depends:_ 26
   _Requirements:_ 1.19, NFR-09

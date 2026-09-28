@@ -2064,3 +2064,290 @@ $ (echo ::tsconfig::tsconfig.json; pnpm exec tsc -p tsconfig.json --listFilesOnl
 - Gate: `mise run gate` → exit 0。Biome 37 files、model-ID 25 files、repo rules 24/1/2/1、root `executed=234 passed=234 failed=0 skipped=0`、ai-core `executed=3 passed=3 failed=0 skipped=0`（`errors.ts` lines 100%）、turbo 2/2。`mise run typecheck` → 3/3 successful。
 - Mechanical fixes: traceability.md（1.1・1.13・1.14 の Test/Commit と Gaps）、AGENTS.md（プロジェクト状態に eval-suite scaffold を追加）。
 - Commit: `0f587c5` feat(eval-suite): scaffold eval-suite workspace with suite-selecting Vitest config。
+
+### 2026-09-28 20:23 Task 8 Started
+
+- Objective: Next.js App Router の `apps/web` workspace scaffold を、機能ロジックなしで作成する。
+- Success criteria:
+  - Task 8.1: plan 宣言済みの Web/UI/test 依存を完全一致で固定し、`next typegen && tsc --noEmit` が成功する。
+  - Task 8.2: `reactCompiler`、`typedRoutes`、`serverExternalPackages` を型安全な NextConfig として宣言する。
+  - Task 8.3: component(jsdom) / route(node) の2 Vitest project、hermetic setup、gate reporter、suite 選択、`server-only` 空モジュール alias を構成する。
+  - Safety: `test` / `test:coverage` scripts は Task 21.1 まで追加せず、gate の実行対象を早期に増やさない。
+  - Accessibility: light/dark の foreground/background、primary、muted、destructive token を高コントラストで定義する。
+- Baseline: `mise run gate` → root 234 tests、ai-core 3 tests、すべて成功。`mise run typecheck` → 3/3 tasks successful。
+- Dependency evidence: 2026-09-28 に npm registry の version/time と peerDependencies を実測し、すべて公開後24時間以上の版を選定した。
+
+### 2026-09-28 20:23 Task 8 RED Evidence
+
+- Command: required scaffold 6 filesへの `test -f` assertion。
+- Failure: `RED: missing required scaffold file: apps/web/package.json`（exit 1）。
+- Scope note: Task 8 は自動テスト追加を境界に含まない configuration scaffold のため、RED は command-based contract とし、Task 21.1 で実行テストを追加する。
+
+### 2026-09-28 20:25 Error Encountered
+
+**Error**: lockfile 更新後の sandbox 内 `mise run lint` が pnpm の workspace 再リンクを開始し、npm tarball の DNS lookup で失敗した。
+
+**Context**: 新規 importer 追加後、依存をまだ materialize していない状態で Biome を実行した。
+
+**Root Cause Investigation**:
+
+1. **Error evidence**: `Failed to fetch https://registry.npmjs.org/... dns error` が新旧 package に対して発生した。
+2. **Codebase / package check**: `pnpm peers check` は `No peer dependency issues found`。lockfile の解決自体は成功済み。
+3. **Hypothesis**: 実装不良ではなく、lockfile-only 更新後の `node_modules` 再リンクに必要な tarball 取得が sandbox network 制限で止まった。
+
+**Solution Design**:
+
+- Approach: lockfile と依存指定を変更せず、repo 既定の `mise run setup` を network approval 付きで1回実行する。
+- Rationale: frozen lockfile と supply-chain policy を維持したまま、必要な package materialization だけを完了する。
+
+**Execution**: `mise run setup` を実行。
+
+**Result**: `Lockfile is up to date`、429 packages、exit 0。peer の個別検査結果は後段の warning investigation に記録した。
+
+**Learning**: importer 追加直後は lint より先に frozen setup を完了し、pnpm の暗黙再リンクを sandbox 内で発生させない。
+
+### 2026-09-28 20:26 Task 8 Configuration Error Resolution
+
+**Error 1**: Biome が `@custom-variant` / `@theme` / `@apply` を `Tailwind-specific syntax is disabled` として拒否した。
+
+- Documentation / diagnostic evidence: Biome 自身が CSS parser の `tailwindDirectives` 有効化を指示した。
+- Root cause: Task 8 で初めて Tailwind v4 directive を持つ CSS が走査対象に入ったが、repository-wide parser は標準 CSS のままだった。
+- Solution: `biome.json` の `css.parser.tailwindDirectives` を有効化した。Task boundary 外変更のため VDD review trigger とする。
+- Result: `mise run lint` → Biome 44 files、exit 0。
+
+**Error 2**: Vitest project 内の `passWithNoTests` が TypeScript で `NonProjectOptions` として拒否された。
+
+- Documentation evidence: Vitest 5 の project config は root-only option を持てず、reporter も root に1回だけ登録する。
+- Root cause: root execution unit の設定を project object にも複製していた。
+- Solution: `passWithNoTests` と reporter は root に置き、environment/include/setupFiles だけを component / route project に分けた。
+- Result: `mise run typecheck` → 4/4 tasks successful。`local` / `pg` は0件で exit 0、`gate` は0件を検出して意図どおり exit 1、unknown suite は config load 時に exit 1。
+
+**Warning investigation**: `pnpm peers check` は `vite-tsconfig-paths@6.1.1 → tsconfck@3.1.6 → typescript ^5` と TypeScript 7.1 prerelease の peer mismatch を報告した。npm metadata で tsconfck 3.1.6 が最新版かつ peer が `^5.0.0` のままと確認した。plan が TypeScript 7.1 と `vite-tsconfig-paths` の両方を明示し、実際の config load / typecheck は成功するため、偽の互換範囲 override は追加せず既知警告として記録した。
+
+**Command wrapper error**: scaffold assertion の最初の shell loop で zsh 特殊配列 `path` を loop 変数に使い、後続 `mise` が PATH から消えた。変数名を `file` に変更し、同じ assertion は `7 files present; no premature test scripts` で成功した。
+
+### 2026-09-28 20:26 Task 8 PROVE Evidence
+
+- Temporary component probe: `import "server-only"` が empty alias で成功することを確認。
+- Break applied: alias target を `server-only/index.js` に変更。
+- Failure observed: `This module cannot be imported from a Client Component module. It should only be used from a Server Component.`
+- Restored: `server-only/empty.js` alias に戻し、component probe green。
+- Temporary route probe: hermetic setup が `fetch` を `NETWORK_BLOCKED` にすることを確認。
+- Break applied: route project の `setupFiles` を空にした。
+- Failure observed: expected `NETWORK_BLOCKED` に対し実ネットワークの `getaddrinfo ENOTFOUND example.invalid` が返り assertion failure。
+- Restored: route project の `setupFiles` を戻し、component / route の2 tests が green。temporary probe files は削除した。
+
+### 2026-09-28 20:27 Task 8 Verification Evidence
+
+- `mise run setup` → frozen lockfile、429 packages、exit 0。
+- `mise run typecheck` → root / ai-core / eval-suite / web の4/4 tasks successful。web は `next typegen` と `tsc --noEmit` に成功。
+- Suite config checks:
+  - `AI_TEST_SUITE=local ... web ... vitest` → component / route の temporary probes 2/2 passed。その後 probe 削除状態では0件許可を確認。
+  - `AI_TEST_SUITE=pg ...` → 0件許可、exit 0。
+  - `AI_TEST_SUITE=gate ...` → 0件を `Gate reporter error` として拒否、exit 1（21.1 まで web に test script を置かない）。
+  - `AI_TEST_SUITE=unknown ...` → `Unknown AI_TEST_SUITE`、exit 1。
+- Scaffold contract: required 7 files present、`test` / `test:coverage` scripts 不在。
+- Full gate: `mise run gate` → Biome 44 files、model-ID 28 files、repo rules 27/1/2/1 files、root 234 tests、ai-core 3 tests、2/2 turbo tasks successful、exit 0。
+- Status: 8.1〜8.3 を `[x]` に更新。第三者依存追加、task boundary 外の `biome.json`、生成 `next-env.d.ts` があるため、独立 VDD reviewer を実行する。
+
+### 2026-09-28 20:34 Task 8 Adversarial Review Round 1: REQUEST_CHANGES
+
+- Report: `.sdd/reviews/001-agentic-ai-platform-8.md`。
+- HIGH: `biome.json` と generated `next-env.d.ts` が task boundary 外。
+- MEDIUM: `@ai-sdk/react@4.0.121` が `ai@7.0.118` を導入し、ai-core の `ai@7.0.113` と release cohort が分裂。
+- MEDIUM: `vite-tsconfig-paths` が非保守の `tsconfck` と TypeScript 7 未充足 peer を導入。
+- MEDIUM: light/dark の input/border token が WCAG 2.2 非テキスト 3:1 を未達。
+- LOW: temporary PROVE source が恒久的に残っていない。
+
+### 2026-09-28 20:36 Task 8 Review Remediation
+
+- Boundary / design:
+  - `plan.md` の root Biome ownership に Tailwind directive parser を追記し、`apps/web/next-env.d.ts` の generated/committed ownership を追加した。
+  - Task 8 boundary に `biome.json`、`next-env.d.ts`、静的 contrast test を追加した。
+- AI SDK release cohort:
+  - `@ai-sdk/react` を research で d.ts 実測済みの 4.0.116 に固定した。
+  - `pnpm --filter web list ai --depth 10` で Web / ai-core / Ollama peer がすべて `ai@7.0.113` へ収束した。
+- Vite path aliases:
+  - Vite 8 native `resolve.tsconfigPaths: true` へ移行し、`vite-tsconfig-paths` と transitive `tsconfck` を lockfile から除去した。
+  - `pnpm peers check` → `No peer dependency issues found`。
+  - research / plan / tasks の旧指定を実測結果に合わせて改訂した。
+- Contrast TDD RED:
+  - 新規 `scripts/check-web-theme.test.mjs` は OKLCH を linear sRGB relative luminance に変換し、text pair 4.5:1、input/border pair 3:1 を検査する。
+  - 初回実行は light 1.5649:1、dark 2.1063:1 で4 tests が失敗した。
+- Contrast GREEN:
+  - light input/border を `oklch(0.62 0.015 265)`、dark を `oklch(0.53 0.02 265)` に変更。
+  - 20/20 tests passed。
+- Contrast PROVE:
+  - Break applied: light `--border` だけを旧 `oklch(0.84 0.01 265)` に戻した。
+  - Failure observed: `expected 1.5649080652585672 to be greater than or equal to 3`。
+  - Restored: yes。20/20 tests passed。
+- Verification:
+  - `mise run setup` → frozen lockfile、424 packages、exit 0。
+  - `mise run typecheck` → 4/4 tasks successful。
+  - `mise run gate` → Biome 45 files、model-ID 29 files、repo rules 28/1/2/1、root `executed=254 passed=254 failed=0`、ai-core `executed=3 passed=3 failed=0`、exit 0。
+  - web `local` / `pg` config → 0件許可、exit 0。Vite の旧 plugin warning は解消。
+
+### 2026-09-28 20:39 Task 8 Adversarial Review Round 2: REQUEST_CHANGES
+
+- Report: `.sdd/reviews/001-agentic-ai-platform-8-r2.md`。
+- MEDIUM: base style が実際に使う `outline-ring/50` の alpha 合成後コントラストが light 2.2024:1、dark 2.5111:1 で3:1未達。静的 test も ring を検査していなかった。
+- LOW: alias / hermetic temporary probe の source と完全 command が未記録。
+- LOW: Task 8.3 `_Verify:_` が現在の静的 contrast gate を記載していない。
+- Round 1 の boundary、AI SDK cohort、Vite native path、border/input contrast の各修正は確認済み。
+
+### 2026-09-28 20:40 Task 8 Round 2 Remediation
+
+- Focus ring test RED:
+  - `scripts/check-web-theme.test.mjs` に sRGB alpha composition を追加し、background と 50% ring の実効コントラスト3:1を検査した。
+  - 既存 token で light 2.202404011776173:1、dark 2.5111493439967947:1 の2 tests が失敗した。
+- GREEN:
+  - light ring を `oklch(0.25 0.04 255)`、dark ring を `oklch(0.9 0.03 255)` に変更した。
+  - text / border / input / 50% ring の22/22 tests passed。
+- PROVE:
+  - Break applied: light ring を旧 `oklch(0.48 0.08 255)` に戻した。
+  - Failure observed: `expected 2.202404011776173 to be greater than or equal to 3`。
+  - Restored: yes。22/22 tests passed。
+- Task contract: 8.3 `_Verify:_` に current gate の text 4.5:1、UI boundary / 50% ring 3:1 と、27.3 の axe が完成画面を補完することを追記した。
+- Auto-debug escalation: contrast coverage の不足で2ラウンド続けて rejection となったため、fresh debugger に root-cause investigation を依頼した。
+
+### 2026-09-28 20:40 Temporary Probe Reproduction Record
+
+Task 21.1 より前に Web workspace の `test` script を追加しない所有分離を維持しつつ、Task 8 の config を再現できるよう temporary probe の完全な source と command を残す。
+
+**Component probe** — `apps/web/components/task8-probe.local.test.ts`:
+
+```ts
+import "server-only";
+import { expect, it } from "vitest";
+
+it("resolves server-only to its empty test module", () => {
+	expect(true).toBe(true);
+});
+```
+
+**Route probe** — `apps/web/app/api/task8-probe.local.test.ts`:
+
+```ts
+import { expect, it } from "vitest";
+import { consumeBlockedConnections } from "../../../../tooling/vitest/network-guard";
+
+it("loads the hermetic setup in the route project", async () => {
+	await expect(fetch("https://example.invalid/task8-probe")).rejects.toMatchObject({
+		code: "NETWORK_BLOCKED",
+	});
+	expect(consumeBlockedConnections()).toEqual(["https://example.invalid/task8-probe"]);
+});
+```
+
+**Creation / execution**:
+
+```sh
+mkdir -p apps/web/components apps/web/app/api
+cat > apps/web/components/task8-probe.local.test.ts <<'PROBE'
+import "server-only";
+import { expect, it } from "vitest";
+
+it("resolves server-only to its empty test module", () => {
+	expect(true).toBe(true);
+});
+PROBE
+cat > apps/web/app/api/task8-probe.local.test.ts <<'PROBE'
+import { expect, it } from "vitest";
+import { consumeBlockedConnections } from "../../../../tooling/vitest/network-guard";
+
+it("loads the hermetic setup in the route project", async () => {
+	await expect(fetch("https://example.invalid/task8-probe")).rejects.toMatchObject({
+		code: "NETWORK_BLOCKED",
+	});
+	expect(consumeBlockedConnections()).toEqual(["https://example.invalid/task8-probe"]);
+});
+PROBE
+cp apps/web/vitest.config.ts /tmp/task8-vitest.config.ts
+
+# Baseline: component / route の2 test が passed、reporter は executed=2 passed=2。
+AI_TEST_SUITE=local mise exec -- pnpm --filter web exec vitest run --config vitest.config.ts
+
+# Alias PROVE: index.js は client import を拒否するため、この command は failure でなければならない。
+perl -0pi -e 's|server-only/empty\.js|server-only/index.js|' apps/web/vitest.config.ts
+if AI_TEST_SUITE=local mise exec -- pnpm --filter web exec vitest run --config vitest.config.ts; then
+	echo "alias probe unexpectedly passed"
+	exit 1
+fi
+cp /tmp/task8-vitest.config.ts apps/web/vitest.config.ts
+
+# Hermetic PROVE: routes project だけ setupFiles を外し、この command は failure でなければならない。
+perl -0pi -e 's/(name: "routes",.*?setupFiles:) \[setupFile\]/$1 []/s' apps/web/vitest.config.ts
+if AI_TEST_SUITE=local mise exec -- pnpm --filter web exec vitest run --config vitest.config.ts; then
+	echo "hermetic setup probe unexpectedly passed"
+	exit 1
+fi
+cp /tmp/task8-vitest.config.ts apps/web/vitest.config.ts
+
+# Restoration: 2/2 passed を再確認して temporary files を削除する。
+AI_TEST_SUITE=local mise exec -- pnpm --filter web exec vitest run --config vitest.config.ts
+rm apps/web/components/task8-probe.local.test.ts apps/web/app/api/task8-probe.local.test.ts
+rmdir apps/web/components apps/web/app/api
+rm /tmp/task8-vitest.config.ts
+```
+
+Alias break の failure は `This module cannot be imported from a Client Component module`。Hermetic break の failure は expected `NETWORK_BLOCKED` に対する `getaddrinfo ENOTFOUND example.invalid`。
+
+### 2026-09-28 20:42 Auto-Debug Hypothesis and Different Approach
+
+- Debugger hypothesis (confidence: high): token 単体と実際の描画後の実効色を取り違え、既知 failure pair だけを逐次追加したため、Tailwind opacity modifier の `/50` を検査対象から漏らした。
+- Evidence: Tailwind は opacity modifier を透明色との mix として生成し、WCAG は author-defined focus indicator の隣接色に対する実効コントラストを評価する。最後の green（Task 7）には Web CSS / contrast test 自体が存在しなかった。
+- Recommended direction: generated CSS / computed style を完成画面の基準とし、静的 token test は高速な補助 guard とする。
+- Different approach applied in Task 8 scaffold:
+  - 半透明の `outline-ring/50` を token 調整だけで成立させる方式をやめ、base focus outline を `outline-ring`（opaque）へ変更した。
+  - static test は `@apply border-border outline-ring;` の契約と、background / ring token の3:1を検査する。これにより scaffold 時点では token ratio と rendered ratio を一致させる。
+  - 27.3 の browser lane で完成部品の generated CSS / computed style を検査する契約を Task 8.3 `_Verify:_` に明記した。
+- TDD RED: opaque outline contract を先に追加し、既存 `/50` に対して `expected ... to contain '@apply border-border outline-ring;'` で失敗した。
+- GREEN: CSS を opaque outline に変更し、23/23 tests passed。
+- PROVE: GREEN 後に `/50` へ戻すと同じ contract test が失敗。`outline-ring` へ復元して23/23 passed。
+
+### 2026-09-28 20:45 Task 8 Adversarial Review Round 3: REQUEST_CHANGES
+
+- Report: `.sdd/reviews/001-agentic-ai-platform-8-r3.md`。
+- MEDIUM: Task 8.3 が参照する future computed-style focus contrast test が Task 27.3 / plan の実行契約に未反映。
+- LOW: temporary probe 記録が literal `\\t` と非実行 comment/diff を含み、そのまま再現不能。
+- LOW: opaque-outline test が CSS 全文の `toContain` で、active universal base rule に限定されていない。
+
+### 2026-09-28 20:46 Task 8 Round 3 Remediation
+
+- Future browser ownership:
+  - `plan.md` の `apps/web/e2e/a11y.spec.ts` と `tasks-w5.md` 27.3 に、3エンジンで representative focusable component を focus し、`getComputedStyle` の outline/ring 実効色と隣接背景が3:1以上であることを検証する契約を追加した。
+- Scoped static contract:
+  - CSS comment を除去後、`@layer base` 内の universal `*` rule body だけを抽出する `baseUniversalRule()` を追加した。
+  - `@apply border-border outline-ring;` を検査し、`outline-ring/` opacity modifier がないことも検査する。23/23 tests passed。
+- Reproducible temporary probes:
+  - PDCA の probe source を実インデントへ修正し、heredoc 作成、config backup、alias break、routes setup break、restore、green rerun、cleanup の全 command をコピー実行可能な形で記録した。
+  - 記録した command をそのまま実行し、baseline 2/2 passed → alias expected failure → hermetic expected failure → restored 2/2 passed → cleanup を確認した。
+
+### 2026-09-28 20:50 Task 8 Adversarial Review Round 4: APPROVE
+
+- Report: `.sdd/reviews/001-agentic-ai-platform-8-r4.md`。
+- Unresolved findings: なし。Hallucination Signal は `forced: true`。
+- Confirmed: Task 27.3 の computed-style focus contrast ownership、copy-executable temporary probe、scoped opaque-outline test、single AI SDK cohort、native tsconfig paths、clean peer graph。
+
+### 2026-09-28 20:50 Task 8 Final Verification Checkpoint
+
+- `mise run setup` → frozen lockfile、424 packages、exit 0（Round 4 reviewer も独立再実行）。
+- `mise run typecheck` → 4/4 tasks successful。web の `next typegen && tsc --noEmit` を含む。
+- `mise run gate` → exit 0:
+  - Biome: 45 files。
+  - model-ID: 29 files。
+  - repository rules: 28 / 1 / 2 / 1 files。
+  - root: 10 files、`executed=257 passed=257 failed=0 skipped=0`（23 theme contrast tests を含む）。
+  - ai-core: `executed=3 passed=3 failed=0 skipped=0`、lines 100%。
+  - Turbo: 2/2 test tasks successful。
+- `pnpm peers check` → `No peer dependency issues found`。
+- `pnpm --filter web list ai --depth 10` → Web / ai-core / Ollama peer はすべて `ai@7.0.113`。
+- `git diff --check` → exit 0。
+- Status: Task 8.1〜8.3 complete、current wave の unchecked subtask は19件。
+
+### 2026-09-28 Task 8 Ship
+
+- `/sdd-ship agentic-ai-platform` → GO。境界違反なし、前提タスク 7.1 は完了。spec drift なし（`vite-tsconfig-paths` の不採用は plan・research に反映済み）。PROVE は Round 2 の temporary probe 記録と Round 4 の APPROVE で確認済み。
+- Gate: `mise run gate` → exit 0。model-ID 29 files、repo rules 28/1/2/1、root 10 files `executed=257 passed=257 failed=0 skipped=0`（+23: `scripts/check-web-theme.test.mjs`）、ai-core `executed=3 passed=3 failed=0 skipped=0`（`errors.ts` lines 100%）、turbo 2/2。
+- Mechanical fixes: AGENTS.md（プロジェクト状態に apps/web scaffold を追加）、traceability.md（1.1・NFR-09 の Test/Commit と Gaps）。
+- Commit: `1b456fb` feat(web): scaffold apps/web workspace with Vitest projects and WCAG theme tokens。

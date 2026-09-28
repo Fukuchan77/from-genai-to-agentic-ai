@@ -195,31 +195,36 @@ _Traces:_ REQ-001, C21
 
 Next.js アプリのワークスペース骨格（機能ロジックは含まない）を用意する。
 
-_Boundary:_ `apps/web/package.json`, `apps/web/tsconfig.json`, `pnpm-lock.yaml`, `apps/web/next.config.ts`, `apps/web/vitest.config.ts`, `apps/web/components.json`, `apps/web/app/globals.css`
+_Boundary:_ `apps/web/package.json`, `apps/web/tsconfig.json`, `apps/web/next-env.d.ts`, `pnpm-lock.yaml`, `apps/web/next.config.ts`, `apps/web/vitest.config.ts`, `apps/web/components.json`, `apps/web/app/globals.css`, `biome.json`, `scripts/check-web-theme.test.mjs`
 _Depends:_ 7.1
 _Requirements:_ 1.1, NFR-09
 _Traces:_ REQ-001, C13
 
-- [ ] 8.1 `package.json`（plan の File Structure Plan の `apps/web/package.json` の行に列挙した依存・開発依存をすべて宣言する。Next.js・React・`@ai-sdk/react`・`babel-plugin-react-compiler`・`server-only`・Tailwind CSS・shadcn/ui の生成部品の実行時依存・`jsdom`・Testing Library・`@vitejs/plugin-react`・`vite-tsconfig-paths`・Playwright・axe。`typecheck`（`next typegen && tsc --noEmit`）等のスクリプト。`test`・`test:coverage` スクリプトは 21.1 で加える）、`tsconfig.json`
-  _Boundary:_ `apps/web/package.json`, `apps/web/tsconfig.json`, `pnpm-lock.yaml`
+- [x] 8.1 `package.json`（plan の File Structure Plan の `apps/web/package.json` の行に列挙した依存・開発依存をすべて宣言する。Next.js・React・`@ai-sdk/react`・`babel-plugin-react-compiler`・`server-only`・Tailwind CSS・shadcn/ui の生成部品の実行時依存・`jsdom`・Testing Library・`@vitejs/plugin-react`・Playwright・axe。パス別名は Vite 8 native `resolve.tsconfigPaths` を使う。`typecheck`（`next typegen && tsc --noEmit`）等のスクリプト。`test`・`test:coverage` スクリプトは 21.1 で加える）、`tsconfig.json`、`next-env.d.ts`
+  _Boundary:_ `apps/web/package.json`, `apps/web/tsconfig.json`, `apps/web/next-env.d.ts`, `pnpm-lock.yaml`
   _Depends:_ 7.1
   _Requirements:_ 1.1
   _Traces:_ REQ-001, C13
   _Verify:_ `mise run setup` と `mise run typecheck` が成功する
-- [ ] 8.2 `next.config.ts`（`reactCompiler: true`、`typedRoutes: true`、`serverExternalPackages`（jsdom 等））
+- [x] 8.2 `next.config.ts`（`reactCompiler: true`、`typedRoutes: true`、`serverExternalPackages`（jsdom 等））
   _Boundary:_ `apps/web/next.config.ts`
   _Depends:_ 8.1
   _Requirements:_ 1.1
   _Traces:_ REQ-001, C13
   _Verify:_ `mise run typecheck` が成功する。`next build` の成功は 25.2 で確認する
-- [ ] 8.3 `vitest.config.ts`（jsdom 環境のコンポーネントテストと node 環境の Route Handler テストの2プロジェクト。両方に `setup-hermetic` と `gate-reporter` を登録し、`AI_TEST_SUITE` によるテストの選択（plan C18「テストの実行単位」）を適用する。`@vitejs/plugin-react`、`vite-tsconfig-paths`、`server-only` の空モジュールへの別名解決）、`components.json`（shadcn/ui 生成設定）、`app/globals.css`（Tailwind CSS v4、`tw-animate-css`、WCAG 2.2 AA のコントラスト）
-  _Boundary:_ `apps/web/vitest.config.ts`, `apps/web/components.json`, `apps/web/app/globals.css`
+- [x] 8.3 `vitest.config.ts`（jsdom 環境のコンポーネントテストと node 環境の Route Handler テストの2プロジェクト。両方に `setup-hermetic` と `gate-reporter` を登録し、`AI_TEST_SUITE` によるテストの選択（plan C18「テストの実行単位」）を適用する。`@vitejs/plugin-react`、Vite 8 native `resolve.tsconfigPaths`、`server-only` の空モジュールへの別名解決）、`components.json`（shadcn/ui 生成設定）、`app/globals.css`（Tailwind CSS v4、`tw-animate-css`、WCAG 2.2 AA のコントラスト）、Biome の Tailwind directive parser、token contrast の静的回帰テスト
+  _Boundary:_ `apps/web/vitest.config.ts`, `apps/web/components.json`, `apps/web/app/globals.css`, `biome.json`, `scripts/check-web-theme.test.mjs`
   _Depends:_ 8.1
   _Requirements:_ 1.1, NFR-09
   _Traces:_ REQ-001, C13
-  _Verify:_ Vitest の構成は 21.1 以降のテストの実行で、コントラストは 27.3 の axe 検査で確認する
+  _Verify:_ `mise run gate` が `scripts/check-web-theme.test.mjs` の token contrast（text 4.5:1、UI boundary と不透明 focus outline 3:1）を実行して成功する。Vitest の Web execution unit は 21.1 以降、完成画面の computed style とコントラストは 27.3 のブラウザ検査でも確認する
 
 ### Implementation Notes
+
+- 依存は 2026-09-28 の npm registry の version/time を実測し、公開後24時間以上の版を完全一致で固定した。Next.js は research 時点の canary ではなく、同じ要件（React Compiler、typed routes）を満たす安定版 16.3.6 を採用した。`@ai-sdk/react` は ai-core と同じ `ai@7.0.113` release cohort の 4.0.116 とし、Web 内に AI SDK Core を重複させない。`@platform/ai-core` は dependency direction に従って直接依存とした。`test` / `test:coverage` scripts は 21.1 まで追加していない。
+- `next typegen` が標準の `next-env.d.ts` を生成するため、再現可能な型入口として scaffold に含めた。`serverExternalPackages` は `jsdom` と、ai-core の字幕取得で使う `youtubei.js` を外部化する。
+- Vitest 5 では reporter と `passWithNoTests` は root-only option なので、2 project 共通の root に `gate-reporter` を1回登録し、`setup-hermetic` は各 project に登録した。component は jsdom、Route Handler / server module は node で分離する。パス別名は Vite 8 native `resolve.tsconfigPaths` を使い、非保守の `vite-tsconfig-paths` / `tsconfck` は導入しない。
+- Tailwind v4 の `@theme` / `@custom-variant` / `@apply` を repository-wide Biome が解釈できるよう、`biome.json` の CSS parser に `tailwindDirectives: true` を追加した。light/dark の text pair 4.5:1 と input/border/opaque focus outline pair 3:1 は `scripts/check-web-theme.test.mjs` で直接検査し、完成画面の computed style と WCAG 2.2 AA は 27.3 のブラウザ検査でも確認する。
 
 ---
 

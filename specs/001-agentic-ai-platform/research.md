@@ -133,7 +133,7 @@ New feature（greenfield、full discovery）。リポジトリにはソースコ
 - **Findings**: `shadcn@4.21.0`（CLI）、`ai-elements@1.9.0`（shadcn/ui 上のレジストリ。ソースをプロジェクトへコピーする方式）。参照リポジトリはどちらも shadcn/ui を使っていない（Carbon と CSS Modules）。`ai-elements` の AI SDK v7 対応は確認できなかった。
 - **Decision**: UI の基本部品は shadcn/ui（Tailwind CSS v4）とする。チャット、推論、ツール表示の部品は、教材としてコードを読ませるために自前で実装する。`ai-elements` は参考実装として解説で紹介するに留める（ADR-11）。
 - **Evidence**: https://registry.npmjs.org/shadcn/latest 、https://registry.npmjs.org/ai-elements/latest 。
-- **追記（2026-09-27、`/sdd-analyze` C-2）**: shadcn 4.21.0 の生成コード（`button.tsx` は `class-variance-authority` と `radix-ui` の `Slot` を import する）と手動インストール手順（`tw-animate-css`、`lucide` のアイコン）から、生成した部品の実行時依存を確認した。`apps/web` のコンポーネントテストは、Next.js の Vitest ガイド（`vitest`、`@vitejs/plugin-react`、`jsdom`、`@testing-library/react`、`@testing-library/dom`、`vite-tsconfig-paths`）に従う。どちらも [External dependencies](#external-dependencies) に宣言した（constitution 原則 10）。Evidence: Context7 `/shadcn-ui/ui/shadcn_4.21.0`（`apps/v4/content/docs/installation/manual.mdx`、`registry/new-york-v4/ui/button.tsx`）、`/vercel/next.js`（`docs/01-app/02-guides/testing/vitest.mdx`）。
+- **追記（2026-09-27、`/sdd-analyze` C-2。2026-09-28 実測で更新）**: shadcn 4.21.0 の生成コード（`button.tsx` は `class-variance-authority` と `radix-ui` の `Slot` を import する）と手動インストール手順（`tw-animate-css`、`lucide` のアイコン）から、生成した部品の実行時依存を確認した。`apps/web` のコンポーネントテストは、Next.js の Vitest ガイド（`vitest`、`@vitejs/plugin-react`、`jsdom`、`@testing-library/react`、`@testing-library/dom`）に従う。パス別名は、実装時の Vite 8.3.1 が `vite-tsconfig-paths` を非推奨として native `resolve.tsconfigPaths` を案内することを実測したため、そちらを採用する。どちらも [External dependencies](#external-dependencies) に宣言した（constitution 原則 8、10）。Evidence: Context7 `/shadcn-ui/ui/shadcn_4.21.0`（`apps/v4/content/docs/installation/manual.mdx`、`registry/new-york-v4/ui/button.tsx`）、`/vercel/next.js`（`docs/01-app/02-guides/testing/vitest.mdx`）、Vitest 5 / Vite 8.3.1 config load。
 
 ### I-14: ドラフト・レビュー・後続 spec からの設計入力
 
@@ -208,8 +208,8 @@ New feature（greenfield、full discovery）。リポジトリにはソースコ
 | radix-ui / class-variance-authority / clsx / tailwind-merge / lucide-react | 実装時に確定 | shadcn/ui が生成する基本部品の実行時依存（アクセシブルな基本要素、バリアント、クラス結合、アイコン） | partial（shadcn 4.21.0 の生成コードと手動インストール手順で確認。版はレジストリで確定する） |
 | tw-animate-css | 実装時に確定 | shadcn/ui の Tailwind v4 用アニメーション（`tailwindcss-animate` の後継） | partial（同上） |
 | server-only | 実装時に確定 | `apps/web/lib/server/` をクライアントから import できないようにする（Req 1.10） | partial（Next.js 公式ドキュメント） |
-| @testing-library/react / @testing-library/dom | 実装時に確定 | `apps/web` のコンポーネントテスト（jsdom） | partial（Next.js の Vitest ガイドの推奨構成） |
-| @vitejs/plugin-react / vite-tsconfig-paths | 実装時に確定 | Vitest で TSX（Next.js の `jsx: preserve`）を変換し、`@/` のパス別名を解決する | partial（同上） |
+| @testing-library/react / @testing-library/dom | 16.3.3 / 10.4.2 | `apps/web` のコンポーネントテスト（jsdom） | yes（2026-09-28、registry と peerDependencies を実測） |
+| @vitejs/plugin-react | 6.1.1 | Vitest で TSX（Next.js の `jsx: preserve`）を変換する | yes（2026-09-28、Vite 8.3.1 と config load を実測）。`@/` は Vite 8 の native `resolve.tsconfigPaths` を使う。旧 plan の `vite-tsconfig-paths` は非保守の `tsconfck` と TypeScript 7 の未充足 peer を導入するため不採用 |
 | pgvector/pgvector | pg17 | Postgres + pgvector（Docker） | yes（参照リポジトリ） |
 | Langfuse | v4（web / worker / clickhouse 25.12 / redis 7 / minio） | トレース収集基盤（Docker） | yes（公式 Compose） |
 | Ollama | v0.34.4（2026-09-23） | ローカル LLM | yes（GitHub Releases） |

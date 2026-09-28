@@ -20,7 +20,7 @@ ID 規約は `tasks.md` の「ID 対応表」を参照する（この spec の p
 
 | Requirement | Design | Task | Test | Commit |
 |---|---|---|---|---|
-| 1.1 | C1, C13, C21 | T-1.2, T-7.1, T-8.1, T-8.2, T-8.3, T-19.1 | T-1.2: `mise run setup`、Turbo pnpm-workspace dry-run、T-7.1: `mise run setup`（frozen lockfile、eval-suite importer）・eval-suite `tsc --noEmit` | T-1.2: `10c3b48`、修正（T-1.2）: `01dc364`、T-7.1: `0f587c5` |
+| 1.1 | C1, C13, C21 | T-1.2, T-7.1, T-8.1, T-8.2, T-8.3, T-19.1 | T-1.2: `mise run setup`、Turbo pnpm-workspace dry-run、T-7.1: `mise run setup`（frozen lockfile、eval-suite importer）・eval-suite `tsc --noEmit`、T-8.1〜T-8.3: `mise run setup`（frozen lockfile）・`mise run typecheck`（web `next typegen && tsc --noEmit`）・`pnpm peers check` | T-1.2: `10c3b48`、修正（T-1.2）: `01dc364`、T-7.1: `0f587c5`、T-8.1〜T-8.3: `1b456fb` |
 | 1.2 | C1 | T-6.1, T-6.3 | T-6.1: `mise run setup`（frozen lockfile）、T-6.3: `errors.test.ts` 3件（UI 依存なしの ai-core から import） | T-6.1/T-6.3: `930f464` |
 | 1.3 | C1 | T-1.1, T-1.2 | T-1.1: `mise tasks validate`（23件）、T-1.2: frozen install | T-1.1/T-1.2: `10c3b48`、修正（T-1.1/T-1.2）: `01dc364` |
 | 1.4 | C1 | T-1.1, T-1.4, T-5.5, T-13.7, T-19.3, T-29.1 | T-1.1: 初期gate、T-1.4: Vitest/Stryker構造検査・`tsc`、T-5.5: W1 gate 4段・10/10反復 | T-1.1: `10c3b48`、T-1.4: `ee05b10`、修正（T-1.1/T-1.4）: `01dc364`、T-5.5: `e18f7dd` |
@@ -150,7 +150,7 @@ Task 列に記載する。
 | NFR-06（テストカバレッジ） | C18 | T-6.2 | T-6.2: gate の行80%閾値（101% で失敗する PROVE）、`local`/`pg` の0件許可、`test:coverage` の閾値なし HTML レポート | T-6.2: `930f464` |
 | NFR-07（秘密情報） | C1, C4 | T-1.5, T-12.1, T-12.4 | T-1.5: names-only env・gitleaks redact | T-1.5: `d9cec30`、修正（T-1.5）: `01dc364` |
 | NFR-08（隔離実行） | — | **未割当（下記 Gaps 参照）** |  |  |
-| NFR-09（アクセシビリティ） | C13, C19 | T-8.3, T-20.4, T-26.3, T-27.3 |  |  |
+| NFR-09（アクセシビリティ） | C13, C19 | T-8.3, T-20.4, T-26.3, T-27.3 | T-8.3: `scripts/check-web-theme.test.mjs`（23件。light/dark の text 4.5:1、border/input/ring 3:1、不透明 focus outline） | T-8.3: `1b456fb` |
 | NFR-10（対応ブラウザ） | C19 | T-26.1, T-27.1, T-27.2 |  |  |
 | NFR-11（サプライチェーン） | C1, C2 | T-1.2, T-1.5, T-2.1, T-2.2 | T-1.2: frozen lockfile、T-1.5: staged secret hook、T-2.1: SHA/permissions/frozen setup、T-2.2: Dependabot構造検査 | T-1.2: `10c3b48`、T-1.5: `d9cec30`、修正（T-1.2）: `01dc364`, `9418a09`、T-2.1/T-2.2: `f9e7aca`、修正（T-2.1）: `956b3df` |
 | NFR-12（UI言語） | C13, C22 | T-20.3, T-28.2 |  |  |
@@ -158,6 +158,7 @@ Task 列に記載する。
 
 ## Gaps
 
+- 2026-09-28 の `/sdd-ship`（T-8.1〜T-8.3）では、新しい要件・設計ギャップは検出しなかった。root の gate テストは234件から257件へ23件（`check-web-theme.test.mjs`）増加した。`vite-tsconfig-paths` を Vite 8 native `resolve.tsconfigPaths` に置き換えた設計変更は、plan・research に反映済みである。focus ring の computed style のコントラストは T-27.3 のブラウザ検査に、Web の Vitest execution unit の実テストでの確認は T-21.1 に引き継ぐ。
 - 2026-09-28 の `/sdd-ship`（T-7.1〜T-7.3）では、新しい要件・設計ギャップは検出しなかった。eval-suite はテスト0件のため `test` スクリプトを置かず gate の実行単位に入らない（T-19.1 で最初のテストと同時に加える）。7.2 の構成は suite 別の直接実行で確認し、実テストでの確認は T-19.1・T-19.2 に引き継ぐ。敵対的レビューの LOW（README の `*.db.test.ts` 欠落）は修正済み。
 - 2026-09-28 の `/sdd-ship`（T-6.1〜T-6.3）では、新しい要件・設計ギャップは検出しなかった。ai-core の gate テストは0件から3件に増え、`errors.ts` の行カバレッジは100%（6/6）。`/sdd-validate-impl` で `pnpm-lock.yaml` が境界外と判定されたため、T-6・T-7・T-8 と T-6.1・T-7.1・T-8.1 の `_Boundary:_` に加えた。`test:coverage` のスクリプト文面を plan C18 と mise タスク表（閾値の強制は gate の `test` 段）に合わせて `--coverage.thresholds.lines=0` 付きにそろえた（T-6.3、T-19.1、T-21.1）。`PlatformError` をどの公開サブパスから再 export するかは T-21.1 までに決める。
 - 2026-09-27 の `/sdd-ship`（T-5.1〜T-5.5）では、新しい要件・設計ギャップは検出しなかった。恒久テストは16件から48件へ32件増加し、新規スクリプト5ファイルのstatement coverageは合計84.50%。W1 gateは4段すべてで非空件数を表示し、10/10回同じ成功判定だった。`mise run test:coverage`のworkspace taskはW2のT-6.3以降で結線されるため現時点では0 taskであり、ship検証ではroot Vitestを直接coverage実行した。
