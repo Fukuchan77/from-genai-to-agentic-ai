@@ -1978,3 +1978,89 @@ $ (echo ::tsconfig::tsconfig.json; pnpm exec tsc -p tsconfig.json --listFilesOnl
 - Mechanical fixes: AGENTS.md（プロジェクト状態と gate の説明に ai-core のワークスペーステストを追加）、README.md（W1 gate の説明）、tasks.md の進捗表（W2 を「進行中。6 完了」へ）、traceability.md（1.2・NFR-05・NFR-06 の Test/Commit と Gaps）。
 - Final gate: `mise run gate` → exit 0。Biome 34 files、Model ID 24 files、W1 規則4件、ai-core `executed=3 passed=3 failed=0 skipped=0`（0 → 3、`src/errors.test.ts`）、`errors.ts` lines 100%、root `executed=234 passed=234 failed=0 skipped=0`、turbo 2/2 successful。
 - Commit: `930f464` feat(ai-core): scaffold ai-core workspace with PlatformError base。
+
+### 2026-09-28 Task 7 Started
+
+- Objective: `@platform/eval-suite` の workspace、共通 Vitest 設定、Capability / Regression 配置規約を scaffold する。
+- Scope: Task 7.1〜7.3 の宣言済み boundary のみ。外部サービスを使うテストはないため preflight は不要。
+- Success criteria:
+  1. `@platform/eval-suite` が `@platform/ai-core` のみに実行時依存し、strict TypeScript で型検査できる。
+  2. `AI_TEST_SUITE=gate|local|pg` が C18 の命名規約どおりテストを選び、未知値を設定読込時に拒否する。
+  3. hermetic setup、local availability global setup、gate reporter が workspace 単位で登録される。
+  4. README が Capability / Regression の役割、実行レーン、004 への引き継ぎを日本語で明示する。
+- TDD note: Task 7 は scaffold / configuration / documentation task で、新しい実行テストを追加しない。Task 7.1 は `mise run setup` / `mise run typecheck`、7.2 は構成の直接検証、7.3 はレビューで検証する。最初の eval test と scripts は Task 19.1 で追加する。
+
+### 2026-09-28 Error Encountered
+
+**Error**: `mise run setup` が `ERR_PNPM_PACKAGE_MANAGER_NO_IMPORTER` で失敗した。
+
+**Context**: Task 7.1 の新規 workspace manifest を作成した直後、frozen lockfile setup を検証した。
+
+**Root Cause Investigation**:
+
+1. **Error evidence**: `pnpm-lock.yaml` に `importers["packages/eval-suite"]` がないため、`--frozen-lockfile` は更新せず停止した。
+2. **Codebase search**: Task 6.1 でも新規 workspace 作成時に `mise exec -- pnpm install --lockfile-only` で importer を生成してから `mise run setup` を検証している。
+3. **Hypothesis**: `mise run setup` は再現可能なインストール専用であり、新規 manifest から lockfile importer を生成するコマンドではない。Task 7.1 の生成物 `pnpm-lock.yaml` を先に更新する必要がある。
+
+**Solution Design**:
+
+- Previous approach: importer がない状態で frozen setup を実行した。
+- New approach: mise で固定された pnpm を使い、`pnpm install --lockfile-only` で Task 7.1 の importer だけを生成した後、frozen `mise run setup` を再検証する。
+- Rationale: frozen install の規約を弱めず、宣言済み boundary の生成物を正規化できる。
+
+**Execution**: `mise exec -- pnpm install --lockfile-only` を実行する。
+
+**Result**: 実行待ち。
+
+**Learning**: 新規 workspace は lockfile-only 更新と frozen setup 検証を別ステップとして扱う。
+
+### 2026-09-28 Lockfile Update Investigation
+
+- Observation: `mise exec -- pnpm install --lockfile-only` は supply-chain policy 検証後に90秒以上進まず、lockfile に変更を作らなかったため中断した。
+- Evidence: 新規依存の版はすべて既存 root / ai-core importer と lockfile に存在し、pnpm store も repository-local にある。registry は通常の npm registry、offline 設定は未指定だった。
+- Hypothesis: importer 解決に不要な registry 通信を待っており、sandbox のネットワーク制限で進行しない。依存変更ではなく実行環境の外部通信が原因である。
+- Different approach: 既存 lockfile と store だけで解決可能なことを検証するため、同じ lockfile-only 更新を `--offline` で実行する。解決情報が不足していればその時点で明示的に失敗させる。
+
+### 2026-09-28 Setup Network Error Resolution
+
+- Error: sandbox 内の `mise run setup` が npm tarball の DNS lookup に失敗し、依存復元を完了できなかった。
+- Root cause: frozen lockfile は正しかったが、pnpm の content-addressable store から workspace の `node_modules` を再リンクする過程で registry 検証が発生し、sandbox の外部 DNS 制限に阻まれた。
+- Solution: lockfile や依存指定を変更せず、同じ `mise run setup` を必要最小限の network approval で実行した。
+- Result: `Lockfile is up to date`、296 packages、exit 0。Task 7 importer を含む frozen setup が成功した。
+- Learning: frozen install も supply-chain policy 検証時に registry access を必要とする場合がある。依存指定で回避せず、観測された network 制限だけを解消する。
+
+### 2026-09-28 Task 7 Verification Evidence
+
+- Task 7.1: `mise exec -- pnpm install --lockfile-only --offline` → eval-suite importer を生成、exit 0。`mise run setup` → `Lockfile is up to date`、296 packages、exit 0。`mise run typecheck` → root / ai-core / eval-suite の3 tasks successful。
+- Task 7.2 direct configuration checks:
+  - `AI_TEST_SUITE=local ... vitest run --config packages/eval-suite/vitest.config.ts` → include `tests/**/*.local.test.ts`、0件を許可、exit 0。
+  - `AI_TEST_SUITE=pg ...` → include `tests/**/*.pg.test.ts`、0件を許可、exit 0。
+  - `AI_TEST_SUITE=unknown ...` → `Unknown AI_TEST_SUITE "unknown". Expected one of: gate, local, pg`、exit 1。
+  - `AI_TEST_SUITE=gate ...`（まだテストなし）→ `Gate reporter error: no tests executed in the gate suite.`、exit 1。`test` script を19.1まで置かない理由を確認した。
+- Task 7.3: README に Capability / Regression の責務、命名別レーン、hermetic 制約、004 の引き継ぎを記載した。
+- RED / PROVE: 新しい実行テストを持たない scaffold / configuration / documentation task のため該当なし。代わりに `_Verify:` の command evidence と、空 gate / unknown suite の意図した failure evidence を記録した。
+- Full gate: `mise run gate` → Biome 37 files、model-ID 25 files、repo rules 24/1/2/1 files、root `executed=234 passed=234 failed=0 skipped=0`、ai-core `executed=3 passed=3 failed=0 skipped=0`、turbo 2/2 successful。
+- Status: 7.1〜7.3 を `[x]` に更新。VDD trigger は package manifest の第三者 devDependencies 追加であり、独立 reviewer を実行する。
+
+### 2026-09-28 Task 7 Adversarial Review
+
+- Verdict: `APPROVE_WITH_NOTES`。
+- Report: `.sdd/reviews/001-agentic-ai-platform-7.md`。
+- Trigger resolution: 新規 devDependencies 4件は plan 宣言済み・完全一致固定、lockfile は eval-suite importer のみ、依存方向は `eval-suite → ai-core`。既存テスト変更なし。reviewer は setup / typecheck / gate / audit / suite別 checks を独立実行した。
+- LOW note: README の実行レーンにインプロセス DB 用 `*.db.test.ts` が欠落していた。
+- Resolution: `*.db.test.ts` は gate に含め、`*.pg.test.ts` は Docker Postgres が必要な評価だけに使う規約を追記した。
+
+### 2026-09-28 Task 7 Final Verification Checkpoint
+
+- Selected tasks 7.1〜7.3 are complete and marked `[x]`。
+- Reviewer LOW note remediation applied: README now distinguishes in-process `*.db.test.ts` from Docker-backed `*.pg.test.ts`。
+- Final `mise run gate` → exit 0。Biome 37 files、model-ID 25 files、repository rules 24/1/2/1 files、root `executed=234 passed=234 failed=0 skipped=0`、ai-core `executed=3 passed=3 failed=0 skipped=0`、turbo 2/2 successful。
+- Task 7 adds no eval tests by design; the first eval-suite tests and `test` scripts remain assigned to Task 19.1/19.2。
+
+### 2026-09-28 Task 7 Ship
+
+- `/sdd-validate-impl agentic-ai-platform Task7` → GO。境界違反なし、前提タスク 4・6.1 は完了、新規テストなしのため PROVE は該当なし。
+- Independent config checks: eval-suite `AI_TEST_SUITE=gate` → exit 1（No test files found）、`local` / `pg` → exit 0、`bogus` → exit 1（`Unknown AI_TEST_SUITE "bogus"`）。
+- Gate: `mise run gate` → exit 0。Biome 37 files、model-ID 25 files、repo rules 24/1/2/1、root `executed=234 passed=234 failed=0 skipped=0`、ai-core `executed=3 passed=3 failed=0 skipped=0`（`errors.ts` lines 100%）、turbo 2/2。`mise run typecheck` → 3/3 successful。
+- Mechanical fixes: traceability.md（1.1・1.13・1.14 の Test/Commit と Gaps）、AGENTS.md（プロジェクト状態に eval-suite scaffold を追加）。
+- Commit: `0f587c5` feat(eval-suite): scaffold eval-suite workspace with suite-selecting Vitest config。

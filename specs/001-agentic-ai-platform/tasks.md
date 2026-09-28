@@ -80,7 +80,7 @@
 | 波 | 大タスク | 状態 | ファイル |
 |---|---|---|---|
 | W1 基盤 | 1 ツールチェーン、2 CI、3 ローカル依存サービス、4 テスト基盤、5 リポジトリ規約検査 | 完了（2026-09-27。敵対的レビュー2ラウンド） | [tasks-comp-w1.md](tasks-comp-w1.md) |
-| W2 ai-core の土台 | 6 ai-core scaffold、7 eval-suite scaffold、8 apps/web scaffold、9 ModelCatalog、10 Ports、11 testing ヘルパ、12 PlatformConfig、13 MockRuntime | 進行中（現在の波。6 完了） | 本ファイル |
+| W2 ai-core の土台 | 6 ai-core scaffold、7 eval-suite scaffold、8 apps/web scaffold、9 ModelCatalog、10 Ports、11 testing ヘルパ、12 PlatformConfig、13 MockRuntime | 進行中（現在の波。6〜7 完了） | 本ファイル |
 | W3 ai-core の機能 | 14 ModelGateway、15 AciToolkit、16 GuardedAgent、17 ChatCore、18 SummaryPipeline、19 評価スイート | 未着手 | [tasks-w3.md](tasks-w3.md) |
 | W4 apps/web | 21 RequestGuard、20 AppShell、22 ChatFeature、23 ToolAgentFeature、24 SummaryFeature | 未着手 | [tasks-w4.md](tasks-w4.md) |
 | W5 E2E・解説・最終統合 | 25 E2E 生成・検査スクリプト、26 E2E 基盤、27 E2E シナリオ、28 解説ドキュメント、29 最終統合と NFR 検証 | 未着手 | [tasks-w5.md](tasks-w5.md) |
@@ -164,19 +164,19 @@ _Depends:_ 4, 6.1
 _Requirements:_ 1.1, 1.13, 1.14
 _Traces:_ REQ-001, C21
 
-- [ ] 7.1 `package.json`（`@platform/ai-core` に依存）、`tsconfig.json`。`test`・`test:coverage` スクリプトは最初のテストと同時に 19.1 で加える（テスト0件のプロジェクトで gate の `test` 段が失敗するのを防ぐ）
+- [x] 7.1 `package.json`（`@platform/ai-core` に依存）、`tsconfig.json`。`test`・`test:coverage` スクリプトは最初のテストと同時に 19.1 で加える（テスト0件のプロジェクトで gate の `test` 段が失敗するのを防ぐ）
   _Boundary:_ `packages/eval-suite/package.json`, `packages/eval-suite/tsconfig.json`, `pnpm-lock.yaml`
   _Depends:_ 6.1
   _Requirements:_ 1.1
   _Traces:_ REQ-001, C21
   _Verify:_ `mise run setup` と `mise run typecheck` が成功する
-- [ ] 7.2 `vitest.config.ts`（`setup-hermetic`/`global-setup-local`/`gate-reporter` の登録、`AI_TEST_SUITE` によるテストの選択。ルートからは集約しない。plan C18「テストの実行単位」）
+- [x] 7.2 `vitest.config.ts`（`setup-hermetic`/`global-setup-local`/`gate-reporter` の登録、`AI_TEST_SUITE` によるテストの選択。ルートからは集約しない。plan C18「テストの実行単位」）
   _Boundary:_ `packages/eval-suite/vitest.config.ts`
   _Depends:_ 7.1, 4
   _Requirements:_ 1.13, 1.14
   _Traces:_ REQ-001, C21
   _Verify:_ 19.1・19.2 のテストの実行で確認する
-- [ ] 7.3 `tests/capability/README.md`: Capability / Regression の配置規約と 004 への引き継ぎ事項
+- [x] 7.3 `tests/capability/README.md`: Capability / Regression の配置規約と 004 への引き継ぎ事項
   _Boundary:_ `packages/eval-suite/tests/capability/README.md`
   _Depends:_ 7.1
   _Requirements:_ 1.13
@@ -184,6 +184,10 @@ _Traces:_ REQ-001, C21
   _Verify:_ 文書のみ。レビューで確認する
 
 ### Implementation Notes
+
+- `package.json` は後続 19.1 が scripts だけを追加できるよう、workspace 依存と Vitest / TypeScript の開発依存を scaffold 時点で固定した。eval-suite 自体にはテストがまだないため `test` script は置かない。
+- `vitest.config.ts` は root config から集約せず、`gate` / `local` / `pg` を独立した execution unit として選択する。空の `local` / `pg` は許可し、空の `gate` は失敗する。
+- Capability は品質の達成度、Regression は決定論的な既存契約を担い、004 ではデータセット・rubric・Judge 校正・安全性評価を同じ配置に追加する。
 
 ---
 

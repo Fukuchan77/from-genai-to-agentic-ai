@@ -20,7 +20,7 @@ ID 規約は `tasks.md` の「ID 対応表」を参照する（この spec の p
 
 | Requirement | Design | Task | Test | Commit |
 |---|---|---|---|---|
-| 1.1 | C1, C13, C21 | T-1.2, T-7.1, T-8.1, T-8.2, T-8.3, T-19.1 | T-1.2: `mise run setup`、Turbo pnpm-workspace dry-run | T-1.2: `10c3b48`、修正（T-1.2）: `01dc364` |
+| 1.1 | C1, C13, C21 | T-1.2, T-7.1, T-8.1, T-8.2, T-8.3, T-19.1 | T-1.2: `mise run setup`、Turbo pnpm-workspace dry-run、T-7.1: `mise run setup`（frozen lockfile、eval-suite importer）・eval-suite `tsc --noEmit` | T-1.2: `10c3b48`、修正（T-1.2）: `01dc364`、T-7.1: `0f587c5` |
 | 1.2 | C1 | T-6.1, T-6.3 | T-6.1: `mise run setup`（frozen lockfile）、T-6.3: `errors.test.ts` 3件（UI 依存なしの ai-core から import） | T-6.1/T-6.3: `930f464` |
 | 1.3 | C1 | T-1.1, T-1.2 | T-1.1: `mise tasks validate`（23件）、T-1.2: frozen install | T-1.1/T-1.2: `10c3b48`、修正（T-1.1/T-1.2）: `01dc364` |
 | 1.4 | C1 | T-1.1, T-1.4, T-5.5, T-13.7, T-19.3, T-29.1 | T-1.1: 初期gate、T-1.4: Vitest/Stryker構造検査・`tsc`、T-5.5: W1 gate 4段・10/10反復 | T-1.1: `10c3b48`、T-1.4: `ee05b10`、修正（T-1.1/T-1.4）: `01dc364`、T-5.5: `e18f7dd` |
@@ -32,8 +32,8 @@ ID 規約は `tasks.md` の「ID 対応表」を参照する（この spec の p
 | 1.10 | C2, C13, C14, C16, C20 | T-20.1, T-21.1, T-25.2, T-29.1 |  |  |
 | 1.11 | C1 | T-1.1, T-29.2 | T-1.1: offline lint-only gate（Docker/API key 不要） | T-1.1: `10c3b48` |
 | 1.12 | C1, C18 | T-1.4, T-4.3 | T-1.4: test suffix include/exclude構成検査、T-4.3: 実行/skip理由/DB未実行件数7件 | T-1.4: `ee05b10`、修正（T-1.4）: `01dc364`、T-4.3: `2085577` |
-| 1.13 | C6, C18, C21 | T-4.2, T-7.2, T-7.3, T-11.1, T-11.2, T-14.5, T-19.1, T-19.2 | T-4.2: local availability一時単体5件・globalSetup統合1件 | T-4.2: `2085577` |
-| 1.14 | C18, C21 | T-4.2, T-4.3, T-7.2, T-11.2, T-14.5, T-19.2, T-29.2 | T-4.2: 理由付きavailability、T-4.3: skip理由集計・全件skipのgate/local統合probe | T-4.2/T-4.3: `2085577` |
+| 1.13 | C6, C18, C21 | T-4.2, T-7.2, T-7.3, T-11.1, T-11.2, T-14.5, T-19.1, T-19.2 | T-4.2: local availability一時単体5件・globalSetup統合1件、T-7.2: eval-suite の `AI_TEST_SUITE` 選択の直接確認（空 gate は exit 1、空 local/pg は exit 0、未知値は読込時 exit 1）、T-7.3: README（レビューで確認） | T-4.2: `2085577`、T-7.2/T-7.3: `0f587c5` |
+| 1.14 | C18, C21 | T-4.2, T-4.3, T-7.2, T-11.2, T-14.5, T-19.2, T-29.2 | T-4.2: 理由付きavailability、T-4.3: skip理由集計・全件skipのgate/local統合probe、T-7.2: eval-suite への `global-setup-local`・`gate-reporter` 登録（実テストでの確認は T-19.2） | T-4.2/T-4.3: `2085577`、T-7.2: `0f587c5` |
 | 1.15 | C1, C18, C19, C20 | T-1.4, T-4.3, T-5.2, T-5.4, T-5.5, T-13.7, T-19.3, T-25.3, T-29.1 | T-1.4: `passWithNoTests: false`・reporter登録、T-4.3: gate実行0件のexit 1、T-5.2: 9規則19件、T-5.4: count 4件、T-5.5: 各段件数・0件exit 1 | T-1.4: `ee05b10`、修正（T-1.4）: `01dc364`、T-4.3: `2085577`、T-5.2/T-5.4/T-5.5: `e18f7dd` |
 | 1.16 | C1, C2, C18 | T-1.4, T-4.3, T-19.3, T-29.3 | T-1.4: Stryker対象・runner・閾値の構造検査、T-4.3: 集計/空実行/DB件数のPROVE 5種 | T-1.4: `ee05b10`、T-4.3: `2085577` |
 | 1.17 | C2, C19 | T-25.1, T-25.3, T-26.1, T-26.2, T-27.1, T-27.2, T-29.1 |  |  |
@@ -158,6 +158,7 @@ Task 列に記載する。
 
 ## Gaps
 
+- 2026-09-28 の `/sdd-ship`（T-7.1〜T-7.3）では、新しい要件・設計ギャップは検出しなかった。eval-suite はテスト0件のため `test` スクリプトを置かず gate の実行単位に入らない（T-19.1 で最初のテストと同時に加える）。7.2 の構成は suite 別の直接実行で確認し、実テストでの確認は T-19.1・T-19.2 に引き継ぐ。敵対的レビューの LOW（README の `*.db.test.ts` 欠落）は修正済み。
 - 2026-09-28 の `/sdd-ship`（T-6.1〜T-6.3）では、新しい要件・設計ギャップは検出しなかった。ai-core の gate テストは0件から3件に増え、`errors.ts` の行カバレッジは100%（6/6）。`/sdd-validate-impl` で `pnpm-lock.yaml` が境界外と判定されたため、T-6・T-7・T-8 と T-6.1・T-7.1・T-8.1 の `_Boundary:_` に加えた。`test:coverage` のスクリプト文面を plan C18 と mise タスク表（閾値の強制は gate の `test` 段）に合わせて `--coverage.thresholds.lines=0` 付きにそろえた（T-6.3、T-19.1、T-21.1）。`PlatformError` をどの公開サブパスから再 export するかは T-21.1 までに決める。
 - 2026-09-27 の `/sdd-ship`（T-5.1〜T-5.5）では、新しい要件・設計ギャップは検出しなかった。恒久テストは16件から48件へ32件増加し、新規スクリプト5ファイルのstatement coverageは合計84.50%。W1 gateは4段すべてで非空件数を表示し、10/10回同じ成功判定だった。`mise run test:coverage`のworkspace taskはW2のT-6.3以降で結線されるため現時点では0 taskであり、ship検証ではroot Vitestを直接coverage実行した。
 - 2026-09-27 の `/sdd-ship`（T-4.1〜T-4.3）では、新しい要件・設計ギャップは検出しなかった。hermetic network guard、local availability、gate reporterを20件のship検証（恒久16件 + T-4.2一時4件）と行カバレッジ93.56%で確認した。T-4.2の恒久的な受け取り側skipテストとOllama停止時統合確認は、承認済みタスクどおりT-11.2/T-29.2へ引き継ぐ。
