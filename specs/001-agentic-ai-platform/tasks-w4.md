@@ -18,7 +18,7 @@ _Depends:_ 8, 10
 _Requirements:_ 1.10, 3.11
 _Traces:_ REQ-001, REQ-003, C14
 
-- [ ] 21.1 `lib/server/errors.ts`: `PlatformError` から HTTP エラーレスポンス（`{ error: { code, message } }`）とストリームエラーへの変換 + `errors.test.ts`（`code` ごとのステータス、スタックや `details` の秘密値を応答に含めない）。`apps/web/package.json` に `test`・`test:coverage`（`vitest run --coverage.enabled --coverage.reporter=html`）スクリプトを加える（apps/web の最初のテスト）
+- [ ] 21.1 `lib/server/errors.ts`: `PlatformError` から HTTP エラーレスポンス（`{ error: { code, message } }`）とストリームエラーへの変換 + `errors.test.ts`（`code` ごとのステータス、スタックや `details` の秘密値を応答に含めない）。`apps/web/package.json` に `test`・`test:coverage`（`vitest run --coverage.enabled --coverage.reporter=html --coverage.thresholds.lines=0`。閾値の強制は gate の `test` 段。plan C18）スクリプトを加える（apps/web の最初のテスト）
   _Boundary:_ `apps/web/lib/server/errors.ts`, `apps/web/lib/server/errors.test.ts`, `apps/web/package.json`
   _Depends:_ 8
   _Requirements:_ 1.10, 3.11

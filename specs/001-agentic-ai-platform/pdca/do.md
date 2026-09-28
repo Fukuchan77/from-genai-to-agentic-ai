@@ -1658,3 +1658,323 @@ $ (echo ::tsconfig::tsconfig.json; pnpm exec tsc -p tsconfig.json --listFilesOnl
   - 生存1件を修正: ブロックコメントをコードとして走査する変異が生き残った。fixture の `/* console.log(messages) */` は `;` の直後にあり、変異後も正規表現リテラルとして読み飛ばされていた。複数行のブロックコメントと、式の後のブロックコメント（`1 /* eval(source) */`）を fixture に加え、同じ変異で scan semantics のテストが失敗することを確認した。
 - 境界: 新規の `scripts/lib/memory-io.mjs` を Task 5 の `_Boundary:_` に追記した（共有ヘルパの扱いは W1 レビュー対応と同じ）。
 - Final: `mise run gate` → Biome 29 files → Model ID 21 files → W1 規則（no-dynamic-eval 20、actions-pinned 1、frozen-lockfile 2、allow-builds-reasoned 1 files）→ `executed=234 passed=234 failed=0 skipped=0`（212 → 234、+22）。`tsc -p tsconfig.json --noEmit` exit 0。
+
+### 2026-09-28 Task 6 Started
+
+- Objective: `@platform/ai-core` のワークスペース骨格、共通 Vitest 設定、共通エラー基底型を Task 6.1〜6.3 の順で実装する。
+- Success criteria:
+  - Task fidelity: plan が列挙する M1 依存と9個の公開サブパスを `package.json` に宣言する。
+  - Consistency: ワークスペースのテスト選択・hermetic setup・gate reporter がルートの C18 規則と一致する。
+  - Type safety: `PlatformErrorCode` は閉じた union、`details` は構造化値として保持され、公開 API に `any` を含めない。
+  - Coverage: ai-core のテスト実行では行カバレッジを常に計測し、80% 未満を失敗させる。
+  - Safety: gate テストは共通 hermetic setup を必ず登録し、外部ネットワークへフォールバックしない。
+
+### 2026-09-28 Task 6.1 Started
+
+- Objective: ai-core の manifest と TypeScript 設定を作り、依存解決とロックファイル更新を行う。
+- Approach: approved research の 2026-09-27 時点の完全一致バージョンを使い、後続タスクが並列でも manifest を再編集しない依存集合を先に宣言する。
+
+### 2026-09-28 Error Encountered
+
+**Error**: `mise exec -- pnpm view ... version --json` が60秒間応答せず、手動で中断した。
+
+**Context**: research.md で「実装時に固定」とされた M1 依存のレジストリ最新版を確認しようとした。
+
+**Root Cause Investigation**:
+
+1. **Documentation source**: `research.md` は 2026-09-27 に npm レジストリと型定義を確認した完全一致版（または採用下限）を記録している。
+2. **Codebase search**: 現在の lockfile には新しい ai-core 依存がまだなく、ローカル解決済み版から確定できない。
+3. **Hypothesis**: 実行環境のレジストリ接続が応答しないため、リモート照会だけが停止しており、approved research の版情報は利用可能である。
+
+**Solution Design**:
+
+- Approach: 同日の approved research に記録された版を完全一致で採用し、`mise run setup` の frozen-compatible lockfile 更新で実在と互換性を検証する。
+- Rationale: 推測で版を上げず、承認済み設計の根拠を維持できる。`@ai-sdk/openai` と `@ai-sdk/google` は記録された採用下限を固定する。
+
+**Execution**: manifest に approved research の版を記述した。
+
+**Result**: 依存解決の検証待ち。
+
+**Learning**: 実装日のレジストリ照会が利用不能な場合は、同日の approved research を版の正本として使い、セットアップで解決可能性を検証する。
+
+### 2026-09-28 Error Encountered
+
+**Error**: sandbox 内の `mise exec -- pnpm install --lockfile-only` が `@ai-sdk/azure` の npm metadata 取得に失敗した。
+
+**Context**: 新規ワークスペース依存を `pnpm-lock.yaml` に反映していた。
+
+**Root Cause Investigation**:
+
+1. **Command evidence**: supply-chain policy 検査は通過し、失敗箇所は `https://registry.npmjs.org/@ai-sdk%2Fazure` への metadata request だった。
+2. **Codebase search**: manifest の版は research.md に宣言済みで、依存名・版の誤記を示すローカル証拠はない。
+3. **Hypothesis**: sandbox のネットワーク制限がレジストリ通信を遮断した。
+
+**Solution Design**:
+
+- Approach: 同じ lockfile-only install を承認済みのネットワークアクセスで1回実行する。
+- Rationale: コマンドや依存指定を変えず、観測された外部通信制限だけを解消する。
+
+**Execution**: escalated `mise exec -- pnpm install --lockfile-only` を実行した。
+
+**Result**: `Done in 962ms using pnpm v12.6.0`。lockfile 更新成功。
+
+**Learning**: metadata fetch の通信失敗は依存指定の変更で回避せず、同一コマンドを必要最小限のネットワーク権限で再実行する。
+
+### 2026-09-28 Task 6.1 Verification
+
+- Lockfile update: `mise exec -- pnpm install --lockfile-only` → `Done in 962ms using pnpm v12.6.0`。
+- Frozen setup: `mise run setup` → `Lockfile is up to date`、296 packages added、exit 0。
+- Manifest: plan の M1 依存12件、ai-core 公開APIの9サブパス、`typecheck` script を宣言した。
+- PROVE: Task 6.1 はテスト対象の実装ではなく、明示された command-based `_Verify:` を使用するため該当なし。
+
+### 2026-09-28 Task 6.2 Implemented
+
+- Added: node 環境、C18 と同じ `AI_TEST_SUITE` 選択、共通 hermetic setup / gate reporter、常時有効の V8 coverage、行80%閾値。
+- Verification is paired with Task 6.3, because Task 6.2 explicitly requires the first ai-core test and the below-threshold failure check to exist first.
+
+### 2026-09-28 Task 6.3 RED Started
+
+- Added three tests for field preservation, `instanceof` discrimination, and the closed TypeScript code vocabulary before creating `src/errors.ts`.
+
+### 2026-09-28 Task 6.3 RED Evidence
+
+- Command: `pnpm exec vitest run --config packages/ai-core/vitest.config.ts`
+- Failure: `Cannot find module './errors' imported from .../src/errors.test.ts`。
+- Collection evidence: test file was discovered, but 0 tests executed because the required implementation module did not exist; gate reporter also failed the execution unit as designed.
+- SCAN: `packages/ai-core` は新規ワークスペースで、変更対象シンボルに触れる既存テストは0件。回帰ベースライン対象なし。
+
+### 2026-09-28 Task 6.3 GREEN
+
+- Implemented: closed `PlatformErrorCode` union, readonly structured details, Japanese-message-preserving `PlatformError`, subclass-aware `name`.
+- Added scripts: `test` and required HTML-producing `test:coverage`; retained `typecheck`.
+
+### 2026-09-28 Error Encountered
+
+**Error**: PROVE 用スクリプトで zsh の予約済み readonly 変数 `status` へ代入し、復元処理の前にシェルが停止した。
+
+**Context**: `PlatformError` を意図的に壊したテスト失敗後、元実装へ自動復元しようとした。
+
+**Root Cause Investigation**:
+
+1. **Command evidence**: 期待した assertion failure の直後に `zsh: read-only variable: status` が出た。
+2. **Codebase state**: `/tmp/ai-core-errors.ts.prove` に実装前の完全なバックアップが残っていた。
+3. **Hypothesis**: zsh の特殊パラメーター名とローカル変数名が衝突し、後続の `cp` が実行されなかった。
+
+**Solution Design**:
+
+- Approach: バックアップから即時復元し、以降は `command_status` を使い、復元を終了コード処理より先に置く。
+- Rationale: テスト失敗そのものは期待どおりであり、実装の安全な復元だけを確実にする。
+
+**Execution**: `/tmp/ai-core-errors.ts.prove` から `src/errors.ts` を復元し、diff が空であることを確認した。
+
+**Result**: 正常実装へ復元済み。
+
+**Learning**: zsh スクリプトでは `status` を汎用変数名に使わず、意図的破壊の復元を終了コード伝播より先に行う。
+
+### 2026-09-28 Task 6.2 Threshold Evidence
+
+- Deliberate break: `thresholds.lines` を一時的に `101` へ上げ、実測100%を閾値未満にした。
+- Failure observed: `ERROR: Coverage for lines (100%) does not meet global threshold (101%)`。
+- Restored: `thresholds.lines: 80` へ復元済み。
+- This confirms the gate-mode `test` script enforces coverage, while `test:coverage` can focus on HTML output.
+
+### 2026-09-28 Task 6.3 PROVE Evidence
+
+- Test: `preserves the closed error code, Japanese message, and structured details`
+  - Break applied: constructor が常に `output-error` と空 details を保持するよう一時変更。
+  - Failure observed: `expected 'output-error' to be 'invalid-request'`。
+  - Restored: yes.
+- Test: `supports discrimination with instanceof across the error hierarchy`
+  - Break applied: constructor の最後で prototype を `Object.prototype` に置き換えた。
+  - Failure observed: `expected ExamplePlatformError ... to be an instance of ExamplePlatformError`。
+  - Restored: yes.
+- Test: `exposes only the declared PlatformErrorCode vocabulary to TypeScript`
+  - Break applied: `provider-unavailable` を union から一時削除した。
+  - Failure observed: `TS1360: Type '"provider-unavailable"' does not satisfy the expected type 'PlatformErrorCode'`。
+  - Restored: yes.
+
+### 2026-09-28 Task 6.3 Verification
+
+- Formatting: `pnpm exec biome check --write packages/ai-core` → 5 files checked, no fixes required.
+- Typecheck: `pnpm --filter @platform/ai-core typecheck` → exit 0.
+- Tests: `pnpm --filter @platform/ai-core test` → 1 file, 3 tests passed, gate reporter `executed=3 passed=3 failed=0 skipped=0`。
+- Coverage: lines 100% (5/5), required threshold 80%.
+- Collection delta: ai-core workspace previously had 0 tests; Task 6 adds 3 executed tests.
+- Status: Tasks 6.1, 6.2, and 6.3 marked `[x]`.
+
+### 2026-09-28 Task 6 Adversarial Review Round 1: REQUEST_CHANGES
+
+- Report: `.sdd/reviews/001-agentic-ai-platform-6.md`
+- HIGH confirmed: `coverage.enabled` と80%閾値を全スイートへ適用したため、C18 が0件を許可する `local` / `pg` も0%で失敗した。
+- MEDIUM partially confirmed: error-code union にこのタスクの一次資料から直接たどれない値が含まれ、テストも語彙全体を固定していなかった。
+- MEDIUM disputed: `./errors` export の追加は plan.md:86 の「公開APIは9サブパスに限る」に反する。Task 6 では設計外の10番目の公開サブパスを追加せず、後続の既存サブパス index からの再export判断に委ねる。
+- LOW confirmed: Task 6 の Implementation Notes を追記する。
+
+### 2026-09-28 Error Encountered
+
+**Error**: `local` / `pg` の0件実行が、`passWithNoTests: true` にもかかわらず行カバレッジ0%として失敗した。
+
+**Context**: adversarial reviewer が C18 の空スイート契約を実コマンドで検証した。
+
+**Root Cause Investigation**:
+
+1. **Design check**: plan C18 は coverage を常時有効にする一方、80%閾値は gate の `test` 段で強制し、`local` / `pg` は0件を許可すると定める。
+2. **Configuration check**: `thresholds.lines: 80` が suite 条件なしで coverage 全体へ設定されていた。
+3. **Hypothesis**: Vitest の `passWithNoTests` はテスト収集だけを成功扱いにし、coverage threshold 判定は独立して0%を失敗させる。
+
+**Solution Design**:
+
+- Approach: `coverage.enabled: true` は全スイートで維持し、`thresholds.lines: 80` だけを `suiteName === "gate"` の場合に設定する。
+- Rationale: 「常時計測」「gate で80%強制」「local/pg 0件許可」の3契約を同時に満たす。
+
+**Execution**: conditional coverage thresholds に変更した。
+
+**Result**: local/pg の再検証待ち。
+
+**Learning**: `passWithNoTests` と coverage threshold は別の終了条件なので、空スイート契約は両方を含めて検証する必要がある。
+
+### 2026-09-28 Error Vocabulary Remediation RED Evidence
+
+- Test first: `PLATFORM_ERROR_CODES` の完全一致を要求するテストへ変更した。
+- Command: `pnpm --filter @platform/ai-core test`
+- Failure: `expected undefined to deeply equal [ 'invalid-request', ... ]`。
+- Implementation: plan の M1 HTTP 契約に直接現れる platform-side codes へ絞り、const tuple から union を導出した。Task 6 時点で根拠のない内部コードは削除した。
+
+### 2026-09-28 Error Encountered
+
+**Error**: Biome が型の否定例を囲む `if (false)` を `noConstantCondition` で拒否した。
+
+**Context**: arbitrary string が `PlatformErrorCode` に入らないことを typecheck だけで検査し、runtime では実行しない構造にしていた。
+
+**Root Cause Investigation**:
+
+1. **Lint evidence**: `packages/ai-core/src/errors.test.ts:40:7 lint/correctness/noConstantCondition`。
+2. **Available test API**: Vitest の `expectTypeOf` は runtime の無効コード分岐を作らず exact type equality を typecheck できる。
+3. **Hypothesis**: `@ts-expect-error` のための到達不能分岐より、union 全体の型同値検査が task の「閉じた語彙」に直接対応する。
+
+**Solution Design**:
+
+- Approach: negative assignment を削除し、`expectTypeOf<PlatformErrorCode>().toEqualTypeOf<...>()` へ置換する。
+- Rationale: lint に適合し、任意文字列1件の拒否より完全な union 同値を強く検証できる。
+
+**Execution**: runtime tuple assertion と compile-time exact union assertion の組み合わせへ変更した。
+
+**Result**: 再検証待ち。
+
+**Learning**: 閉じた union の検査は到達不能な `@ts-expect-error` より exact type equality を優先する。
+
+### 2026-09-28 Error Encountered
+
+**Error**: gate-mode test と pg-mode test を同じ workspace で並列実行し、Vitest が共通 `coverage/` ディレクトリのロック競合で失敗した。
+
+**Context**: remediation 後の `local`、`pg`、gate/typecheck を並列検証していた。
+
+**Root Cause Investigation**:
+
+1. **Error evidence**: `coverage report directory .../packages/ai-core/coverage is already in use by another Vitest process`。
+2. **Configuration check**: C18 により coverage は全スイートで常時有効で、既定 reportsDirectory は共通である。
+3. **Hypothesis**: 同一 workspace の複数 Vitest coverage process を並列化した検証手順が競合を作った。実装の機能不良ではない。
+
+**Solution Design**:
+
+- Approach: 同一 workspace の coverage-enabled test lanes は逐次実行する。
+- Rationale: 本番の mise/turbo タスクも同一 workspace 内で複数 lane を同時実行しないため、実運用と一致する。
+
+**Execution**: local と pg の完了後に gate-mode package test を単独で再実行する。
+
+**Result**: 再検証待ち。
+
+**Learning**: coverage reportsDirectory を共有する test lane の検証は並列化しない。
+
+### 2026-09-28 Error Vocabulary Remediation PROVE Evidence
+
+- Break applied: `source-unavailable` を `PLATFORM_ERROR_CODES` tuple から一時削除した。
+- Failure observed: exact vocabulary test の diff が missing `source-unavailable` を示して失敗した。
+- Restored: yes.
+
+### 2026-09-28 Adversarial Review Round 1 Remediation Verification
+
+- `mise run test:local` → root/ai-core とも0件を理由どおり許可、2 tasks successful。
+- `AI_TEST_SUITE=pg ... @platform/ai-core test` → 0 tests、0% coverage を報告しつつ exit 0。
+- `pnpm --filter @platform/ai-core typecheck` → exit 0。
+- `pnpm --filter @platform/ai-core test` → 3/3 passed、lines 100% (6/6)。
+- Implementation Notes: lockfile exception、suite別threshold、error vocabulary の判断を追記した。
+
+### 2026-09-28 Task 6 Adversarial Review Round 2: APPROVE_WITH_NOTES
+
+- Report: `.sdd/reviews/001-agentic-ai-platform-6.md`
+- Round 1 findings: empty local/pg fixed; vocabulary and test strengthened; Implementation Notes added; `./errors` finding withdrawn as a Task 6 defect because plan limits public API to nine subpaths.
+- Trigger resolution: dependencies are plan-declared and exactly pinned; lockfile is a justified generated exception.
+- Reviewer verification: `mise run setup`, `mise run audit`, and `mise run gate` succeeded.
+- Remaining LOW note: `test:coverage` inherits the gate threshold because Task 6.3 prescribes the exact script while `AI_TEST_SUITE=gate`; no correctness or gate failure, retained for later C18 task-interface refinement rather than adding an undeclared flag in Task 6.
+
+### 2026-09-28 Task 6 Coverage Report Verification
+
+- Command: `mise run test:coverage`
+- Result: ai-core 1 test file / 3 tests passed; HTML coverage reporter completed; turbo 1 task successful.
+
+### 2026-09-28 Adversarial Review LOW Note Remediation RED Evidence
+
+- Contract: plan C18 requires `test:coverage` to generate the HTML report without enforcing the gate threshold.
+- Deliberate state: config threshold temporarily raised to 101% while implementation remained at the original script.
+- Command: `pnpm --filter @platform/ai-core test:coverage`
+- Failure: all 3 tests passed, then `Coverage for lines (100%) does not meet global threshold (101%)` caused exit 1.
+- Root cause: CLI inherited the config threshold because the report command did not override it.
+- Fix: use Vitest's official nested CLI override `--coverage.thresholds.lines=0`; gate-mode `test` still uses the configured 80% threshold.
+
+### 2026-09-28 Adversarial Review LOW Note Remediation PROVE Evidence
+
+- Break applied: config threshold was temporarily raised to 101%, above the measured 100% coverage.
+- Fixed command: `pnpm --filter @platform/ai-core test:coverage` with `--coverage.thresholds.lines=0`.
+- Result: 3/3 tests passed and the HTML-report command exited 0 despite the temporary 101% config threshold.
+- Restored: config threshold returned to 80%; gate-mode `test` does not carry the override and continues enforcing 80%.
+- Official API check: Vitest CLI supports `--coverage.thresholds.lines <number>` and CLI values override config values by deep merge.
+
+### 2026-09-28 Task 6 Final Verification Checkpoint
+
+- Selected tasks 6.1〜6.3 are complete and remain marked `[x]`.
+- Final commands: package typecheck/test, HTML coverage report, and repository `mise run gate`.
+
+### 2026-09-28 Task 6 Final Verification Evidence
+
+- `pnpm --filter @platform/ai-core typecheck` → exit 0.
+- `pnpm --filter @platform/ai-core test` → 1 file / 3 tests passed; gate reporter `executed=3 passed=3 failed=0 skipped=0`; line coverage 100% (6/6).
+- `mise run test:coverage` → 1 turbo task successful; HTML reporter completed with 3/3 tests passed and report-only threshold override.
+- `mise run gate` → Biome 34 files; model-ID check 24 files; repository rules scanned 23/1/2/1 files; root `executed=234 passed=234 failed=0 skipped=0`; ai-core `executed=3 passed=3 failed=0 skipped=0`, lines 100%; turbo 2/2 tasks successful.
+
+### 2026-09-28 Error Encountered
+
+**Error**: `git restore --staged` が `.git/index.lock: Operation not permitted` で失敗した。
+
+**Context**: reviewer が残した部分的な staging を、working tree を変更せず解除しようとした。
+
+**Root Cause Investigation**:
+
+1. **State check**: initial working tree was clean; review後に `A` / `AM` が現れ、index と working tree が不一致だった。
+2. **Permission check**: workspace sandbox は `.git` を読み取り専用として扱い、index lock の作成を拒否した。
+3. **Hypothesis**: コマンド内容ではなく、git index への sandbox 書き込み制限が原因である。
+
+**Solution Design**:
+
+- Approach: working tree を保持する同じ `git restore --staged` を、git index だけの最小権限昇格で実行する。
+- Rationale: reset/checkout で実装を失わず、ユーザーが依頼していない staging だけを元に戻せる。
+
+**Execution**: escalated `git restore --staged` を対象ファイルに限定して実行した。
+
+**Result**: staging 解除成功。実装ファイルの内容は保持された。
+
+**Learning**: review subagent 後は index/working-tree の両方を確認し、部分 staging を残さない。
+
+### 2026-09-28 Task 6 Validation Follow-ups
+
+- Source: `/sdd-validate-impl agentic-ai-platform Task6` → 条件付き GO（CRITICAL 1件: `pnpm-lock.yaml` が literal boundary 外、WARNING: 6.3 の `test:coverage` 文面が実装・plan の mise タスク表と不一致）。
+- Boundary: `pnpm-lock.yaml` を大タスク 6/7/8 と 6.1/7.1/8.1 の `_Boundary:_` に追加した（tasks.md の「6.1 → 7.1 → 8.1 は lockfile を更新する」を literal 化）。
+- Script contract: `test:coverage` の正本文面を `vitest run --coverage.enabled --coverage.reporter=html --coverage.thresholds.lines=0` にそろえた（tasks.md 6.3、plan.md C18「テストの実行単位」、tasks-w3.md 19.1、tasks-w4.md 21.1）。plan の mise タスク表「HTML レポートだけ、閾値の強制は gate の `test` 段」と一致させ、後続ワークスペースで同じ LOW 指摘が再発しないようにする。
+- Code changes: none（文書のみ）。
+
+### 2026-09-28 Task 6 Ship Validation
+
+- Verdict: GO（`/sdd-validate-impl` の CRITICAL 1件と WARNING 1件は上記の Validation Follow-ups で解消）。
+- Mechanical fixes: AGENTS.md（プロジェクト状態と gate の説明に ai-core のワークスペーステストを追加）、README.md（W1 gate の説明）、tasks.md の進捗表（W2 を「進行中。6 完了」へ）、traceability.md（1.2・NFR-05・NFR-06 の Test/Commit と Gaps）。
+- Final gate: `mise run gate` → exit 0。Biome 34 files、Model ID 24 files、W1 規則4件、ai-core `executed=3 passed=3 failed=0 skipped=0`（0 → 3、`src/errors.test.ts`）、`errors.ts` lines 100%、root `executed=234 passed=234 failed=0 skipped=0`、turbo 2/2 successful。
+- Commit: `930f464` feat(ai-core): scaffold ai-core workspace with PlatformError base。

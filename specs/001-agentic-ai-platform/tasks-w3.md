@@ -214,7 +214,7 @@ _Depends:_ 7, 9, 13, 15, 16, 18（19.3 は 14、17 にも依存する）
 _Requirements:_ 1.1, 1.4, 1.7, 1.13, 1.14, 1.15, 1.16
 _Traces:_ REQ-001, C21, C1, C2
 
-- [ ] 19.1 `tests/regression/tool-agent-run.test.ts`: `mock` シナリオでツールエージェントを最後まで実行し、停止理由・ツール呼び出し列・最終回答の Outcome を回帰として検証する。`packages/eval-suite/package.json` に `test`・`test:coverage`（`vitest run --coverage.enabled --coverage.reporter=html`）スクリプトを加える
+- [ ] 19.1 `tests/regression/tool-agent-run.test.ts`: `mock` シナリオでツールエージェントを最後まで実行し、停止理由・ツール呼び出し列・最終回答の Outcome を回帰として検証する。`packages/eval-suite/package.json` に `test`・`test:coverage`（`vitest run --coverage.enabled --coverage.reporter=html --coverage.thresholds.lines=0`。閾値の強制は gate の `test` 段。plan C18）スクリプトを加える
   _Boundary:_ `packages/eval-suite/tests/regression/tool-agent-run.test.ts`, `packages/eval-suite/package.json`
   _Depends:_ 7, 13, 15, 16
   _Requirements:_ 1.1, 1.13

@@ -21,7 +21,7 @@ ID 規約は `tasks.md` の「ID 対応表」を参照する（この spec の p
 | Requirement | Design | Task | Test | Commit |
 |---|---|---|---|---|
 | 1.1 | C1, C13, C21 | T-1.2, T-7.1, T-8.1, T-8.2, T-8.3, T-19.1 | T-1.2: `mise run setup`、Turbo pnpm-workspace dry-run | T-1.2: `10c3b48`、修正（T-1.2）: `01dc364` |
-| 1.2 | C1 | T-6.1, T-6.3 |  |  |
+| 1.2 | C1 | T-6.1, T-6.3 | T-6.1: `mise run setup`（frozen lockfile）、T-6.3: `errors.test.ts` 3件（UI 依存なしの ai-core から import） | T-6.1/T-6.3: `930f464` |
 | 1.3 | C1 | T-1.1, T-1.2 | T-1.1: `mise tasks validate`（23件）、T-1.2: frozen install | T-1.1/T-1.2: `10c3b48`、修正（T-1.1/T-1.2）: `01dc364` |
 | 1.4 | C1 | T-1.1, T-1.4, T-5.5, T-13.7, T-19.3, T-29.1 | T-1.1: 初期gate、T-1.4: Vitest/Stryker構造検査・`tsc`、T-5.5: W1 gate 4段・10/10反復 | T-1.1: `10c3b48`、T-1.4: `ee05b10`、修正（T-1.1/T-1.4）: `01dc364`、T-5.5: `e18f7dd` |
 | 1.5 | C1, C18 | T-4.1, T-29.2 | T-4.1: hermetic network guard 9件・API key不要のmock実行 | T-4.1: `2085577` |
@@ -146,8 +146,8 @@ Task 列に記載する。
 | NFR-02（決定性） | C1, C7 | T-13.1, T-13.2, T-29.2 |  |  |
 | NFR-03（オフライン動作） | C7, C18 | T-4.1, T-13.6, T-29.2 | T-4.1: mock hermetic network guard 9件 | T-4.1: `2085577` |
 | NFR-04（ストリーミング応答性） | C19 | T-26.3, T-27.4 |  |  |
-| NFR-05（型安全性） | C1 | T-1.3, T-6.3 | T-1.3: TypeScript 7.1 strict root typecheck | T-1.3: `10c3b48`、修正（T-1.3）: `01dc364` |
-| NFR-06（テストカバレッジ） | C18 | T-6.2 |  |  |
+| NFR-05（型安全性） | C1 | T-1.3, T-6.3 | T-1.3: TypeScript 7.1 strict root typecheck、T-6.3: 閉じた `PlatformErrorCode` の tuple/union 完全一致・ai-core `tsc --noEmit` | T-1.3: `10c3b48`、修正（T-1.3）: `01dc364`、T-6.3: `930f464` |
+| NFR-06（テストカバレッジ） | C18 | T-6.2 | T-6.2: gate の行80%閾値（101% で失敗する PROVE）、`local`/`pg` の0件許可、`test:coverage` の閾値なし HTML レポート | T-6.2: `930f464` |
 | NFR-07（秘密情報） | C1, C4 | T-1.5, T-12.1, T-12.4 | T-1.5: names-only env・gitleaks redact | T-1.5: `d9cec30`、修正（T-1.5）: `01dc364` |
 | NFR-08（隔離実行） | — | **未割当（下記 Gaps 参照）** |  |  |
 | NFR-09（アクセシビリティ） | C13, C19 | T-8.3, T-20.4, T-26.3, T-27.3 |  |  |
@@ -158,6 +158,7 @@ Task 列に記載する。
 
 ## Gaps
 
+- 2026-09-28 の `/sdd-ship`（T-6.1〜T-6.3）では、新しい要件・設計ギャップは検出しなかった。ai-core の gate テストは0件から3件に増え、`errors.ts` の行カバレッジは100%（6/6）。`/sdd-validate-impl` で `pnpm-lock.yaml` が境界外と判定されたため、T-6・T-7・T-8 と T-6.1・T-7.1・T-8.1 の `_Boundary:_` に加えた。`test:coverage` のスクリプト文面を plan C18 と mise タスク表（閾値の強制は gate の `test` 段）に合わせて `--coverage.thresholds.lines=0` 付きにそろえた（T-6.3、T-19.1、T-21.1）。`PlatformError` をどの公開サブパスから再 export するかは T-21.1 までに決める。
 - 2026-09-27 の `/sdd-ship`（T-5.1〜T-5.5）では、新しい要件・設計ギャップは検出しなかった。恒久テストは16件から48件へ32件増加し、新規スクリプト5ファイルのstatement coverageは合計84.50%。W1 gateは4段すべてで非空件数を表示し、10/10回同じ成功判定だった。`mise run test:coverage`のworkspace taskはW2のT-6.3以降で結線されるため現時点では0 taskであり、ship検証ではroot Vitestを直接coverage実行した。
 - 2026-09-27 の `/sdd-ship`（T-4.1〜T-4.3）では、新しい要件・設計ギャップは検出しなかった。hermetic network guard、local availability、gate reporterを20件のship検証（恒久16件 + T-4.2一時4件）と行カバレッジ93.56%で確認した。T-4.2の恒久的な受け取り側skipテストとOllama停止時統合確認は、承認済みタスクどおりT-11.2/T-29.2へ引き継ぐ。
 - 2026-09-27 の `/sdd-ship`（T-3.1〜T-3.2）では、新しい要件・設計ギャップは検出しなかった。Composeは6サービスのhealthy状態とLangfuse UI/health、Postgresは新規volumeからのinit SQL自動実行・`vector`・カスタムLangfuse DBを実測した。Rancher Desktopの`/Users/Shared` mount手順は端末ローカルのGit除外memoryにのみ保存した。

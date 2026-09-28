@@ -26,7 +26,7 @@ mise run gate
 
 `.env.example`には変数名だけを収録しています。APIキーなしでも品質ゲートを`mock`モードで
 実行できます。現在のW1 gateは、Biomeのlint・formatと非空走査、モデルID検査、W1の4つの
-リポジトリ規則、ルートテストを実行します。後続の段は波の締めで段階的に結線します。
+リポジトリ規則、ルートと`test`スクリプトを持つワークスペース（現在は`@platform/ai-core`）のテストを実行します。後続の段は波の締めで段階的に結線します。
 
 `mise run setup`はpre-commitフック（`.githooks/pre-commit`）を有効にします。フックは
 `pnpm`と`gitleaks`をPATHから呼ぶため、miseを有効にしたシェル（`mise activate`）から

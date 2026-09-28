@@ -80,7 +80,7 @@
 | 波 | 大タスク | 状態 | ファイル |
 |---|---|---|---|
 | W1 基盤 | 1 ツールチェーン、2 CI、3 ローカル依存サービス、4 テスト基盤、5 リポジトリ規約検査 | 完了（2026-09-27。敵対的レビュー2ラウンド） | [tasks-comp-w1.md](tasks-comp-w1.md) |
-| W2 ai-core の土台 | 6 ai-core scaffold、7 eval-suite scaffold、8 apps/web scaffold、9 ModelCatalog、10 Ports、11 testing ヘルパ、12 PlatformConfig、13 MockRuntime | 未着手（現在の波） | 本ファイル |
+| W2 ai-core の土台 | 6 ai-core scaffold、7 eval-suite scaffold、8 apps/web scaffold、9 ModelCatalog、10 Ports、11 testing ヘルパ、12 PlatformConfig、13 MockRuntime | 進行中（現在の波。6 完了） | 本ファイル |
 | W3 ai-core の機能 | 14 ModelGateway、15 AciToolkit、16 GuardedAgent、17 ChatCore、18 SummaryPipeline、19 評価スイート | 未着手 | [tasks-w3.md](tasks-w3.md) |
 | W4 apps/web | 21 RequestGuard、20 AppShell、22 ChatFeature、23 ToolAgentFeature、24 SummaryFeature | 未着手 | [tasks-w4.md](tasks-w4.md) |
 | W5 E2E・解説・最終統合 | 25 E2E 生成・検査スクリプト、26 E2E 基盤、27 E2E シナリオ、28 解説ドキュメント、29 最終統合と NFR 検証 | 未着手 | [tasks-w5.md](tasks-w5.md) |
@@ -124,24 +124,24 @@ PR のステータス（Req 1.7）が信号として機能しない。そこで�
 
 `@platform/ai-core` ワークスペースの骨格と、全独自エラーの基底クラスを用意する。
 
-_Boundary:_ `packages/ai-core/package.json`, `packages/ai-core/tsconfig.json`, `packages/ai-core/vitest.config.ts`, `packages/ai-core/src/errors.ts`, `packages/ai-core/src/errors.test.ts`
+_Boundary:_ `packages/ai-core/package.json`, `packages/ai-core/tsconfig.json`, `pnpm-lock.yaml`, `packages/ai-core/vitest.config.ts`, `packages/ai-core/src/errors.ts`, `packages/ai-core/src/errors.test.ts`
 _Depends:_ 1, 4
 _Requirements:_ 1.2, NFR-05, NFR-06
 _Traces:_ REQ-001, C1, C18
 
-- [ ] 6.1 `package.json`（plan の File Structure Plan に列挙した M1 の依存をすべて宣言し、サブパス `exports` の骨格を置く。`test`・`test:coverage` スクリプトは最初のテストと同時に 6.3 で加える）、`tsconfig.json`（ベース設定の継承）
-  _Boundary:_ `packages/ai-core/package.json`, `packages/ai-core/tsconfig.json`
+- [x] 6.1 `package.json`（plan の File Structure Plan に列挙した M1 の依存をすべて宣言し、サブパス `exports` の骨格を置く。`test`・`test:coverage` スクリプトは最初のテストと同時に 6.3 で加える）、`tsconfig.json`（ベース設定の継承）
+  _Boundary:_ `packages/ai-core/package.json`, `packages/ai-core/tsconfig.json`, `pnpm-lock.yaml`
   _Depends:_ 1
   _Requirements:_ 1.2
   _Traces:_ REQ-001, C1
   _Verify:_ `mise run setup` がロックファイルを更新して成功する。UI 依存がないことは 13.7 で gate に入る `ai-core-no-ui-deps` が検査する
-- [ ] 6.2 `vitest.config.ts`（node 環境、`setup-hermetic` と `gate-reporter` の登録、`AI_TEST_SUITE` によるテストの選択、カバレッジを常に有効にした行カバレッジ80%の閾値。Stryker もこの設定を使う。plan C18）
+- [x] 6.2 `vitest.config.ts`（node 環境、`setup-hermetic` と `gate-reporter` の登録、`AI_TEST_SUITE` によるテストの選択、カバレッジを常に有効にした行カバレッジ80%の閾値。Stryker もこの設定を使う。plan C18）
   _Boundary:_ `packages/ai-core/vitest.config.ts`
   _Depends:_ 6.1, 4
   _Requirements:_ NFR-06
   _Traces:_ REQ-001, C18
   _Verify:_ 6.3 で `test` スクリプトを加えた後、閾値を下回る状態で `mise run test` が失敗することを1回確認する
-- [ ] 6.3 `src/errors.ts`: `PlatformError` 基底クラス（`code`・日本語 `message`・`details`）と閉じた語彙の `PlatformErrorCode` + `errors.test.ts`。`packages/ai-core/package.json` に `test`・`test:coverage`（`vitest run --coverage.enabled --coverage.reporter=html`）スクリプトを加える（ai-core の最初のテスト）
+- [x] 6.3 `src/errors.ts`: `PlatformError` 基底クラス（`code`・日本語 `message`・`details`）と閉じた語彙の `PlatformErrorCode` + `errors.test.ts`。`packages/ai-core/package.json` に `test`・`test:coverage`（`vitest run --coverage.enabled --coverage.reporter=html --coverage.thresholds.lines=0`。HTML レポートの生成だけを行い、閾値の強制は gate の `test` 段が担う。plan C18「テストの実行単位」）スクリプトを加える（ai-core の最初のテスト）
   _Boundary:_ `packages/ai-core/src/errors.ts`, `packages/ai-core/src/errors.test.ts`, `packages/ai-core/package.json`
   _Depends:_ 6.2
   _Requirements:_ 1.2, NFR-05
@@ -149,19 +149,23 @@ _Traces:_ REQ-001, C1, C18
 
 ### Implementation Notes
 
+- `pnpm-lock.yaml` は 6.1・7.1・8.1 の `_Boundary:_` に含める（依存の宣言と同時に生成物として更新される。W2 の lockfile 更新直列化規約）。
+- カバレッジ計測は全スイートで有効にし、80%閾値は0件を許可する `local` / `pg` ではなく `gate` だけに適用する。
+- `PlatformErrorCode` はこのタスクで根拠を確認できる M1 公開エラーコードだけを列挙し、後続のエラー subclass は各タスクで必要なコードを追加する。
+
 ---
 
 ## 7. eval-suite パッケージ scaffold（C21）(P)
 
 `@platform/eval-suite` ワークスペースの骨格（評価の実体は M4）を用意する。
 
-_Boundary:_ `packages/eval-suite/package.json`, `packages/eval-suite/tsconfig.json`, `packages/eval-suite/vitest.config.ts`, `packages/eval-suite/tests/capability/README.md`
+_Boundary:_ `packages/eval-suite/package.json`, `packages/eval-suite/tsconfig.json`, `pnpm-lock.yaml`, `packages/eval-suite/vitest.config.ts`, `packages/eval-suite/tests/capability/README.md`
 _Depends:_ 4, 6.1
 _Requirements:_ 1.1, 1.13, 1.14
 _Traces:_ REQ-001, C21
 
 - [ ] 7.1 `package.json`（`@platform/ai-core` に依存）、`tsconfig.json`。`test`・`test:coverage` スクリプトは最初のテストと同時に 19.1 で加える（テスト0件のプロジェクトで gate の `test` 段が失敗するのを防ぐ）
-  _Boundary:_ `packages/eval-suite/package.json`, `packages/eval-suite/tsconfig.json`
+  _Boundary:_ `packages/eval-suite/package.json`, `packages/eval-suite/tsconfig.json`, `pnpm-lock.yaml`
   _Depends:_ 6.1
   _Requirements:_ 1.1
   _Traces:_ REQ-001, C21
@@ -187,13 +191,13 @@ _Traces:_ REQ-001, C21
 
 Next.js アプリのワークスペース骨格（機能ロジックは含まない）を用意する。
 
-_Boundary:_ `apps/web/package.json`, `apps/web/tsconfig.json`, `apps/web/next.config.ts`, `apps/web/vitest.config.ts`, `apps/web/components.json`, `apps/web/app/globals.css`
+_Boundary:_ `apps/web/package.json`, `apps/web/tsconfig.json`, `pnpm-lock.yaml`, `apps/web/next.config.ts`, `apps/web/vitest.config.ts`, `apps/web/components.json`, `apps/web/app/globals.css`
 _Depends:_ 7.1
 _Requirements:_ 1.1, NFR-09
 _Traces:_ REQ-001, C13
 
 - [ ] 8.1 `package.json`（plan の File Structure Plan の `apps/web/package.json` の行に列挙した依存・開発依存をすべて宣言する。Next.js・React・`@ai-sdk/react`・`babel-plugin-react-compiler`・`server-only`・Tailwind CSS・shadcn/ui の生成部品の実行時依存・`jsdom`・Testing Library・`@vitejs/plugin-react`・`vite-tsconfig-paths`・Playwright・axe。`typecheck`（`next typegen && tsc --noEmit`）等のスクリプト。`test`・`test:coverage` スクリプトは 21.1 で加える）、`tsconfig.json`
-  _Boundary:_ `apps/web/package.json`, `apps/web/tsconfig.json`
+  _Boundary:_ `apps/web/package.json`, `apps/web/tsconfig.json`, `pnpm-lock.yaml`
   _Depends:_ 7.1
   _Requirements:_ 1.1
   _Traces:_ REQ-001, C13
