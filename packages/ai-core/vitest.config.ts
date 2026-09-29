@@ -21,6 +21,7 @@ export default defineConfig({
 		include: [`src/**/*.${suite.suffix}.ts`],
 		exclude: [...configDefaults.exclude, ...suite.exclude],
 		setupFiles: ["../../tooling/vitest/setup-hermetic.ts"],
+		globalSetup: ["../../tooling/vitest/global-setup-local.ts"],
 		reporters: ["default", "../../tooling/vitest/gate-reporter.ts"],
 		passWithNoTests: suiteName !== "gate",
 		coverage: {
