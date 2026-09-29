@@ -2613,3 +2613,99 @@ GREEN 後、7件すべての新規テストについて独立した deliberate b
 - Gate: `mise run gate` → exit 0。ai-core `executed=46 passed=46 failed=0 skipped=0`（`--force` の再実行でも同じ）、`src/ports` lines 97.14% / branches 87.67%。root `executed=257 passed=257`。`tsc --noEmit`（ai-core）→ exit 0。
 - Mechanical fixes: traceability.md（2.15・5.7 の Test/Commit、Gaps）、AGENTS.md（プロジェクト状態に ports を追加）。
 - Commit: `fb60281` feat(ai-core): add clock, HTTP, transcript, and web search ports。
+
+### 2026-09-28 22:35 Task 11 Started
+
+- Objective: `@platform/ai-core/testing` に AI SDK v7 のモックモデル factory、理由付き local-only test helper、fake clock の再公開を追加する。
+- Success criteria:
+  1. text / tool-call / object の各 factory が `doGenerate` と `doStream` の双方で指定値を返す。
+  2. local 不可時は suite / test が `localAvailability.reason` を note として skip する。
+  3. local 可時は suite / test body が通常どおり実行される。
+  4. 公開 subpath は factory、`describeLocal` / `itLocal`、`createFakeClock` を型安全に公開する。
+- SCAN: `src/testing/` の既存実装・テストはなし。ai-core baseline は 6 files、46/46 passed。
+
+### 2026-09-28 22:41 ❌ Task 11 GREEN Attempt Error
+
+- Error: unavailable test が `expected vi.fn() to be called 1 times, but got 2 times` で失敗した。
+- Root cause: suite body と test body に同じ spy を使い、Vitest の `context.skip()` が制御を中断する実挙動を mock が再現していなかった。実装ではなく test double の誤り。
+- Fix: suite / test の spy を分離し、test 側の `skip` stub は sentinel error を投げて callback の中断を再現する。
+- Follow-up: sentinel は同期 throw なのに `rejects` を使っていたため runner へ漏れた。`toThrow` に修正した。
+
+### 2026-09-28 22:42 ❌ Task 11 Typecheck / Lint Error
+
+- Error: `@ai-sdk/provider` は ai-core の直接依存でなく test import を解決できず、`ai` は V4 provider 内部型の一部を公開していなかった。Biome は2ファイルの整形差分を検出した。
+- Root cause: pinned AI SDK の公開 surface を超えて provider 内部型を直接参照していた。
+- Fix: `MockLanguageModelV4["doGenerate"]` / `["doStream"]` の戻り型から finish reason・usage・stream part を導出し、test の収集配列は `unknown[]` にした。整形は project task `mise run lint:fix` を使う。
+
+### 2026-09-28 22:45 Task 11 RED / GREEN / PROVE Evidence
+
+**RED evidence**
+
+- Command: `mise exec -- pnpm --filter @platform/ai-core exec vitest run src/testing/mock-models.test.ts src/testing/local-only.test.ts --coverage.enabled=false`
+- Result: 2 suites failed at import with `Cannot find module './mock-models'` / `Cannot find module './local-only'`; gate reporter reported `executed=0`.
+
+**GREEN evidence**
+
+- Implemented `MockLanguageModelV4` factories with `simulateReadableStream`, local-only registration helpers backed by injected `localAvailability`, the `./testing` barrel, and ai-core global setup registration required to provide the context.
+- Targeted result after fixing the test double: 2 files、5/5 passed。
+
+**PROVE evidence**
+
+| Test | Break applied | Failure observed |
+|---|---|---|
+| configured text | generation text を `"broken"` に固定 | `expected ... to match object`、1 failed |
+| configured tool call | serialized input を `"{}"` に固定 | `expected ... to match object`、1 failed |
+| configured object | object serialization を `"{}"` に固定 | `expected ... to match object`、1 failed |
+| unavailable reason | suite / test の `context.skip(reason)` を削除 | `expected function to throw an error, but it didn't` |
+| local available | `itLocal` が test body を呼ばないよう変更 | `expected "vi.fn()" to be called once, but got 0 times` |
+
+- Restore: `/tmp` の原本と `cmp` 一致。5つの deliberate break はすべて exit 1、復元済み。
+
+### 2026-09-28 22:47 Task 11 Targeted Verification
+
+- Targeted: 2 files、5/5 passed。
+- ai-core regression: 8 files、51/51 passed（baseline 46 → 51）。
+- Typecheck: `mise run typecheck` → 4/4 tasks successful。
+- Status: 11.1・11.2 を `[x]` に更新。
+- VDD trigger: `packages/ai-core/vitest.config.ts` は Task 11 の宣言 boundary 外。ただし `inject("localAvailability")` を実際の ai-core local suite で成立させる prerequisite fix のため、独立 reviewer を実行する。
+
+### 2026-09-28 22:49 ❌ PROVE Script Error
+
+- Error: zsh の readonly parameter `status` へ代入し、RED command 後に script が中断した。
+- Root cause: shell の予約 parameter 名を exit code 変数に使った。テスト自体は barrel から `createFakeClock` を除いた状態で期待どおり import error になった。
+- Fix: 原本を即時復元し、以降は `test_exit` を使う。
+
+### 2026-09-28 22:50 Task 11.2 Barrel RED / GREEN / PROVE
+
+- Coverage gap found during refactor: `createFakeClock` の `./testing` barrel 再公開を直接検証していなかった。
+- RED / PROVE: `index.ts` から export を除いた状態で新規 test を実行し、`TypeError: createFakeClock is not a function`（1 failed / 2 passed）を確認。
+- GREEN: export を復元し、3/3 passed。
+
+### 2026-09-28 22:56 ❌ VDD Remediation Type Error
+
+- Error: Vitest `SuiteFactory` は suite の `TestAPI` 引数を必須とするため、wrapper 内の `factory()` が `Expected 1 arguments, but got 0` になった。
+- Root cause: LOW finding の型修正で実際の Vitest callback 型を採用したが、suite context の転送を実装していなかった。
+- Fix: wrapper が受け取る suite API を `factory(suite)` へ転送する。
+
+### 2026-09-28 22:58 Task 11 VDD Remediation
+
+- Reviewer verdict: `REQUEST_CHANGES`（`.sdd/reviews/agentic-ai-platform-11.md`）。MEDIUM 2件（boundary、実 Vitest 結線テスト）と LOW 1件（callback 型）を修正した。
+- Boundary: Task 11 / 11.2 に `packages/ai-core/vitest.config.ts` を追加し、plan C18 と File Structure の責務へ `global-setup-local` 登録を明記した。
+- Integration RED: config から `globalSetup` を外して公開 `describeLocal` / `itLocal` を使う test を追加したところ、collection が `Cannot read properties of undefined (reading 'available')` で失敗し、gate reporter も executed=0 で失敗した。
+- Integration GREEN: config を復元し、targeted は 7 passed / 2 skipped。skip reason は `Local tests require AI_TEST_RUN_MODE=local.` として2件集計された。
+- Public types: `SuiteFactory` / `TestFunction` / `TestContext` を採用し、suite API と完全な test context を callback へ転送する。integration test は callback の `it` / `expect` を型付きで利用する。
+- Follow-up type error: `SuiteFactory` 引数は `{ it }` object ではなく callable `TestAPI` 自体だった。integration test を `(localIt) => localIt(...)` に修正した。
+
+### 2026-09-28 23:00 Task 11 Final Verification
+
+- Full gate: `mise run gate` → exit 0。Biome 63 files、model-ID 46 files、repository rules 46 / 1 / 2 / 1 files。root `executed=257 passed=257 failed=0 skipped=0`。ai-core `executed=53 passed=53 failed=0 skipped=2`、skip reason `Local tests require AI_TEST_RUN_MODE=local.` 2件、lines 98.01%。
+- Typecheck: `mise run typecheck` → 4/4 tasks successful。
+- VDD round 2: `.sdd/reviews/agentic-ai-platform-11.md` → `APPROVE`、新規 finding なし。
+- Status: Task 11.1 / 11.2 完了。次の未完了大タスクは Task 12。
+
+### 2026-09-29 19:06 Task 11 Validation & Ship
+
+- Verdict: GO。11.1・11.2 は `[x]`、Req 1.13・1.14 は traceability に対応付け済み。境界外だった `packages/ai-core/vitest.config.ts` は VDD 指摘で T-11・T-11.2 の `_Boundary:_` と plan C18 に反映済み（Round 2 APPROVE）。
+- Gate: `mise run gate` → exit 0。Biome 63 files、model-ID 46 files、repository rules 46 / 1 / 2 / 1 files。root `executed=257 passed=257 failed=0 skipped=0`。ai-core `executed=53 passed=53 failed=0 skipped=2`（理由 `Local tests require AI_TEST_RUN_MODE=local.` 2件）、lines 98.01%、`src/testing` lines 100% / branches 83.33%。`mise run typecheck` → 4/4 successful。
+- Mechanical fixes: traceability.md（1.13・1.14 の Test/Commit、Gaps）、AGENTS.md（プロジェクト状態に testing helpers を追加）。
+- Commit: `cbb94bd` feat(ai-core): add mock model factories and local-only test helpers。

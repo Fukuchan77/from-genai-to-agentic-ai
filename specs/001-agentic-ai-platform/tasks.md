@@ -306,23 +306,27 @@ _Traces:_ REQ-002, REQ-005, C10
 `@platform/ai-core/testing` サブパスとして、モックモデルのファクトリと `local` 限定テストの
 ヘルパを提供する。
 
-_Boundary:_ `packages/ai-core/src/testing/index.ts`, `packages/ai-core/src/testing/mock-models.ts`, `packages/ai-core/src/testing/mock-models.test.ts`, `packages/ai-core/src/testing/local-only.ts`, `packages/ai-core/src/testing/local-only.test.ts`
+_Boundary:_ `packages/ai-core/src/testing/index.ts`, `packages/ai-core/src/testing/mock-models.ts`, `packages/ai-core/src/testing/mock-models.test.ts`, `packages/ai-core/src/testing/local-only.ts`, `packages/ai-core/src/testing/local-only.test.ts`, `packages/ai-core/vitest.config.ts`
 _Depends:_ 10
 _Requirements:_ 1.13, 1.14
 _Traces:_ REQ-001, C18
 
-- [ ] 11.1 `testing/mock-models.ts`: `createTextStreamModel`・`createToolCallingModel`・`createObjectModel`（`MockLanguageModelV4` + `simulateReadableStream`）+ `mock-models.test.ts`（生成とストリームの両方で指定した内容を返す）
+- [x] 11.1 `testing/mock-models.ts`: `createTextStreamModel`・`createToolCallingModel`・`createObjectModel`（`MockLanguageModelV4` + `simulateReadableStream`）+ `mock-models.test.ts`（生成とストリームの両方で指定した内容を返す）
   _Boundary:_ `packages/ai-core/src/testing/mock-models.ts`, `packages/ai-core/src/testing/mock-models.test.ts`
   _Depends:_ 10
   _Requirements:_ 1.13
   _Traces:_ REQ-001, C18
-- [ ] 11.2 `testing/local-only.ts`・`index.ts`: `describeLocal`/`itLocal`（`localAvailability` 不可時は理由付きスキップ）と `createFakeClock` の再公開 + `local-only.test.ts`（不可なら理由付きでスキップ、可なら実行）
-  _Boundary:_ `packages/ai-core/src/testing/local-only.ts`, `packages/ai-core/src/testing/local-only.test.ts`, `packages/ai-core/src/testing/index.ts`
+- [x] 11.2 `testing/local-only.ts`・`index.ts`: `describeLocal`/`itLocal`（`localAvailability` 不可時は理由付きスキップ）と `createFakeClock` の再公開 + `local-only.test.ts`（不可なら理由付きでスキップ、可なら実行）
+  _Boundary:_ `packages/ai-core/src/testing/local-only.ts`, `packages/ai-core/src/testing/local-only.test.ts`, `packages/ai-core/src/testing/index.ts`, `packages/ai-core/vitest.config.ts`
   _Depends:_ 11.1
   _Requirements:_ 1.13, 1.14
   _Traces:_ REQ-001, C18
 
 ### Implementation Notes
+
+- モック factory は AI SDK の公開型だけに依存し、V4 の provider 内部型は `MockLanguageModelV4` の `doGenerate` / `doStream` 戻り型から導出する。
+- `describeLocal` は suite 内の `beforeEach`、`itLocal` は test callback の先頭で `context.skip(reason)` を呼び、`gate-reporter` が理由を集計できる note を残す。
+- ai-core の local test でも `localAvailability` を受け取れるよう、scaffold で欠けていた `global-setup-local.ts` を `vitest.config.ts` に登録した（Task 11 boundary 外の prerequisite fix。VDD review 対象）。
 
 ---
 
