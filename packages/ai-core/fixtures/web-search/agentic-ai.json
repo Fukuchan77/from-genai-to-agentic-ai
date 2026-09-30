@@ -1,0 +1,12 @@
+{
+	"query": "Agentic AI evaluation",
+	"result": [
+		{
+			"title": "Evaluating AI agents",
+			"url": "https://example.test/evaluating-agents",
+			"snippet": "A deterministic fixture about capability and regression evaluations.",
+			"score": 0.95,
+			"publishedDate": "2026-09-01"
+		}
+	]
+}
