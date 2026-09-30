@@ -23,7 +23,7 @@ ID 規約は `tasks.md` の「ID 対応表」を参照する（この spec の p
 | 1.1 | C1, C13, C21 | T-1.2, T-7.1, T-8.1, T-8.2, T-8.3, T-19.1 | T-1.2: `mise run setup`、Turbo pnpm-workspace dry-run、T-7.1: `mise run setup`（frozen lockfile、eval-suite importer）・eval-suite `tsc --noEmit`、T-8.1〜T-8.3: `mise run setup`（frozen lockfile）・`mise run typecheck`（web `next typegen && tsc --noEmit`）・`pnpm peers check` | T-1.2: `10c3b48`、修正（T-1.2）: `01dc364`、T-7.1: `0f587c5`、T-8.1〜T-8.3: `1b456fb` |
 | 1.2 | C1 | T-6.1, T-6.3 | T-6.1: `mise run setup`（frozen lockfile）、T-6.3: `errors.test.ts` 3件（UI 依存なしの ai-core から import） | T-6.1/T-6.3: `930f464` |
 | 1.3 | C1 | T-1.1, T-1.2 | T-1.1: `mise tasks validate`（23件）、T-1.2: frozen install | T-1.1/T-1.2: `10c3b48`、修正（T-1.1/T-1.2）: `01dc364` |
-| 1.4 | C1 | T-1.1, T-1.4, T-5.5, T-13.7, T-19.3, T-29.1 | T-1.1: 初期gate、T-1.4: Vitest/Stryker構造検査・`tsc`、T-5.5: W1 gate 4段・10/10反復 | T-1.1: `10c3b48`、T-1.4: `ee05b10`、修正（T-1.1/T-1.4）: `01dc364`、T-5.5: `e18f7dd` |
+| 1.4 | C1 | T-1.1, T-1.4, T-5.5, T-13.7, T-19.3, T-29.1 | T-1.1: 初期gate、T-1.4: Vitest/Stryker構造検査・`tsc`、T-5.5: W1 gate 4段・10/10反復、T-13.7: W2 gate に `typecheck` 段（tsconfig 4件の非空走査） | T-1.1: `10c3b48`、T-1.4: `ee05b10`、修正（T-1.1/T-1.4）: `01dc364`、T-5.5: `e18f7dd`、T-13.7: `f1713d3` |
 | 1.5 | C1, C18 | T-4.1, T-29.2 | T-4.1: hermetic network guard 9件・API key不要のmock実行 | T-4.1: `2085577` |
 | 1.6 | C1 | T-1.3 | unused-import 負例、`tsc --noEmit`、`mise run gate` | T-1.3: `10c3b48` |
 | 1.7 | C2 | T-2.1, T-19.3, T-29.1 | T-2.1: CI構造検査、`ci-status` 成功/失敗シミュレーション | T-2.1: `f9e7aca`、修正（T-2.1）: `956b3df` |
@@ -34,7 +34,7 @@ ID 規約は `tasks.md` の「ID 対応表」を参照する（この spec の p
 | 1.12 | C1, C18 | T-1.4, T-4.3 | T-1.4: test suffix include/exclude構成検査、T-4.3: 実行/skip理由/DB未実行件数7件 | T-1.4: `ee05b10`、修正（T-1.4）: `01dc364`、T-4.3: `2085577` |
 | 1.13 | C6, C18, C21 | T-4.2, T-7.2, T-7.3, T-11.1, T-11.2, T-14.5, T-19.1, T-19.2 | T-4.2: local availability一時単体5件・globalSetup統合1件、T-7.2: eval-suite の `AI_TEST_SUITE` 選択の直接確認（空 gate は exit 1、空 local/pg は exit 0、未知値は読込時 exit 1）、T-7.3: README（レビューで確認）、T-11.1: `mock-models.test.ts` 3件（text / tool-call / object の generate・stream）、T-11.2: `local-only.test.ts` 4件（fake clock 再公開・`globalSetup` 登録・不可時の理由付き skip・可時の実行）+ 公開 helper の実 Vitest 結線2件 | T-4.2: `2085577`、T-7.2/T-7.3: `0f587c5`、T-11.1/T-11.2: `cbb94bd` |
 | 1.14 | C18, C21 | T-4.2, T-4.3, T-7.2, T-11.2, T-14.5, T-19.2, T-29.2 | T-4.2: 理由付きavailability、T-4.3: skip理由集計・全件skipのgate/local統合probe、T-7.2: eval-suite への `global-setup-local`・`gate-reporter` 登録（実テストでの確認は T-19.2）、T-11.2: `local-only.test.ts`（`describeLocal`/`itLocal` が gate で理由 `Local tests require AI_TEST_RUN_MODE=local.` 付き skip 2件、`gate-reporter` が理由別に集計） | T-4.2/T-4.3: `2085577`、T-7.2: `0f587c5`、T-11.2: `cbb94bd` |
-| 1.15 | C1, C18, C19, C20 | T-1.4, T-4.3, T-5.2, T-5.4, T-5.5, T-13.7, T-19.3, T-25.3, T-29.1 | T-1.4: `passWithNoTests: false`・reporter登録、T-4.3: gate実行0件のexit 1、T-5.2: 9規則19件、T-5.4: count 4件、T-5.5: 各段件数・0件exit 1 | T-1.4: `ee05b10`、修正（T-1.4）: `01dc364`、T-4.3: `2085577`、T-5.2/T-5.4/T-5.5: `e18f7dd` |
+| 1.15 | C1, C18, C19, C20 | T-1.4, T-4.3, T-5.2, T-5.4, T-5.5, T-13.7, T-19.3, T-25.3, T-29.1 | T-1.4: `passWithNoTests: false`・reporter登録、T-4.3: gate実行0件のexit 1、T-5.2: 9規則19件、T-5.4: count 4件、T-5.5: 各段件数・0件exit 1、T-13.7: W2 4規則・`count-tsc` の走査件数表示 | T-1.4: `ee05b10`、修正（T-1.4）: `01dc364`、T-4.3: `2085577`、T-5.2/T-5.4/T-5.5: `e18f7dd`、T-13.7: `f1713d3` |
 | 1.16 | C1, C2, C18 | T-1.4, T-4.3, T-19.3, T-29.3 | T-1.4: Stryker対象・runner・閾値の構造検査、T-4.3: 集計/空実行/DB件数のPROVE 5種 | T-1.4: `ee05b10`、T-4.3: `2085577` |
 | 1.17 | C2, C19 | T-25.1, T-25.3, T-26.1, T-26.2, T-27.1, T-27.2, T-29.1 |  |  |
 | 1.18 | C1, C2 | T-1.5, T-2.1, T-29.3 | T-1.5: staged dummy secret rejection（redact）、T-2.1: `fetch-depth: 0`・`mise run secret-scan` | T-1.5: `d9cec30`、T-2.1: `f9e7aca` |
@@ -47,7 +47,7 @@ ID 規約は `tasks.md` の「ID 対応表」を参照する（この spec の p
 | 2.1 | C4, C6 | T-12.1, T-14.1, T-14.4 | T-12.1: `env-schema.test.ts` 9件（既定値・型変換・不正値6件の拒否・キー一覧） | T-12.1: `5ca6a98` |
 | 2.2 | C5, C6 | T-9.2, T-14.1 | T-9.2: `catalog.test.ts` 7件（6プロバイダ・watsonx 除外） | T-9.1/T-9.2: `9b4631b` |
 | 2.3 | C6 | T-14.2, T-14.5 |  |  |
-| 2.4 | C7 | T-13.1, T-13.2 |  |  |
+| 2.4 | C7 | T-13.1, T-13.2 | T-13.1: `request-key.test.ts` 4件（キー順・provider options 不変、prompt/tool/purpose で変化）、T-13.2: `scenario-model.test.ts` 3件（述語照合・生成/ストリーム・構造化出力） | T-13.1/T-13.2: `db707f9` |
 | 2.5 | C4, C18 | T-4.1, T-12.3 | T-4.1: mock既定でfetch/net/dnsを遮断、T-12.3: `run-mode.test.ts`（`VITEST` 内は `AI_TEST_RUN_MODE ?? "mock"`、空文字は未設定） | T-4.1: `2085577`、T-12.3: `5ca6a98` |
 | 2.6 | C6 | T-14.1 |  |  |
 | 2.7 | C6 | T-14.2 |  |  |
@@ -56,10 +56,10 @@ ID 規約は `tasks.md` の「ID 対応表」を参照する（この spec の p
 | 2.10 | C5, C6, C20, C22 | T-5.3, T-9.2, T-14.3, T-28.5 | T-5.3: registry fixture 4件（新build・24時間待機・AI SDK v7互換）、T-9.2: `catalog.test.ts`（provider 集合に watsonx なし） | T-5.3: `e18f7dd`、T-9.2: `9b4631b` |
 | 2.11 | C18 | T-4.1 | T-4.1: fetch/net/dns/Resolver遮断・接続先error・local限定例外9件 | T-4.1: `2085577` |
 | 2.12 | C4 | T-12.3 | T-12.3: `run-mode.test.ts` 4件（テストランナー内 `mock` 既定・通常 `local` 既定・空文字は未設定・不正値の拒否） | T-12.3: `5ca6a98` |
-| 2.13 | C4, C6, C7, C13 | T-12.4, T-13.4, T-14.3, T-20.1 | T-12.4: `load.test.ts`（`AI_RECORD=1` + `mock` の拒否、`local` での録画許可） | T-12.4: `5ca6a98` |
-| 2.14 | C7 | T-13.3 |  |  |
-| 2.15 | C7, C10 | T-10.2, T-10.3, T-10.4, T-13.6 | T-10.2: `http.test.ts` 2件（写像・signal 伝播）、T-10.3: `transcript.test.ts` 23件（no-captions/private/fetch-failed・Zod 検証・中断）、T-10.4: `web-search.test.ts` 8件（SearchHit 写像・fail-closed・中断） | T-10.2〜T-10.4: `fb60281` |
-| 2.16 | C7, C22 | T-13.5, T-28.7 |  |  |
+| 2.13 | C4, C6, C7, C13 | T-12.4, T-13.4, T-14.3, T-20.1 | T-12.4: `load.test.ts`（`AI_RECORD=1` + `mock` の拒否、`local` での録画許可）、T-13.4: `recording.test.ts` 8件（LLM と3種の外部サービスの伏せ字化、実 factory での再生、キャンセル時の非保存） | T-12.4: `5ca6a98`、T-13.4: `db707f9` |
+| 2.14 | C7 | T-13.3 | T-13.3: `resolve.test.ts` 6件（シナリオ→カセット→`MockFixtureMissingError`、曖昧な述語、保存キーの拒否、並行書き込み、v1 検証） | T-13.3: `db707f9` |
+| 2.15 | C7, C10 | T-10.2, T-10.3, T-10.4, T-13.6 | T-10.2: `http.test.ts` 2件（写像・signal 伝播）、T-10.3: `transcript.test.ts` 23件（no-captions/private/fetch-failed・Zod 検証・中断）、T-10.4: `web-search.test.ts` 8件（SearchHit 写像・fail-closed・中断）、T-13.6: `fixtures.test.ts` 7件（手書き・録画 fixture の再生、未登録で `MockFixtureMissingError`、HTTP の method/body 区別） | T-10.2〜T-10.4: `fb60281`、T-13.6: `db707f9` |
+| 2.16 | C7, C22 | T-13.5, T-28.7 | T-13.5: `deterministic-embedding.test.ts` 5件（決定性・次元数・L2 正規化） | T-13.5: `db707f9` |
 | 2.17 | C5 | T-9.1, T-9.2 | T-9.2: `catalog.test.ts` 7件（整合性・Zod 非依存型） | T-9.1/T-9.2: `9b4631b` |
 | 2.18 | C1, C4, C5, C20 | T-1.5, T-5.1, T-9.2, T-12.4 | T-1.5: pre-commit順序、T-5.1: モデルID検査5件・gate 13 files、T-5.5: pre-commit常時実行、T-9.2: 同梱カセットの `modelId` 照合、T-12.4: `load.test.ts`（カタログ外のモデル ID の拒否） | T-1.5: `d9cec30`、T-5.1/T-5.5: `e18f7dd`、T-9.2: `9b4631b`、T-12.4: `5ca6a98` |
 
@@ -143,8 +143,8 @@ Task 列に記載する。
 | Requirement | Design | Task | Test | Commit |
 |---|---|---|---|---|
 | NFR-01（検証速度） | C1 | T-29.2 |  |  |
-| NFR-02（決定性） | C1, C7 | T-13.1, T-13.2, T-29.2 |  |  |
-| NFR-03（オフライン動作） | C7, C18 | T-4.1, T-13.6, T-29.2 | T-4.1: mock hermetic network guard 9件 | T-4.1: `2085577` |
+| NFR-02（決定性） | C1, C7 | T-13.1, T-13.2, T-29.2 | T-13.1/T-13.2: 同一入力で同一キー・同一応答 | T-13.1/T-13.2: `db707f9` |
+| NFR-03（オフライン動作） | C7, C18 | T-4.1, T-13.6, T-29.2 | T-4.1: mock hermetic network guard 9件、T-13.6: fixture のオフライン再生（ネットワーク非フォールバック） | T-4.1: `2085577`、T-13.6: `db707f9` |
 | NFR-04（ストリーミング応答性） | C19 | T-26.3, T-27.4 |  |  |
 | NFR-05（型安全性） | C1 | T-1.3, T-6.3 | T-1.3: TypeScript 7.1 strict root typecheck、T-6.3: 閉じた `PlatformErrorCode` の tuple/union 完全一致・ai-core `tsc --noEmit` | T-1.3: `10c3b48`、修正（T-1.3）: `01dc364`、T-6.3: `930f464` |
 | NFR-06（テストカバレッジ） | C18 | T-6.2 | T-6.2: gate の行80%閾値（101% で失敗する PROVE）、`local`/`pg` の0件許可、`test:coverage` の閾値なし HTML レポート | T-6.2: `930f464` |
@@ -158,6 +158,7 @@ Task 列に記載する。
 
 ## Gaps
 
+- 2026-09-30 の `/sdd-ship`（T-13.1〜T-13.7）では、要件ギャップは検出しなかった。ai-core の gate テストは77件から110件に増え（skip 2件は理由付き）、`src/mock` の行カバレッジは92.21%（ai-core 全体 94.05%）。W2 の敵対的レビュー（`.sdd/reviews/001-agentic-ai-platform-impl-w2-review-2026-09-30*.md`、Round 3 APPROVE）の修正で加わった契約（外部サービス fixture の `requestKey` と HTTP の method・ヘッダー・body による同一性、カセットの保存キー規則と v1 の Zod 検証、`recordingMiddleware` の `options`、`./mock` の公開 API）を spec drift として検出し、承認を得て plan C7・Data Model・File Structure を実装に合わせた。`fixtures/cassettes/` の種類別 `.gitkeep` 4件が境界外と判定されたため、T-13・T-13.6 の `_Boundary:_` を `fixtures/cassettes/**/.gitkeep` に広げた。W2 gate に `typecheck` 段と4規則を結線し、W2 の移行（archive / promote）は続くコミットで行う。
 - 2026-09-30 の `/sdd-ship`（T-12.1〜T-12.4）では、要件ギャップは検出しなかった。ai-core の gate テストは53件から77件に増え、`src/config` の行カバレッジは94.73%（`run-mode.ts` 100%、`load.ts` 92.3%）。1回目の ship で `.env.example`（全変数が空値）の無編集コピーが `resolveRunMode` の生の `ZodError` で失敗する不具合を検出して NO-GO とし、`/sdd-impl` で空文字を未設定として扱う修正と、スキーマ検証を実行モード解決より先に行う順序変更（+3 tests、PROVE 済み）を加えた。spec drift として空文字の扱いと検証順序が plan C4 に記述されていなかったため、承認を得て plan C4 を実装に合わせた。`instrumentation.ts` での `ConfigError` 整形出力は T-20.2 で確認する。
 - 2026-09-29 の `/sdd-ship`（T-11.1〜T-11.2）では、要件ギャップは検出しなかった。ai-core の gate テストは46件から53件に増え（skip 2件は理由付き）、`src/testing` の行カバレッジは100%（分岐83.33%）。VDD レビュー（`.sdd/reviews/agentic-ai-platform-11.md`、Round 2 APPROVE）の指摘により、`packages/ai-core/vitest.config.ts` への `global-setup-local` 登録を T-11・T-11.2 の `_Boundary:_` と plan C18・File Structure に加えた。T-4.2 から引き継いだ受け取り側 skip の恒久テストはこの ship で充足し、Ollama 停止時の統合確認は T-29.2 に残る。available 分岐の公開 helper 実行は `mise run test:local` で確認する。
 - 2026-09-28 の `/sdd-ship`（T-10.1〜T-10.4）では、要件ギャップは検出しなかった。ai-core の gate テストは10件から46件に増え、`src/ports` の行カバレッジは97.14%（分岐87.67%）。spec drift として、plan C10 に記述のなかった失敗の契約（`TranscriptSourceError` の公開、Tavily の `source-unavailable` と fail-closed）、注入用の省略可能な引数、Tavily SDK の HTTP 要求が中断されない制約を検出し、承認を得て plan C10 を実装に合わせた。C12 の `TranscriptUnavailableError` への写像は T-18.1 以降で、実 YouTube の文言（"Private video"）の確認は C7 の録画で行う。

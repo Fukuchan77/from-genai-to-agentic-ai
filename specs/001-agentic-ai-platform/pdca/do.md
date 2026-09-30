@@ -2821,3 +2821,195 @@ GREEN 後、7件すべての新規テストについて独立した deliberate b
 - Gate: `mise run gate` → exit 0。Biome 73 files、model-ID 56 files、repository rules 56 / 1 / 2 / 1 files。root `executed=257 passed=257 failed=0 skipped=0`。ai-core `executed=77 passed=77 failed=0 skipped=2`（baseline 53 → +24、理由 `Local tests require AI_TEST_RUN_MODE=local.` 2件）、lines 97.11%、`src/config` lines 94.73%。
 - Mechanical fixes: traceability.md（1.9・2.1・2.5・2.8・2.12・2.13・2.18・6.1・NFR-07 の Test/Commit、Gaps）、AGENTS.md（プロジェクト状態に platform config を追加）。
 - Commit: `5ca6a98` feat(ai-core): add platform config loader with env schema and run modes。
+
+### 2026-09-30 21:35 Task 13 Started
+
+- Objective: `mock` mode の決定論的な Scenario / Cassette runtime、録画・伏せ字、外部サービス fixture、決定論的 embedding を実装し、W2 gate を閉じる。
+- Success criteria: シナリオ→cassette→明示エラーの順序、ネットワーク非フォールバック、秘密情報を残さない録画、同一入力の決定性、fixture のオフライン再生、`typecheck` と W2 の4規則を含む full gate 成功。
+- SCAN baseline: Task 12 ship 時点の `mise run gate` は root 257/257、ai-core 77/77（local-only 2 skipped）で成功済み。既存の影響範囲は `ports/*.test.ts`、`testing/mock-models.test.ts`、`models/catalog.test.ts`。
+
+### 2026-09-30 21:46 Task 13.1〜13.3 RED / GREEN / PROVE Evidence
+
+**RED evidence**:
+
+- `request-key.test.ts`: `Cannot find module './request-key'`。
+- `scenario-model.test.ts`: `Cannot find module './scenario'`。
+- `resolve.test.ts`: `Cannot find module './cassette-store'`。
+
+**GREEN**:
+
+- `AI_TEST_RUN_MODE=mock AI_TEST_SUITE=gate mise exec -- pnpm --filter @platform/ai-core exec vitest run src/mock/request-key.test.ts src/mock/scenario-model.test.ts src/mock/resolve.test.ts --coverage.enabled=false`
+- Result: 3 files / 11 tests passed。
+
+**PROVE evidence**:
+
+- `providerOptions` の除外を破壊 → request normalization test が `expected ... to deeply equal ...` で失敗。
+- scenario text/object を `BROKEN` に固定 → scenario-model 3 tests が `expected 'BROKEN' to be 'Sunny'`、tool-result text、structured JSON の不一致で失敗。
+- scenario match を空に固定 → precedence test が cassette を返して失敗し、ambiguous predicate test も `expected [] to deeply equal [...]` で失敗。
+- missing fixture を generic `Error` に変更 → `expected Error: BROKEN to match object { name: 'MockFixtureMissingError', key: ... }` で失敗。
+- Restore: 各破壊後に原本を復元し、11/11 passed。
+
+### 2026-09-30 21:49 ❌ Error Encountered
+
+**Error**: `response.chunkSize ?? text.length || 1` が Vite/OXC の `Logical expressions and coalesce expressions cannot be mixed` で parse failure。
+
+**Root Cause Investigation**:
+
+1. Official AI SDK docs / installed types で `LanguageModelV4` の stream part と middleware 契約を確認した。
+2. エラー位置は nullish coalescing と logical OR の無括弧混在であり、テストロジックではなく JavaScript grammar の問題だった。
+3. Hypothesis: fallback の優先順位を明示すれば parse できる。
+
+**Solution**: `response.chunkSize ?? (text.length || 1)` として優先順位を固定。
+
+**Result**: scenario / resolve 7 tests passed。
+
+**Learning**: `??` と `||` を併用する fallback は括弧で意図を明示する。
+
+### 2026-09-30 21:51 ❌ Error Encountered
+
+**Error**: PROVE の一時破壊コマンドで zsh の予約済み read-only parameter `status` に代入し、復元処理の前で停止した。
+
+**Root Cause Investigation**:
+
+1. 破壊テスト自体は期待どおり assertion failure を観測した。
+2. zsh は `status` を特殊 read-only parameter として持つ。
+3. Hypothesis: 通常変数名に変え、復元を明示実行すれば安全に戻せる。
+
+**Solution**: `/tmp` の原本から即時復元し、以後は `code=$?` を使用。
+
+**Result**: `cmp` で原本一致を確認し、焦点テストを再度 GREEN にした。
+
+**Learning**: deliberate mutation のシェルでは予約変数を避け、失敗後の復元を独立して検証する。
+
+### 2026-09-30 21:40 Task 13.4〜13.6 RED / GREEN / PROVE Evidence
+
+**RED evidence**:
+
+- 13.4 `recording.test.ts`: `Cannot find module './redactor'`。
+- 13.5 `deterministic-embedding.test.ts`: `Cannot find module './deterministic-embedding'`。
+- 13.6 `fixtures.test.ts`: `Cannot find module './index'`。
+
+**GREEN**:
+
+- 13.4: 1 file / 6 tests passed。
+- 13.5: 1 file / 5 tests passed。
+- 13.6: 1 file / 7 tests passed。
+- Integrated: `... vitest run src/mock --coverage.enabled=false` → 6 files / 29 tests passed。
+
+**PROVE evidence**:
+
+- 13.4: redactor 恒等化、LLM cassette 保存停止、HTTP / transcript / web-search 保存停止の各 mutation で、秘密値不一致または `expected [] to have a length of 1 but got 0` を確認。
+- 13.5: seed 固定、dimensions=2 固定、L2 normalization 除去で、異なる入力の一致、次元数不一致、`expected 4.5965... to be close to 1` を確認。
+- 13.6: HTTP index 空化、字幕 error 変更、missing nearest 改変、recorded HTTP 除外、M1 scenario ID 改変で全7テストの該当 assertion failure を確認。
+- Restore: 全 mutation 復元後、29/29 passed。
+
+### 2026-09-30 21:58 Task 13.7 Verification Evidence
+
+- `mise run typecheck` → 4/4 Turbo tasks successful。non-vacuous counts: root 10 files、ai-core 49、eval-suite 1、web 8。
+- `mise run gate` → exit 0。
+  - Biome: 98 files。
+  - model IDs: 74 files。
+  - repository rules: W1 counts 74/1/2/1 files、W2 rules `no-deprecated-object-api` 53、`guarded-agent-only` 53、`ai-core-no-ui-deps` 47、`no-sensitive-logging` 53 files。
+  - root tests: existing suite green。
+  - ai-core: `executed=106 passed=106 failed=0 skipped=2`（local-only reason付き）。
+  - ai-core line coverage: 94.35%、`src/mock` 92.36%（80% threshold 超過）。
+- Status: 13.1〜13.7 を `[x]` に更新。Task boundary 内、新規依存なし、既存 test の変更なし、coverage drop なし、PROVE 完備のため Task 単位 VDD risk trigger はなし。W2 closing adversarial review は別コンテキストで実行中。
+
+## Task 13 Trial and Error Summary
+
+| Attempt | Approach | Result | Learning |
+|---|---|---|---|
+| 1 | AI SDK の公開 alias `LanguageModelCallOptions` を低レベル provider call 型として使用 | Typecheck failed: `prompt` / `tools` がない | v7 の公開 user-facing alias ではなく `MockLanguageModelV4` の method signature から V4 provider 型を導出する |
+| 2 | 各実装で request key を個別生成 | Integration review で cassette replay の不一致リスク | `recording.ts` も 13.1 の `requestKey()` を再利用して単一規則に統合する |
+| 3 | 焦点テストと型整合を統合 | 29/29 + full gate green | Scenario / recording / fixture の契約を同じ公開型と保存形式でつなぐ |
+
+## Task 13 Learnings
+
+- AI SDK v7 の低レベル V4 型は、`ai` の user-facing alias と一致しない。直接依存を増やさず、導入済み `MockLanguageModelV4` の method signature から型を導出すると exactOptionalPropertyTypes を保てる。
+- request normalization、録画、cassette replay が別々のハッシュ規則を持つと fixture が見つからない。`requestKey()` を唯一の正本にする。
+- 外部 SDK の内部 HTTP 形式ではなく port 入出力を録画すると、youtubei.js / Tavily の交換に依存しない fixture を維持できる。
+
+### 2026-09-30 22:00 W2 Adversarial Review Round 1: REQUEST_CHANGES
+
+- Review: `.sdd/reviews/001-agentic-ai-platform-impl-w2-review-2026-09-30.md`
+- HIGH: cassette store の path traversal、同一キー並行書込みの固定 temp file 競合、伏せ字化 fixture を元入力で replay できない identity 不一致。
+- MEDIUM: 13.4 replay test が実 factory を使わない、LLM cassette JSON の境界未検証、HTTP fixture が URL だけで method/body を区別しない。
+- LOW: stream consumer が途中キャンセルした場合は cassette を保存しない。
+- Verdict を受け、wave closing を停止して修正を実施した。
+
+### 2026-09-30 22:05 Review Fix RED / GREEN / PROVE Evidence
+
+**RED evidence**:
+
+- unsafe key test: `store.put("../escaped", {})` が reject せず `promise resolved undefined`。
+- cassette schema test: version 2 JSON を `get()` が返し `promise resolved { version: 2, ... }`。
+- real replay integration: 録画済み HTTP fixture を元 URL / request で再生すると `MockFixtureMissingError`。
+
+**GREEN**:
+
+- `CassetteStore`: 保存 key を `llm|http|transcripts|web-search/<64hex>` に限定し、UUID 付き temp file で並行書込みを分離。Cassette v1 を Zod で検証し、filename key と payload key の一致も確認。
+- Port fixtures: 秘密値を保存しない requestKey を追加。HTTP identity は sensitive query/header 値を除外し、method・非機密 header digest・body digest を含める。録画と replay は同じ identity helper を共有。
+- Integration test: 録画 → filesystem store → `loadFixtureSet` → 実 `createFixture*` factory → 元入力 replay を通し、同じ URL でも POST body が異なれば `MockFixtureMissingError` にする。
+- Integrated mock suite: 6 files / 32 tests passed。
+
+**PROVE evidence**:
+
+- storage key allowlist を除去 → `promise resolved undefined instead of rejecting`。
+- UUID temp suffix を固定 → concurrent test が `expected false to be true`。
+- Zod parse を unchecked cast に変更 → invalid version test が `promise resolved { version: 2, ... }`。
+- 録画 fixture の requestKey を除去 → real replay test が `MockFixtureMissingError`。
+- HTTP body digest を除去 → Osaka body が Tokyo fixture を誤再生し、`promise resolved ... instead of rejecting`。
+- Restore: 全 mutation 復元後、32/32 passed。
+
+### 2026-09-30 22:09 Review Fix Verification
+
+- `mise run gate` → exit 0。
+- TypeScript counts: root 10、ai-core 49、eval-suite 1、web 8 files。
+- ai-core: `executed=109 passed=109 failed=0 skipped=2`。
+- Line coverage: ai-core 94.00%、`src/mock` 92.10%。
+- Round 2 は prior review と修正を渡した fresh reviewer で実行中。
+
+### 2026-09-30 22:12 W2 Adversarial Review Round 2: REQUEST_CHANGES
+
+- Review: `.sdd/reviews/001-agentic-ai-platform-impl-w2-review-2026-09-30-r2.md`
+- Round 1 の HIGH 3件と HTTP identity / real factory replay は解消済み。
+- Remaining MEDIUM: stream part schema が `type` だけを検査し、`{ type: "text-delta" }` を受理する。
+- Remaining LOW: stream cancellation 時に保存しない契約の明文化と恒久テストがない。
+
+### 2026-09-30 22:13 Round 2 Fix Evidence
+
+- RED: version 1 cassette に `parts: [{ type: "text-delta" }]` を保存すると、`get()` が reject せず malformed cassette を返した。
+- GREEN: stream parts を discriminated Zod schema に変更。text / reasoning / tool-input delta の `id`・`delta`、tool calls/results、files、sources、finish usage/reason 等の必須形を検証する。response metadata の ISO timestamp は load 時に `Date` へ復元する。
+- Cancellation contract: `recordingMiddleware` は completed stream のみ録画し、cancelled stream は partial cassette を作らないと JSDoc に明記。reader cancel 後に writes が空である恒久テストを追加。
+- PROVE:
+  - stream schema を `{ type: string }` だけへ退行 → malformed text-delta test が `promise resolved ... instead of rejecting`。
+  - transform ごとに partial write するよう破壊 → cancellation test が `expected [write] to deeply equal []`。
+- Restore: 全破壊を復元し、焦点テスト GREEN。
+
+### 2026-09-30 22:14 Final Verification After Round 2 Fix
+
+- `mise run gate` → exit 0。
+- ai-core: `executed=110 passed=110 failed=0 skipped=2`。
+- line coverage: ai-core 94.05%、`src/mock` 92.21%。
+- Fresh third-pass reviewer へ r1/r2 と修正証拠を渡して再確認中。
+
+### 2026-09-30 22:15 W2 Adversarial Review Round 3: APPROVE
+
+- Review: `.sdd/reviews/001-agentic-ai-platform-impl-w2-review-2026-09-30-r3.md`
+- r2 の残り2点（stream part 必須フィールド検証、cancelled stream の partial cassette 非保存契約）は解消済み。
+- Focused review tests: 14 passed。`mise run gate`: 110 passed / 2 skipped、line coverage 94.05%。
+- Verdict: APPROVE。W2 は実装・gate・敵対的レビューの完了条件を満たし、tasks archive / W3 promotion のコミット待ち。
+
+### 2026-09-30 22:40 ❌ Ship Gate NO-GO: Spec Drift in Mock Runtime Contracts
+
+- `/sdd-ship agentic-ai-platform Task13` の1回目: gate は成功（ai-core 110 passed / 2 skipped）したが、W2 敵対的レビューの修正で加わった契約が plan C7 にないため NO-GO とした。
+- Drift: 外部サービス fixture の `requestKey`・HTTP の `request`（method・ヘッダー・body のダイジェスト）による同一性、`CassetteStore` の保存キー規則と v1 の Zod 検証、`recordingMiddleware` の第3引数 `options`、`./mock` の追加の公開 API。
+- Boundary: `fixtures/cassettes/{llm,http,transcripts,web-search}/.gitkeep` が T-13.6 の `_Boundary:_`（`fixtures/cassettes/.gitkeep`）の外。
+- Resolution: 承認を得て plan C7 の Public interface・Data Model・File Structure を実装に合わせ、T-13・T-13.6 の `_Boundary:_` を `fixtures/cassettes/**/.gitkeep` に広げた。
+
+### 2026-09-30 22:55 Task 13 Validation and Ship
+
+- Validation: GO。13.1〜13.7 は `[x]`、依存 6〜12 完了、RED / GREEN / PROVE 完備、新規テストに false-green パターンなし、要件 1.4・1.15・2.4・2.13・2.14・2.15・2.16・NFR-02・NFR-03 を追跡可能。
+- Gate: `mise run gate` → exit 0。Biome 98 files、model-ID 74 files、repository rules 74 / 1 / 2 / 1 / 53 / 53 / 47 / 53 files、TypeScript root 10 / ai-core 49 / eval-suite 1 / web 8 files。root `executed=257 passed=257 failed=0 skipped=0`。ai-core `executed=110 passed=110 failed=0 skipped=2`（baseline 77 → +33、`src/mock` 6 files）、lines 94.05%、`src/mock` lines 92.21%。
+- Mechanical fixes: traceability.md（1.4・1.15・2.4・2.13・2.14・2.15・2.16・NFR-02・NFR-03 の Test/Commit、Gaps）、tasks.md（Implementation Notes の余分な空行）、AGENTS.md（プロジェクト状態に mock runtime、gate の説明を W2 構成に更新）、`.sdd/steering/structure.md`（fixture の配置に `web-search/`）。
+- Commits: `db707f9` feat(ai-core): add deterministic mock runtime with scenarios, cassettes, and recording、`f1713d3` chore(platform): wire W2 typecheck stage and repository rules into gate。

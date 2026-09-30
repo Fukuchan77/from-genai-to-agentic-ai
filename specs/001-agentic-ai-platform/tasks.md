@@ -80,7 +80,7 @@
 | 波 | 大タスク | 状態 | ファイル |
 |---|---|---|---|
 | W1 基盤 | 1 ツールチェーン、2 CI、3 ローカル依存サービス、4 テスト基盤、5 リポジトリ規約検査 | 完了（2026-09-27。敵対的レビュー2ラウンド） | [tasks-comp-w1.md](tasks-comp-w1.md) |
-| W2 ai-core の土台 | 6 ai-core scaffold、7 eval-suite scaffold、8 apps/web scaffold、9 ModelCatalog、10 Ports、11 testing ヘルパ、12 PlatformConfig、13 MockRuntime | 進行中（現在の波。6〜7 完了） | 本ファイル |
+| W2 ai-core の土台 | 6 ai-core scaffold、7 eval-suite scaffold、8 apps/web scaffold、9 ModelCatalog、10 Ports、11 testing ヘルパ、12 PlatformConfig、13 MockRuntime | 完了（2026-09-30。敵対的レビュー3ラウンド、移行待ち） | 本ファイル |
 | W3 ai-core の機能 | 14 ModelGateway、15 AciToolkit、16 GuardedAgent、17 ChatCore、18 SummaryPipeline、19 評価スイート | 未着手 | [tasks-w3.md](tasks-w3.md) |
 | W4 apps/web | 21 RequestGuard、20 AppShell、22 ChatFeature、23 ToolAgentFeature、24 SummaryFeature | 未着手 | [tasks-w4.md](tasks-w4.md) |
 | W5 E2E・解説・最終統合 | 25 E2E 生成・検査スクリプト、26 E2E 基盤、27 E2E シナリオ、28 解説ドキュメント、29 最終統合と NFR 検証 | 未着手 | [tasks-w5.md](tasks-w5.md) |
@@ -376,42 +376,42 @@ _Traces:_ REQ-001, REQ-002, REQ-006, C4
 `mock` モードで、ネットワークを使わずに決定論的な応答を返す。`local`/`live` の録画（LLM と外部サービス）も扱う。
 W2 の締めとして gate を結線する。
 
-_Boundary:_ `packages/ai-core/src/mock/request-key.ts`, `packages/ai-core/src/mock/request-key.test.ts`, `packages/ai-core/src/mock/scenario.ts`, `packages/ai-core/src/mock/cassette-store.ts`, `packages/ai-core/src/mock/resolve.ts`, `packages/ai-core/src/mock/scenario-model.ts`, `packages/ai-core/src/mock/recording.ts`, `packages/ai-core/src/mock/redactor.ts`, `packages/ai-core/src/mock/deterministic-embedding.ts`, `packages/ai-core/src/mock/fixtures.ts`, `packages/ai-core/src/mock/index.ts`, `packages/ai-core/src/mock/scenario-model.test.ts`, `packages/ai-core/src/mock/resolve.test.ts`, `packages/ai-core/src/mock/recording.test.ts`, `packages/ai-core/src/mock/deterministic-embedding.test.ts`, `packages/ai-core/src/mock/fixtures.test.ts`, `packages/ai-core/fixtures/scenarios/m1-2.ts`, `packages/ai-core/fixtures/scenarios/m1-3.ts`, `packages/ai-core/fixtures/http/*.json`, `packages/ai-core/fixtures/transcripts/*.json`, `packages/ai-core/fixtures/web-search/*.json`, `packages/ai-core/fixtures/cassettes/.gitkeep`, `mise.toml`
+_Boundary:_ `packages/ai-core/src/mock/request-key.ts`, `packages/ai-core/src/mock/request-key.test.ts`, `packages/ai-core/src/mock/scenario.ts`, `packages/ai-core/src/mock/cassette-store.ts`, `packages/ai-core/src/mock/resolve.ts`, `packages/ai-core/src/mock/scenario-model.ts`, `packages/ai-core/src/mock/recording.ts`, `packages/ai-core/src/mock/redactor.ts`, `packages/ai-core/src/mock/deterministic-embedding.ts`, `packages/ai-core/src/mock/fixtures.ts`, `packages/ai-core/src/mock/index.ts`, `packages/ai-core/src/mock/scenario-model.test.ts`, `packages/ai-core/src/mock/resolve.test.ts`, `packages/ai-core/src/mock/recording.test.ts`, `packages/ai-core/src/mock/deterministic-embedding.test.ts`, `packages/ai-core/src/mock/fixtures.test.ts`, `packages/ai-core/fixtures/scenarios/m1-2.ts`, `packages/ai-core/fixtures/scenarios/m1-3.ts`, `packages/ai-core/fixtures/http/*.json`, `packages/ai-core/fixtures/transcripts/*.json`, `packages/ai-core/fixtures/web-search/*.json`, `packages/ai-core/fixtures/cassettes/**/.gitkeep`, `mise.toml`
 _Depends:_ 9, 10（13.7 は 6〜12 にも依存する）
 _Requirements:_ 1.4, 1.15, 2.4, 2.13, 2.14, 2.15, 2.16, NFR-02, NFR-03
 _Traces:_ REQ-001, REQ-002, C7, C1
 
-- [ ] 13.1 `mock/request-key.ts`: 呼び出しパラメータの正規化と `requestKey()`（正規化JSONのSHA-256）+ `request-key.test.ts`（キー順やプロバイダ固有オプションで値が変わらず、プロンプト・ツール名・用途で変わる）
+- [x] 13.1 `mock/request-key.ts`: 呼び出しパラメータの正規化と `requestKey()`（正規化JSONのSHA-256）+ `request-key.test.ts`（キー順やプロバイダ固有オプションで値が変わらず、プロンプト・ツール名・用途で変わる）
   _Boundary:_ `packages/ai-core/src/mock/request-key.ts`, `packages/ai-core/src/mock/request-key.test.ts`
   _Depends:_ 9
   _Requirements:_ 2.4, NFR-02
   _Traces:_ REQ-002, C7
-- [ ] 13.2 `mock/scenario.ts`・`scenario-model.ts`: `defineScenario`・`createScenarioModel`（述語照合、`stepIndex`/`toolResultFor`/`purpose` の導出と束縛、生成・ストリームの決定論的応答）+ テスト
+- [x] 13.2 `mock/scenario.ts`・`scenario-model.ts`: `defineScenario`・`createScenarioModel`（述語照合、`stepIndex`/`toolResultFor`/`purpose` の導出と束縛、生成・ストリームの決定論的応答）+ テスト
   _Boundary:_ `packages/ai-core/src/mock/scenario.ts`, `packages/ai-core/src/mock/scenario-model.ts`, `packages/ai-core/src/mock/scenario-model.test.ts`
   _Depends:_ 13.1
   _Requirements:_ 2.4, NFR-02
   _Traces:_ REQ-002, C7
-- [ ] 13.3 `mock/cassette-store.ts`・`resolve.ts`: シナリオ→カセット→`MockFixtureMissingError` の解決順序（ネットワークへフォールバックしない）+ テスト（曖昧な述語の検出を含む）
+- [x] 13.3 `mock/cassette-store.ts`・`resolve.ts`: シナリオ→カセット→`MockFixtureMissingError` の解決順序（ネットワークへフォールバックしない）+ テスト（曖昧な述語の検出を含む）
   _Boundary:_ `packages/ai-core/src/mock/cassette-store.ts`, `packages/ai-core/src/mock/resolve.ts`, `packages/ai-core/src/mock/resolve.test.ts`
   _Depends:_ 13.2
   _Requirements:_ 2.14
   _Traces:_ REQ-002, C7
-- [ ] 13.4 `mock/redactor.ts`・`recording.ts`: 録画ミドルウェアと、C10 の3つのポートを包む録画用ラッパ（`recordingHttpFetcher`・`recordingTranscriptSource`・`recordingWebSearch`）、秘密値・ヘッダーの伏せ字化。`youtubei.js` と `@tavily/core` は `HttpFetcher` を通らないため、字幕と Web 検索はポートの入出力（`videoId`→`TranscriptResult`、`query`→`SearchHit[]`）を、13.6 の fixture 実装がそのまま読める形式（`TranscriptFixture`・`WebSearchFixture`）で録画する + テスト（LLM と3種の外部サービスの録画に秘密情報とヘッダーが残らないこと、録画した字幕・Web 検索を 13.6 の fixture 実装で再生すると同じ結果になること）
+- [x] 13.4 `mock/redactor.ts`・`recording.ts`: 録画ミドルウェアと、C10 の3つのポートを包む録画用ラッパ（`recordingHttpFetcher`・`recordingTranscriptSource`・`recordingWebSearch`）、秘密値・ヘッダーの伏せ字化。`youtubei.js` と `@tavily/core` は `HttpFetcher` を通らないため、字幕と Web 検索はポートの入出力（`videoId`→`TranscriptResult`、`query`→`SearchHit[]`）を、13.6 の fixture 実装がそのまま読める形式（`TranscriptFixture`・`WebSearchFixture`）で録画する + テスト（LLM と3種の外部サービスの録画に秘密情報とヘッダーが残らないこと、録画した字幕・Web 検索を 13.6 の fixture 実装で再生すると同じ結果になること）
   _Boundary:_ `packages/ai-core/src/mock/redactor.ts`, `packages/ai-core/src/mock/recording.ts`, `packages/ai-core/src/mock/recording.test.ts`
   _Depends:_ 10, 13.1
   _Requirements:_ 2.13
   _Traces:_ REQ-002, C7
-- [ ] 13.5 `mock/deterministic-embedding.ts`: ハッシュ由来の決定論的な埋め込みモデル（L2正規化）+ テスト（決定性・次元数・正規化）
+- [x] 13.5 `mock/deterministic-embedding.ts`: ハッシュ由来の決定論的な埋め込みモデル（L2正規化）+ テスト（決定性・次元数・正規化）
   _Boundary:_ `packages/ai-core/src/mock/deterministic-embedding.ts`, `packages/ai-core/src/mock/deterministic-embedding.test.ts`
   _Depends:_ 13.1
   _Requirements:_ 2.16
   _Traces:_ REQ-002, C7
-- [ ] 13.6 `mock/fixtures.ts`・`index.ts`・`packages/ai-core/fixtures/*`: HTTP・字幕・Web検索の fixture 実装（手書きの fixture と、`fixtures/cassettes/` 配下に録画した fixture の両方を読む）、M1 のシナリオ・cassette 保存先、公開API + `fixtures.test.ts`（登録済みの要求に fixture を返し、未登録で `MockFixtureMissingError`）
-  _Boundary:_ `packages/ai-core/src/mock/fixtures.ts`, `packages/ai-core/src/mock/fixtures.test.ts`, `packages/ai-core/src/mock/index.ts`, `packages/ai-core/fixtures/scenarios/m1-2.ts`, `packages/ai-core/fixtures/scenarios/m1-3.ts`, `packages/ai-core/fixtures/http/*.json`, `packages/ai-core/fixtures/transcripts/*.json`, `packages/ai-core/fixtures/web-search/*.json`, `packages/ai-core/fixtures/cassettes/.gitkeep`
+- [x] 13.6 `mock/fixtures.ts`・`index.ts`・`packages/ai-core/fixtures/*`: HTTP・字幕・Web検索の fixture 実装（手書きの fixture と、`fixtures/cassettes/` 配下に録画した fixture の両方を読む）、M1 のシナリオ・cassette 保存先、公開API + `fixtures.test.ts`（登録済みの要求に fixture を返し、未登録で `MockFixtureMissingError`）
+  _Boundary:_ `packages/ai-core/src/mock/fixtures.ts`, `packages/ai-core/src/mock/fixtures.test.ts`, `packages/ai-core/src/mock/index.ts`, `packages/ai-core/fixtures/scenarios/m1-2.ts`, `packages/ai-core/fixtures/scenarios/m1-3.ts`, `packages/ai-core/fixtures/http/*.json`, `packages/ai-core/fixtures/transcripts/*.json`, `packages/ai-core/fixtures/web-search/*.json`, `packages/ai-core/fixtures/cassettes/**/.gitkeep`
   _Depends:_ 10, 13.3, 13.4, 13.5
   _Requirements:_ 2.15, NFR-03
   _Traces:_ REQ-002, C7
-- [ ] 13.7 W2 の締め: `mise.toml` の `gate` に W2 の段と規則（[tasks.md](tasks.md)「gate と CI の段階的な結線」）を加える
+- [x] 13.7 W2 の締め: `mise.toml` の `gate` に W2 の段と規則（[tasks.md](tasks.md)「gate と CI の段階的な結線」）を加える
   _Boundary:_ `mise.toml`
   _Depends:_ 6, 7, 8, 9, 10, 11, 12, 13.1, 13.2, 13.3, 13.4, 13.5, 13.6
   _Requirements:_ 1.4, 1.15
@@ -419,3 +419,8 @@ _Traces:_ REQ-001, REQ-002, C7, C1
   _Verify:_ `mise run gate` が成功し、`typecheck` 段（ルートの `//#typecheck` を含む）と追加した4規則が走査件数を出力する。ai-core の行カバレッジが80%以上である
 
 ### Implementation Notes
+
+- `requestKey` は provider options・headers・abort signal を除外した正規化 JSON の SHA-256 とし、シナリオは `purpose`・最後の user text・`stepIndex`・末尾 tool result で決定論的に照合する。シナリオ不一致時だけ cassette を読み、未登録は `MockFixtureMissingError` で fail-closed にする。
+- LLM generate/stream と HTTP・字幕・Web検索の録画は秘密値と機密ヘッダーを除去し、fixture と同じ形式で保存する。fixture runtime は手書きと録画済みの両方を読み、未登録要求でネットワークへフォールバックしない。
+- SHA-256 由来 PRNG の L2 正規化 embedding、M1-2/M1-3 シナリオ、記事・天気・字幕・検索 fixture、公開 `./mock` API を追加した。Task 13 の焦点テストは 6 files / 33 tests、各テスト群で deliberate mutation による PROVE を確認した。
+- W2 gate に `typecheck`（root `//#typecheck` を含む tsconfig 4件の非空走査）と `no-deprecated-object-api`・`guarded-agent-only`・`ai-core-no-ui-deps`・`no-sensitive-logging` を追加した。`mise run gate` は成功し、ai-core は 110 passed / 2 skipped、line coverage 94.05%（`src/mock` 92.21%）。

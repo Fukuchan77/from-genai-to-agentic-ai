@@ -157,13 +157,15 @@ flowchart LR
 - **Responsibility**: `mock` モードで、ネットワークを使わずに決定論的な応答（テキスト、構造化オブジェクト、ツール呼び出し、ストリームチャンク）を返す。`local` / `live` の録画を扱う。
 - **Public interface**:
   - `defineScenario(scenario: ScenarioDefinition): ScenarioDefinition`、`createScenarioModel(options: { scenarios: readonly ScenarioDefinition[]; cassettes?: CassetteStore }): LanguageModelV4`
-  - `createCassetteStore(dir: string): CassetteStore`（`get(key)`、`put(key, cassette)`）
-  - `recordingMiddleware(store: CassetteStore, redactor: Redactor): LanguageModelMiddleware`、`createRedactor(env: EnvSource): Redactor`
+  - `createCassetteStore(dir: string): CassetteStore`（`get(key: RequestKey): Promise<Cassette | undefined>`、`put(key: string, value: unknown): Promise<void>`）。保存キーは `<種類>/<SHA-256 の64桁16進>`（種類は `llm`・`http`・`transcripts`・`web-search`）だけを受け付け、裸の `RequestKey` は `llm/` を補う。それ以外（`../` を含むキー等）は書き込まずに拒否する。書き込みは UUID 付きの一時ファイルから rename し、同じキーへの並行書き込みでも壊れない。`get` は Cassette v1 を Zod で検証し（ストリームパートは `type` ごとの必須フィールドまで検証する）、ファイル名のキーと中の `key` が一致しなければ拒否する。`response-metadata` の ISO 8601 の `timestamp` は読み込み時に `Date` に戻す（2026-09-30、W2 敵対的レビュー r1・r2 の指摘への対応）
+  - `recordingMiddleware(store: RecordingStore, redactor: Redactor, options?: RecordingMiddlewareOptions): LanguageModelMiddleware`（`RecordingStore` は `put(key, value)` だけを持つ。`CassetteStore` もこれを満たす。`options` は `purpose`（既定 `"chat"`）、`recordedWith`（`"local" | "live"`、既定 `"live"`）、`now`（録画時刻の注入、既定 `() => new Date()`）。最後まで読み終えたストリームだけを録画し、途中でキャンセルされたストリームは部分的なカセットを作らない）、`createRedactor(env: EnvSource): Redactor`
   - 外部サービスの録画用ラッパ（Req 2.13 の外部サービス部分。C10 の3つのポートを包む）: `recordingHttpFetcher(inner: HttpFetcher, store, redactor): HttpFetcher`、`recordingTranscriptSource(inner: TranscriptSource, store, redactor): TranscriptSource`、`recordingWebSearch(inner: WebSearchProvider, store, redactor): WebSearchProvider`。`youtubei.js` と `@tavily/core` は内部で独自に HTTP 通信し `HttpFetcher` を通らないため、字幕と Web 検索は HTTP ではなくポートの入出力（`videoId` → `TranscriptResult`、`query` → `SearchHit[]`）を録画する。録画の形式は fixture 実装がそのまま読める `HttpFixture` / `TranscriptFixture` / `WebSearchFixture` とし、`packages/ai-core/fixtures/cassettes/` 配下に種類別（`llm/`、`http/`、`transcripts/`、`web-search/`）に保存する。ライブラリ内部の通信形式に依存しないので、ライブラリを差し替えても録画は再生できる
   - `requestKey(params: LanguageModelV4CallOptions, purpose: ModelPurpose): RequestKey`（正規化した JSON の SHA-256）
   - `createDeterministicEmbeddingModel(options: { dimensions: number }): EmbeddingModelV4`（テキストの SHA-256 をシードにした PRNG で生成し、L2 正規化したベクトル）
   - `class MockFixtureMissingError extends PlatformError { key: RequestKey; nearest: readonly string[] }`
-  - 外部サービスの fixture: `createFixtureHttpFetcher(fixtures)`、`createFixtureTranscriptSource(fixtures)`、`createFixtureWebSearch(fixtures)`。手書きの fixture（`fixtures/http/`、`fixtures/transcripts/`、`fixtures/web-search/`）と、`fixtures/cassettes/` 配下の録画の両方を読む
+  - 外部サービスの fixture: `createFixtureHttpFetcher(fixtures)`、`createFixtureTranscriptSource(fixtures)`、`createFixtureWebSearch(fixtures)`。手書きの fixture（`fixtures/http/`、`fixtures/transcripts/`、`fixtures/web-search/`）と、`fixtures/cassettes/` 配下の録画の両方を読む（`loadFixtureSet(dir?): Promise<FixtureSet>`。ディレクトリがなければ空として扱う。既定の場所は `DEFAULT_FIXTURE_DIRECTORY`・`CASSETTE_FIXTURE_DIRECTORY`）
+  - **外部サービスの fixture の同一性**（2026-09-30、W2 敵対的レビュー r1 の指摘への対応）: 録画した fixture は、秘密情報を含まない照合キー `requestKey` を持つ。録画用ラッパと fixture 実装は、同じ関数でキーを計算する: `httpFixtureRequestKey(url, init)`、`transcriptFixtureRequestKey(videoId)`、`webSearchFixtureRequestKey(query)`。HTTP のキーは、次の2つの SHA-256 である: 機密のクエリパラメータ（`api_key`・`token` 等）の値を伏せてから並べ替えた URL、`describeHttpFixtureRequest(init)` の値（method と、機密でないヘッダーのダイジェスト、body のダイジェスト。`Authorization`・`Cookie`・`X-Api-Key` 等は含めない）。このため、同じ URL でも method や body が異なれば別の fixture になる。fixture 実装はまず `requestKey` で照合し、`requestKey` のない手書き fixture だけを URL（字幕は `videoId`、検索は `query`）で照合する。伏せ字化した URL を保存していても、元の入力で再生できる
+  - 公開 API（`@platform/ai-core/mock`）: 上記に加え、`normalizeRequest`（`requestKey` のハッシュ前の正規化値）、`resolveMockResponse`・`findAmbiguousScenarioMatches`（解決規則の本体と、曖昧な述語の検出）、`deriveScenarioContext`・`scenarioMatches`（照合に使う値の導出と述語の評価）、M1 のシナリオ定数 `M1_2_SCENARIOS`・`M1_3_SCENARIOS`、各型（`Cassette`、`CassetteStore`、`RecordingStore`、`RecordingMiddlewareOptions`、`FixtureSet`、`HttpFixture`、`TranscriptFixture`、`WebSearchFixture`、`Scenario*`、`ResolvedMockResponse`、`ScenarioMatchLocation`）を公開する。後続タスク（C6 のゲートウェイ、C19 の SSE fixture 生成、C21 の回帰テスト）が同じ規則で解決・照合するため
 - **解決規則**（ADR-5）:
   1. **シナリオは述語で照合する**。`ScenarioTurn.match` の条件（すべて AND）を、定義順に評価する。一致したターンが複数あればエラーにせず、定義順で最初のものを使う。述語が曖昧なシナリオを書いた場合に気づけるよう、`resolve.test.ts` で「同一要求に2つ以上のターンが一致する fixture」を検出する検査を行う。
   2. **カセットはキーで照合する**。シナリオが一致しなかったときだけ、`requestKey()` の値でカセットを探す。
@@ -449,10 +451,11 @@ erDiagram
 | | key | `string`（SHA-256） | `requestKey()` の値 |
 | | request | `{ purpose: ModelPurpose; modelId: string; promptDigest: string; toolNames: string[] }` | 秘密情報を含まない要約だけを保存する |
 | | parts | `LanguageModelV4StreamPart[]` | `generate` の呼び出しもパート列に正規化して保存する |
-| | recordedAt / recordedWith | `string`（ISO 8601）/ `RunMode` | |
+| | recordedAt / recordedWith | `string`（ISO 8601）/ `"local" \| "live"` | 保存先は `cassettes/llm/<key>.json`。読み込み時に Zod で検証する |
 | HttpFixture | url / status / headers / body | `string` / `number` / `Record<string, string>` / `string` | Web 取得・天気の fixture。`Authorization` 等のヘッダーは保存しない |
-| TranscriptFixture | videoId / result | `string` / `TranscriptResult \| { error: "no-captions" \| "private" \| "fetch-failed" }` | Req 4.11 の異常系も fixture にする。`recordingTranscriptSource` も同じ形式で録画する |
-| WebSearchFixture | query / result | `string` / `readonly SearchHit[] \| { error: string }` | Web 検索の fixture。`recordingWebSearch` も同じ形式で録画する（API キーは保存しない） |
+| | requestKey? / request? | `string`（SHA-256）/ `{ method: string; headersDigest?: string; bodyDigest?: string }` | 録画した fixture だけが持つ。`httpFixtureRequestKey()` の値と、その元になった要求の要約（秘密値を含まない）。`requestKey` を持つ fixture はキーで、持たない手書き fixture は `url` で照合する |
+| TranscriptFixture | videoId / requestKey? / result | `string` / `string`（SHA-256）/ `TranscriptResult \| { error: "no-captions" \| "private" \| "fetch-failed" }` | Req 4.11 の異常系も fixture にする。`recordingTranscriptSource` も同じ形式で録画し、`transcriptFixtureRequestKey()` の値を `requestKey` に入れる |
+| WebSearchFixture | query / requestKey? / result | `string` / `string`（SHA-256）/ `readonly SearchHit[] \| { error: string }` | Web 検索の fixture。`recordingWebSearch` も同じ形式で録画し、`webSearchFixtureRequestKey()` の値を `requestKey` に入れる（API キーは保存しない） |
 
 ## Interfaces / Contracts
 
@@ -705,7 +708,7 @@ erDiagram
 | `packages/ai-core/fixtures/http/*.json` | Create | 記事・天気の HTTP fixture。 |
 | `packages/ai-core/fixtures/transcripts/*.json` | Create | 字幕の正常系と異常系の fixture。 |
 | `packages/ai-core/fixtures/web-search/*.json` | Create | Web 検索の fixture（`WebSearchFixture`）。 |
-| `packages/ai-core/fixtures/cassettes/.gitkeep` | Create | 録画の保存先（`llm/`、`http/`、`transcripts/`、`web-search/`）。 |
+| `packages/ai-core/fixtures/cassettes/**/.gitkeep` | Create | 録画の保存先。`cassettes/` と種類別の `llm/`、`http/`、`transcripts/`、`web-search/` に置く。 |
 
 ### packages/eval-suite（C21）
 
