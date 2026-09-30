@@ -125,9 +125,9 @@ flowchart LR
 - **Responsibility**: 環境変数を Zod で検証し、実行モード・プロバイダ・用途別モデル・上限値を型付きの設定として返す。
 - **Public interface**:
   - `loadPlatformConfig(env?: EnvSource, options?: { features?: readonly FeatureId[] }): PlatformConfig`
-  - `resolveRunMode(env: EnvSource): RunMode` — テストランナーの中（`VITEST` が定義されている）では `AI_TEST_RUN_MODE ?? "mock"`、それ以外では `AI_RUN_MODE ?? "local"`
+  - `resolveRunMode(env: EnvSource): RunMode` — テストランナーの中（`VITEST` が定義されている）では `AI_TEST_RUN_MODE ?? "mock"`、それ以外では `AI_RUN_MODE ?? "local"`（空文字は未設定として扱う）
   - `class ConfigError extends PlatformError { missing: readonly { variable: string; feature: FeatureId }[] }`
-- **Owns**: 環境変数のスキーマ（`env-schema.ts`）、機能と必須変数の対応表（`feature-requirements.ts`）、上限値の既定値（`defaults.ts`: 停止条件、レート制限、入力サイズ）。設定の組み合わせの検査: `AI_RECORD=1` と実行モード `mock` の組み合わせは `ConfigError` で拒否する（録画は `local` / `live` だけ。`mise run record` の `mock` での起動拒否はこの検査で実現する。Req 2.13）。
+- **Owns**: 環境変数のスキーマ（`env-schema.ts`）、機能と必須変数の対応表（`feature-requirements.ts`）、上限値の既定値（`defaults.ts`: 停止条件、レート制限、入力サイズ）。設定の組み合わせの検査: `AI_RECORD=1` と実行モード `mock` の組み合わせは `ConfigError` で拒否する（録画は `local` / `live` だけ。`mise run record` の `mock` での起動拒否はこの検査で実現する。Req 2.13）。空文字の値は未設定として扱う（`.env.example` は全変数を空値で配布するため、無編集のコピーで既定値が適用される。2026-09-30 の `/sdd-ship` T-12）。`loadPlatformConfig` はスキーマの検証を実行モードの解決より先に行い、形式の誤り（不正な実行モードを含む）も `ConfigError` で報告する。
 - **Does NOT own**: モデル ID の一覧（C5）、秘密情報の実体。`process.env` を直接読むのは既定引数の1か所だけで、他のモジュールは `EnvSource` を受け取る。
 - **Requirements**: 1.9, 2.1, 2.5, 2.8, 2.12, 2.13（録画の設定の検査）, NFR（秘密情報）
 

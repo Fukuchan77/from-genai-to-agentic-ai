@@ -340,28 +340,34 @@ _Depends:_ 9
 _Requirements:_ 1.9, 2.1, 2.5, 2.8, 2.12, 2.13, 2.18, 6.1, NFR-07
 _Traces:_ REQ-001, REQ-002, REQ-006, C4
 
-- [ ] 12.1 `config/env-schema.ts`・`defaults.ts`: 環境変数の Zod スキーマと既定値（停止条件、レート制限、入力上限）+ `env-schema.test.ts`（既定値、型の変換、不正値の拒否）
+- [x] 12.1 `config/env-schema.ts`・`defaults.ts`: 環境変数の Zod スキーマと既定値（停止条件、レート制限、入力上限）+ `env-schema.test.ts`（既定値、型の変換、不正値の拒否）
   _Boundary:_ `packages/ai-core/src/config/env-schema.ts`, `packages/ai-core/src/config/defaults.ts`, `packages/ai-core/src/config/env-schema.test.ts`
   _Depends:_ 9
   _Requirements:_ 2.1, 2.8, 6.1, NFR-07
   _Traces:_ REQ-002, REQ-006, C4
-- [ ] 12.2 `config/feature-requirements.ts`: 機能IDと必須環境変数の対応表 + `feature-requirements.test.ts`（全変数がスキーマに存在し、全機能が1件以上の変数を持つ）
+- [x] 12.2 `config/feature-requirements.ts`: 機能IDと必須環境変数の対応表 + `feature-requirements.test.ts`（全変数がスキーマに存在し、全機能が1件以上の変数を持つ）
   _Boundary:_ `packages/ai-core/src/config/feature-requirements.ts`, `packages/ai-core/src/config/feature-requirements.test.ts`
   _Depends:_ 12.1
   _Requirements:_ 1.9
   _Traces:_ REQ-001, C4
-- [ ] 12.3 `config/run-mode.ts`: `resolveRunMode`（テストランナー内は `AI_TEST_RUN_MODE ?? "mock"`、それ以外は `AI_RUN_MODE ?? "local"`）+ テスト
+- [x] 12.3 `config/run-mode.ts`: `resolveRunMode`（テストランナー内は `AI_TEST_RUN_MODE ?? "mock"`、それ以外は `AI_RUN_MODE ?? "local"`）+ テスト
   _Boundary:_ `packages/ai-core/src/config/run-mode.ts`, `packages/ai-core/src/config/run-mode.test.ts`
   _Depends:_ 12.1
   _Requirements:_ 2.5, 2.12
   _Traces:_ REQ-002, C4
-- [ ] 12.4 `config/load.ts`・`index.ts`: `loadPlatformConfig`・`ConfigError`（不足変数名と機能名の列挙）。`AI_RECORD=1` と実行モード `mock` の組み合わせは `ConfigError` で拒否する（録画は `local`/`live` だけ。`mise run record` はこの検査で `mock` での起動を止める）+ テスト（不足変数の列挙、既定値、カタログ外のモデル ID の拒否、`AI_RECORD=1` + `mock` の拒否、`.env.example` の変数名とスキーマの一致）
+- [x] 12.4 `config/load.ts`・`index.ts`: `loadPlatformConfig`・`ConfigError`（不足変数名と機能名の列挙）。`AI_RECORD=1` と実行モード `mock` の組み合わせは `ConfigError` で拒否する（録画は `local`/`live` だけ。`mise run record` はこの検査で `mock` での起動を止める）+ テスト（不足変数の列挙、既定値、カタログ外のモデル ID の拒否、`AI_RECORD=1` + `mock` の拒否、`.env.example` の変数名とスキーマの一致）
   _Boundary:_ `packages/ai-core/src/config/load.ts`, `packages/ai-core/src/config/index.ts`, `packages/ai-core/src/config/load.test.ts`
   _Depends:_ 12.2, 12.3
   _Requirements:_ 1.9, 2.13, 2.18, NFR-07
   _Traces:_ REQ-001, REQ-002, C4
 
 ### Implementation Notes
+
+- `.env.example` の全38変数を `envSchema` / `ENV_KEYS` で一元管理し、空文字は未設定として扱う。停止条件・rate limit・request input の既定値は `defaults.ts` に分離した。
+- `FEATURE_REQUIREMENTS` は live provider 4種と Web検索を閉じた `FeatureId` として定義し、`live` mode の provider credentials は loader が自動で検査する。追加機能は `options.features` で要求する。
+- `loadPlatformConfig` はカタログ由来の用途別 defaults、明示 model ID、credentials、agent / rate / input limits を返す。`mock` + recording、未知 model ID、schema error、必須変数不足は日本語の `ConfigError` で fail-closed にする。
+- TDD evidence: 4 files / 21 tests。21 deliberate mutations すべてで該当 assertion failure を確認し、復元後に full gate と typecheck が成功した。
+- `.env.example` は全変数が空値のため、`resolveRunMode` も空文字を未設定として扱う。`loadPlatformConfig` は schema 検証を実行モード解決より先に行い、不正な実行モードも `ConfigError` で報告する（ship gate の NO-GO 指摘で追加。+3 tests、PROVE 済み）。
 
 ---
 

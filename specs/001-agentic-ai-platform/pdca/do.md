@@ -2709,3 +2709,115 @@ GREEN 後、7件すべての新規テストについて独立した deliberate b
 - Gate: `mise run gate` → exit 0。Biome 63 files、model-ID 46 files、repository rules 46 / 1 / 2 / 1 files。root `executed=257 passed=257 failed=0 skipped=0`。ai-core `executed=53 passed=53 failed=0 skipped=2`（理由 `Local tests require AI_TEST_RUN_MODE=local.` 2件）、lines 98.01%、`src/testing` lines 100% / branches 83.33%。`mise run typecheck` → 4/4 successful。
 - Mechanical fixes: traceability.md（1.13・1.14 の Test/Commit、Gaps）、AGENTS.md（プロジェクト状態に testing helpers を追加）。
 - Commit: `cbb94bd` feat(ai-core): add mock model factories and local-only test helpers。
+
+### 2026-09-30 20:59 Task 12 Started
+
+- Objective: PlatformConfig の環境変数検証、機能別必須変数、実行モード解決、型付き設定読み込みを TDD で実装する。
+- Scope: Task 12.1〜12.4 の宣言 boundary 内のみ。外部サービス不要の pure unit-test lane のため preflight は省略した。
+- Success criteria:
+  - Task fidelity: `.env.example` と Zod schema の変数名が完全一致し、既定値・数値変換・不正値拒否を自動検証する。
+  - Safety: `mock` 録画、カタログ外モデル ID、不足した秘密変数を起動時に fail-closed で拒否する。
+  - Consistency: Vitest 内は `mock`、通常実行は `local` を既定とし、明示 override だけを反映する。
+  - Maintainability: 機能 ID・必須変数・公開設定型を閉じた型として公開し、`process.env` 読み取りを設定 loader の既定引数1か所に限定する。
+  - Verification: 新規 tests、ai-core regression、`mise run gate`、`mise run typecheck` が成功する。
+- RED approach: 12.1〜12.4 の期待契約を4つの隣接 test file に先に記述し、未実装 module import による失敗を確認する。
+
+### 2026-09-30 21:00 Task 12 RED Evidence
+
+- Command: `AI_TEST_RUN_MODE=mock AI_TEST_SUITE=gate mise exec -- pnpm --filter @platform/ai-core exec vitest run src/config/env-schema.test.ts src/config/feature-requirements.test.ts src/config/run-mode.test.ts src/config/load.test.ts`
+- Result: exit 1。4 suites が `Cannot find module './defaults'` / `'./env-schema'` / `'./run-mode'` で失敗し、実装前の RED を確認した（executed=0 は未実装 import による collection failure）。
+
+### 2026-09-30 21:01 ❌ Targeted GREEN Command Coverage Failure
+
+- Error: 新規 4 files は 21/21 passed したが、targeted Vitest 実行が ai-core 全体の coverage threshold 80% を適用し、未収集の既存 module が 0% となって lines 30.58% で exit 1 になった。
+- Root cause investigation:
+  1. Vitest output は assertion failure 0件、coverage global threshold だけを failure と報告した。
+  2. `packages/ai-core/vitest.config.ts` は `src/**/*.ts` 全体を coverage include に指定し、gate suite では lines 80% を常時強制する。
+  3. Hypothesis: 実装 failure ではなく、ファイル限定 command と global coverage policy の不整合である。
+- Solution: coverage を無効化して同じ targeted tests の assertion を確認し、その後に ai-core 全 suite と project gate で本来の coverage threshold を検証する。設定は変更しない。
+- Learning: ai-core の targeted TDD command には `--coverage.enabled=false` を付け、coverage の証明は全 suite で行う。
+
+### 2026-09-30 21:01 Task 12 GREEN Evidence
+
+- Targeted assertions: coverage disabled で 4 files、21/21 passed。
+- Typecheck: `mise run typecheck` → 4/4 tasks successful。
+- Implementation: defaults、全 `.env.example` key の Zod schema、feature requirements、run mode resolver、`ConfigError` / `loadPlatformConfig`、`./config` barrel を追加した。
+
+### 2026-09-30 21:02 ❌ Biome Formatting Failure
+
+- Error: `mise run lint` が新規 config files 8件の format diff を報告した。lint rule violation や型エラーではなく、手書きした import wrapping と長い assertion の formatter 差分だった。
+- Root cause: 実装を heredoc で作成したため、Biome の行幅100・自動 import layout をまだ適用していなかった。
+- Solution: repository-defined `mise run lint:fix` を1回実行し、変更対象を確認してから `mise run lint` を再実行する。
+
+### 2026-09-30 21:04 ❌ PROVE Mutation Script Needle Error
+
+- Error: 12番目の mutation で、single-quoted shell argument に書いた `\n\t` が改行ではなく literal backslash として Node へ渡り、`needle not found` で script が停止した。
+- Root cause: shell の quoting と JavaScript replacement の文字列表現を混在させた。対象 file は各 mutation 冒頭で原本から復元済みで、実装破損はない。
+- Solution: 改行を含まない property 名の置換（`"web-search"` → `"web-browse"`）に変更し、残りの PROVE を続行する。blind retry はせず、needle を実ファイルで確認した。
+
+### 2026-09-30 21:15 ❌ PROVE Test Path Error
+
+- Error: 21 mutation commands はすべて exit 1 だったが、log を精査すると assertion failure ではなく `No test files found` だったため、PROVE evidence として無効だった。
+- Root cause: `pnpm --filter @platform/ai-core exec` は ai-core directory を cwd にするが、script が repository-root 相対の `packages/ai-core/src/...` を Vitest filter に渡した。
+- Solution: `src/config/*.test.ts` の workspace-relative path に修正し、21 mutations をすべて再実行する。無効な結果は evidence に数えない。
+- Learning: deliberate break の exit code だけでなく、期待した assertion message と executed test count を必ず確認する。
+
+### 2026-09-30 21:15 Task 12 PROVE Evidence
+
+- Method: 各新規 test case に対応する実装を `/tmp` の原本を使って1件ずつ deliberate break し、workspace-relative path で該当 test だけを実行した。21 mutations はすべて `Tests 1 failed` を確認し、各回直後に原本へ復元した。
+- Representative failures:
+  - defaults / conversion: `expected ... to match object`、`expected false to be true`。
+  - invalid values 6 cases: enum・URL・positive integer・integer 制約を個別に緩め、各 case で `expected [Function] to throw an error`。
+  - schema parity: `expected ... to deeply equal ...`（schema key 1件不足）。
+  - feature map: `web-search: expected 0 to be greater than 0`、`TAVILY_API_KEY: expected false to be true`、`expected ... to include 'web-search'`。
+  - run mode: `expected 'local' to be 'mock'`、`expected 'mock' to be 'local'`、invalid mode で `expected [Function] to throw an error`。
+  - loader: default object mismatch、catalog rejection は `expected function to throw an error, but it didn't`、missing list は `expected undefined to be an instance of ConfigError`、mock recording は throw 不在、local recording は `expected false to be true`、`.env.example` parity は key count mismatch。
+- Restore: 全 config files を `/tmp/task12-config-original` から復元後、targeted 4 files は 21/21 passed。
+
+### 2026-09-30 21:15 Task 12 Verification Evidence
+
+- Targeted: config 4 files、21/21 passed。
+- Regression: `mise run test` / full gate の ai-core は 12 files、74 passed / 2 skipped（baseline 53 passed / 2 skipped → config tests +21）。skip reason は既存の `Local tests require AI_TEST_RUN_MODE=local.` 2件。
+- Coverage: ai-core 全体 lines 96.6%。新規 `src/config` lines 92.72%（`env-schema.ts` / `feature-requirements.ts` / `run-mode.ts` / `defaults.ts` は100%、`load.ts` 89.74%）。
+- Full gate: `mise run gate` → exit 0。Biome 73 files、model-ID 56 files、repository rules 56 / 1 / 2 / 1 files。root `executed=257 passed=257 failed=0 skipped=0`、ai-core `executed=74 passed=74 failed=0 skipped=2`。
+- Typecheck: `mise run typecheck` → 4/4 tasks successful。
+- Status: 12.1〜12.4 を `[x]` に更新。VDD risk trigger はなし（変更は task boundary 内、新規依存なし、既存 test 変更なし、PROVE 完備）。
+
+### 2026-09-30 21:40 ❌ Ship Gate NO-GO: Empty Run Mode From `.env.example`
+
+- Error: `/sdd-ship` の検証で、`.env.example` を無編集で使うと `loadPlatformConfig({ AI_RUN_MODE: "" })` と `loadPlatformConfig({ VITEST: "true", AI_TEST_RUN_MODE: "" })` が `ConfigError` ではなく生の `ZodError` を投げることを一時 probe test で確認した（gate 自体は緑）。
+- Root cause investigation:
+  1. `.env.example` は全変数を空値（`AI_RUN_MODE=` など）で配布している。
+  2. `envSchema` は `emptyToUndefined` で空文字を未設定として扱うが、`resolveRunMode` は `?? "local"` / `?? "mock"` だけで空文字を既定値へ落とさなかった。
+  3. `loadPlatformConfig` が `envSchema.safeParse` より前に `resolveRunMode` を呼んでいたため、不正な実行モードも `ConfigError` に包まれなかった（Req 1.9、plan C4 の「`ConfigError` で整形して起動を止める」に反する）。
+- Solution: `resolveRunMode` で空文字を未設定として扱い、`loadPlatformConfig` は schema 検証を先に行ってから実行モードを解決する。
+- Learning: 空値テンプレートを配布する設定では、raw env を読む全経路（schema 以外の resolver を含む）で空文字の扱いを統一し、「テンプレートを無編集で読み込める」ことをテストで固定する。
+
+### 2026-09-30 21:45 Task 12.3〜12.4 Fix RED Evidence
+
+- Tests added: `run-mode.test.ts` › `treats empty run-mode values as unset`、`load.test.ts` › `loads the unedited .env.example template as local defaults`、`reports an invalid run mode as ConfigError`（`.env.example` 読み取りは `envExampleEntries()` に拡張し、既存の変数名比較はそれを再利用）。
+- Command: `AI_TEST_RUN_MODE=mock AI_TEST_SUITE=gate mise exec -- pnpm exec vitest run src/config/run-mode.test.ts src/config/load.test.ts --coverage.enabled=false`
+- Result: exit 1、`Tests 3 failed | 9 passed (12)`。2件は `ZodError`、1件は `expected error to be instance of ConfigError`。
+
+### 2026-09-30 21:47 Task 12.3〜12.4 Fix GREEN / PROVE Evidence
+
+- GREEN: `run-mode.ts` に `presentValue`（空文字 → `undefined`）を追加、`load.ts` で `envSchema.safeParse` → `resolveRunMode` の順に変更。config 4 files、24/24 passed。
+- PROVE（原本を `/tmp` に退避して1件ずつ破壊→該当 test のみ実行→復元）:
+  - M1 `presentValue` を恒等関数化 → `treats empty run-mode values as unset` が `ZodError` で失敗、`loads the unedited .env.example template...` も `ZodError` で失敗（各 `Tests 1 failed`）。
+  - M2 `safeParse` の前に `resolveRunMode(env)` を再挿入 → `reports an invalid run mode as ConfigError` が `expected error to be instance of ConfigError` で失敗。
+  - Restore: `diff` で原本と一致を確認後、config 24/24 passed。
+
+### 2026-09-30 21:50 Task 12.3〜12.4 Fix Verification Evidence
+
+- Full gate: `mise run gate` → exit 0。Biome 73 files、model-ID 56 files、repository rules 56 / 1 / 2 / 1 files。root `executed=257 passed=257 failed=0 skipped=0`。ai-core `executed=77 passed=77 failed=0 skipped=2`（前回 74 → +3、skip は既存の local-only 2件）。
+- Coverage: ai-core lines 97.11%。`src/config` lines 94.73%（`run-mode.ts` 100%、`load.ts` 89.74% → 92.3%）。
+- Typecheck: `mise run typecheck` → 4/4 tasks successful。
+- VDD: risk trigger なし（boundary 内、新規依存なし、変更したテストは未コミットの Task 12 自身のテストへの追加のみ、coverage は上昇、PROVE 完備）。
+
+### 2026-09-30 21:55 Task 12 Validation and Ship
+
+- Validation: GO。12.1〜12.4 は `[x]`、変更は Task 12 の `_Boundary:_`（`packages/ai-core/src/config/` 10 files）内、`_Depends:_` 9 は完了済み。PROVE は初回 21 mutations + 修正 3 mutations で全新規 test をカバー。
+- Spec drift: 空文字を未設定として扱う方針と、スキーマ検証を実行モード解決より先に行う順序が plan C4 に未記述だった。ユーザー承認を得て plan C4 を実装に合わせた。
+- Gate: `mise run gate` → exit 0。Biome 73 files、model-ID 56 files、repository rules 56 / 1 / 2 / 1 files。root `executed=257 passed=257 failed=0 skipped=0`。ai-core `executed=77 passed=77 failed=0 skipped=2`（baseline 53 → +24、理由 `Local tests require AI_TEST_RUN_MODE=local.` 2件）、lines 97.11%、`src/config` lines 94.73%。
+- Mechanical fixes: traceability.md（1.9・2.1・2.5・2.8・2.12・2.13・2.18・6.1・NFR-07 の Test/Commit、Gaps）、AGENTS.md（プロジェクト状態に platform config を追加）。
+- Commit: `5ca6a98` feat(ai-core): add platform config loader with env schema and run modes。
