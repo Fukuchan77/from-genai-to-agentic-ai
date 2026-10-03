@@ -15,6 +15,28 @@ Biome、TypeScript 7.1、Vitest、Strykerのルート設定を用意していま
 - `specs/curriculum/`: 4フェーズ・19モジュールのカリキュラム
 - `.sdd/memory/constitution.md`: 変更できない開発原則
 
+## 関連リポジトリとの役割分担
+
+2026-10-03 に、Agentic AI 系リポジトリの役割を次のように定めました。本リポジトリは
+**入門から本番品質までを順に学ぶ学習パス**です。
+
+| リポジトリ | 役割 | 読者が得るもの |
+|---|---|---|
+| 本リポジトリ | 学習パス。19 モジュールを順に進める。リファレンス実装は教材用に最小限 | 概念の理解と、自分で組めるようになる手順 |
+| [`vaz-agentic-ai-next`](https://github.com/Fukuchan77/vaz-agentic-ai-next) | 本番の統合ハブ（Next.js + AI SDK と FastAPI + Pydantic AI のモノレポ）。`docs/guide/` は 8 手法（PE / CE / LE / HE / AE / AO / MCP / EV）別の本番エンジニアリング・リファレンス | 本番で使う判断（ADR）・防御・運用の実例 |
+| [`next-agentic-stack`](https://github.com/Fukuchan77/next-agentic-stack) / [`pydantic-ai-sandbox`](https://github.com/Fukuchan77/pydantic-ai-sandbox) | TypeScript / Python のベータ検証レーン | 次の版で何が変わるか |
+
+運用ルール:
+
+- **相互リンクで済ませ、本文を複製しない。** 各モジュールの解説は、該当する手法のハブ側ページへ
+  「本番ではどう作るか」としてリンクします。ハブの `docs/guide/` は、手法ごとに本リポジトリの該当
+  モジュールへ「学習パス」としてリンクします。対応表は
+  [`specs/curriculum/README.md`](specs/curriculum/README.md#本番実装との対応) にあります。
+- **教材コードを第 3 の本番実装にしない。** `@platform/ai-core` は学ぶための最小構成です。
+  本番の機能（認証・RBAC、耐久ワークフロー、承認の永続化など）が要るモジュールでは、簡略版であることを
+  明示し、ハブの実装へリンクします。
+- **UI 部品の標準は shadcn/ui + Tailwind CSS**（ハブの ADR-0008）で、本リポジトリの `apps/web` と同じです。
+
 ## セットアップ
 
 ```bash

@@ -88,6 +88,30 @@ IBM の定義に基づく3段階で、システムの自律性の水準を区別
 
 ループ制御と強制停止条件（001 Req 6）は、M1 のツール呼び出しから全エージェントに適用し、解説はモジュール 4-4 でまとめて行う。
 
+## 本番実装との対応
+
+本カリキュラムは学習パスで、本番の実装と判断は統合ハブ `vaz-agentic-ai-next` にある（2026-10-03 の
+役割分担。ルートの `README.md` 参照）。各モジュールの解説は、次の表の手法について、ハブの
+`docs/guide/<手法>.md` へ「本番ではどう作るか」としてリンクする。本文は複製しない。
+
+| モジュール | ハブの手法ページ |
+|---|---|
+| 1-0 | AE（`agentic-engineering.md`） |
+| 1-2 | PE（`prompt-engineering.md`）、LE（`loop-engineering.md`） |
+| 1-3 | PE |
+| 2-1、2-2 | CE（`context-engineering.md`） |
+| 2-3 | LE、AE |
+| 2-4 | AE |
+| 3-1 | MCP（`mcp.md`）、HE（`harness-engineering.md`） |
+| 3-2〜3-6 | AE、HE |
+| 4-1 | CE |
+| 4-2 | HE |
+| 4-3 | EV（`evaluation.md`） |
+| 4-4 | AO（`agentops.md`）、LE（強制停止条件） |
+| 4-5 | AE |
+
+1-1（開発環境）はハブ側に対応する手法ページがない。ハブの `CLAUDE.md` / `AGENTS.md` を参照先とする。
+
 ## 共通の学習方針
 
 ### マイルストーンと承認
