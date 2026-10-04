@@ -10,8 +10,8 @@
 | ファイル | 内容 |
 |---|---|
 | `tasks.md`（本ファイル） | 表記規約、ID 対応表、進捗、gate と CI の段階的な結線、**現在の波**のタスク全文 |
-| `tasks-w3.md`〜`tasks-w5.md` | 未着手の波のタスク全文。その波に着手するときに本ファイルへ移す |
-| `tasks-comp-w1.md`〜`tasks-comp-w5.md` | 完了した波の保管先。波の完了時に作る（現在は `tasks-comp-w1.md`） |
+| `tasks-w4.md`〜`tasks-w5.md` | 未着手の波のタスク全文。その波に着手するときに本ファイルへ移す |
+| `tasks-comp-w1.md`〜`tasks-comp-w5.md` | 完了した波の保管先。波の完了時に作る（現在は `tasks-comp-w1.md`・`tasks-comp-w2.md`） |
 | `traceability.md` | 要件 → 設計 → タスク → テスト → コミット |
 
 タスク番号は全ファイルで一意で、移動しても変えない。`_Depends:_` と `traceability.md` は、ファイルをまたいで
@@ -63,7 +63,7 @@
 - 各大タスクの末尾の `### Implementation Notes` は生成時は空。大タスクの完了後に、実装者が学びを1〜3項目
   追記する。
 - 共有ファイルの編集者を1つに絞る: `.env.example`（1.5 が全変数を一度に作る）、`packages/ai-core/package.json`
-  （6.1 が M1 の依存を一度に宣言する。`test`・`test:coverage` スクリプトだけは 6.3 が加える）、`apps/web/package.json`（8.1。`test`・`test:coverage` スクリプトだけは 21.1 が加える）、`packages/eval-suite/package.json`（7.1。`test`・`test:coverage` スクリプトだけは 19.1 が加える）、
+  （6.1 が M1 の依存を一度に宣言する。`test`・`test:coverage` スクリプトだけは 6.3 が、`exports` の `./errors` だけは 21.1 が加える）、`apps/web/package.json`（8.1。`test`・`test:coverage` スクリプトだけは 21.1 が加える）、`packages/eval-suite/package.json`（7.1。`test`・`test:coverage` スクリプトだけは 19.1 が加える）、
   `mise.toml`（1.1 と各波の締めのタスクだけが編集する）、`.github/workflows/ci.yml`（2.1 と、ジョブを加える
   波の締めのタスク 19.3・29.1 だけが編集する）。
 
@@ -80,8 +80,8 @@
 | 波 | 大タスク | 状態 | ファイル |
 |---|---|---|---|
 | W1 基盤 | 1 ツールチェーン、2 CI、3 ローカル依存サービス、4 テスト基盤、5 リポジトリ規約検査 | 完了（2026-09-27。敵対的レビュー2ラウンド） | [tasks-comp-w1.md](tasks-comp-w1.md) |
-| W2 ai-core の土台 | 6 ai-core scaffold、7 eval-suite scaffold、8 apps/web scaffold、9 ModelCatalog、10 Ports、11 testing ヘルパ、12 PlatformConfig、13 MockRuntime | 未着手（現在の波） | 本ファイル |
-| W3 ai-core の機能 | 14 ModelGateway、15 AciToolkit、16 GuardedAgent、17 ChatCore、18 SummaryPipeline、19 評価スイート | 未着手 | [tasks-w3.md](tasks-w3.md) |
+| W2 ai-core の土台 | 6 ai-core scaffold、7 eval-suite scaffold、8 apps/web scaffold、9 ModelCatalog、10 Ports、11 testing ヘルパ、12 PlatformConfig、13 MockRuntime | 完了（2026-09-30。敵対的レビュー3ラウンド、2026-10-04 の検証で追加の修正） | [tasks-comp-w2.md](tasks-comp-w2.md) |
+| W3 ai-core の機能 | 14 ModelGateway、15 AciToolkit、16 GuardedAgent、17 ChatCore、18 SummaryPipeline、19 評価スイート | 着手（現在の波） | 本ファイル |
 | W4 apps/web | 21 RequestGuard、20 AppShell、22 ChatFeature、23 ToolAgentFeature、24 SummaryFeature | 未着手 | [tasks-w4.md](tasks-w4.md) |
 | W5 E2E・解説・最終統合 | 25 E2E 生成・検査スクリプト、26 E2E 基盤、27 E2E シナリオ、28 解説ドキュメント、29 最終統合と NFR 検証 | 未着手 | [tasks-w5.md](tasks-w5.md) |
 
@@ -113,273 +113,234 @@ PR のステータス（Req 1.7）が信号として機能しない。そこで�
 
 ---
 
-# 現在の波: W2 ai-core の土台（大タスク 6〜13）
+# 現在の波: W3 ai-core の機能（大タスク 14〜19）
 
-6.1 → 7.1 → 8.1 は、どれも `pnpm-lock.yaml` を更新するため順に行う（`(P)` を付けない）。それぞれの後続
-サブタスク（6.2〜、7.2〜、8.2〜）は並列に進められる。
+14、15、16、18 は並列に進められる。ただし 16.3 は 15.2 の後に行う（`GuardedToolSet` を使うため）。17 は 16 の後、19 は 14〜18 の後に行う。14.6（`module/1-1` のタグ）は 14.5 の直後に付ける。
 
 ---
 
-## 6. ai-core パッケージ scaffold と共通エラー型（C1）(P)
+## 14. ModelGateway（C6）(P)
 
-`@platform/ai-core` ワークスペースの骨格と、全独自エラーの基底クラスを用意する。
+用途とモデルIDから、実行モードに応じた `LanguageModel`/`EmbeddingModel` を返す。返す前に認証情報・
+接続・機能対応を検査する。各サブタスクは `gateway.test.ts` にテストを先に足してから実装する。
 
-_Boundary:_ `packages/ai-core/package.json`, `packages/ai-core/tsconfig.json`, `packages/ai-core/vitest.config.ts`, `packages/ai-core/src/errors.ts`, `packages/ai-core/src/errors.test.ts`
-_Depends:_ 1, 4
-_Requirements:_ 1.2, NFR-05, NFR-06
-_Traces:_ REQ-001, C1, C18
+_Boundary:_ `packages/ai-core/src/models/providers.ts`, `packages/ai-core/src/models/ollama-preflight.ts`, `packages/ai-core/src/models/ollama-preflight.test.ts`, `packages/ai-core/src/models/gateway.ts`, `packages/ai-core/src/models/errors.ts`, `packages/ai-core/src/models/index.ts`, `packages/ai-core/src/models/gateway.test.ts`, `packages/ai-core/src/models/catalog.local.test.ts`
+_Depends:_ 9, 11, 12, 13
+_Requirements:_ 1.13, 1.14, 2.1, 2.2, 2.3, 2.6, 2.7, 2.9, 2.10, 2.13, 3.2, 3.9, 7.11
+_Traces:_ REQ-001, REQ-002, REQ-003, REQ-007, C6, C22
 
-- [ ] 6.1 `package.json`（plan の File Structure Plan に列挙した M1 の依存をすべて宣言し、サブパス `exports` の骨格を置く。`test`・`test:coverage` スクリプトは最初のテストと同時に 6.3 で加える）、`tsconfig.json`（ベース設定の継承）
-  _Boundary:_ `packages/ai-core/package.json`, `packages/ai-core/tsconfig.json`
-  _Depends:_ 1
-  _Requirements:_ 1.2
-  _Traces:_ REQ-001, C1
-  _Verify:_ `mise run setup` がロックファイルを更新して成功する。UI 依存がないことは 13.7 で gate に入る `ai-core-no-ui-deps` が検査する
-- [ ] 6.2 `vitest.config.ts`（node 環境、`setup-hermetic` と `gate-reporter` の登録、`AI_TEST_SUITE` によるテストの選択、カバレッジを常に有効にした行カバレッジ80%の閾値。Stryker もこの設定を使う。plan C18）
-  _Boundary:_ `packages/ai-core/vitest.config.ts`
-  _Depends:_ 6.1, 4
-  _Requirements:_ NFR-06
-  _Traces:_ REQ-001, C18
-  _Verify:_ 6.3 で `test` スクリプトを加えた後、閾値を下回る状態で `mise run test` が失敗することを1回確認する
-- [ ] 6.3 `src/errors.ts`: `PlatformError` 基底クラス（`code`・日本語 `message`・`details`）と閉じた語彙の `PlatformErrorCode` + `errors.test.ts`。`packages/ai-core/package.json` に `test`・`test:coverage`（`vitest run --coverage.enabled --coverage.reporter=html`）スクリプトを加える（ai-core の最初のテスト）
-  _Boundary:_ `packages/ai-core/src/errors.ts`, `packages/ai-core/src/errors.test.ts`, `packages/ai-core/package.json`
-  _Depends:_ 6.2
-  _Requirements:_ 1.2, NFR-05
-  _Traces:_ REQ-001, C1
+- [ ] 14.1 `models/errors.ts`・`providers.ts`・`gateway.ts`: エラー型（`ProviderCredentialsMissingError`・`OllamaUnavailableError`・`CapabilityUnsupportedError`）、プロバイダファクトリの対応表（anthropic/openai/azure/google/`ollama-ai-provider-v2`）、`createModelGateway` の `resolve` の骨格（`mock` はシナリオモデル、`live` は認証情報を検査してから生成）。解決するカタログの entry の `modes` に現在の実行モードが含まれることを検査し、含まれなければ拒否する（`AI_MODEL_*` で明示指定した ID も対象。C4 の `loadPlatformConfig` はカタログに実在するかだけを検査するため。2026-10-04、W2 `/sdd-validate-impl` の D9。エラーの型は実装時に決めて plan C6 に記録する）+ `gateway.test.ts`（モード別の解決、`ProviderCredentialsMissingError` のプロバイダ名と変数名、ネットワークなしで `mock` が動く、`local` で `live` 専用の ID を `AI_MODEL_CHAT` に指定すると拒否する）
+  _Boundary:_ `packages/ai-core/src/models/errors.ts`, `packages/ai-core/src/models/providers.ts`, `packages/ai-core/src/models/gateway.ts`, `packages/ai-core/src/models/gateway.test.ts`
+  _Depends:_ 9, 12, 13
+  _Requirements:_ 2.1, 2.2, 2.6
+  _Traces:_ REQ-002, C6
+- [ ] 14.2 `models/ollama-preflight.ts`: `GET {baseUrl}/api/tags` による接続とモデル取得済みの事前検査（短時間キャッシュ）+ `ollama-preflight.test.ts`、`gateway.ts` の `local` の解決 + `gateway.test.ts` に `OllamaUnavailableError`（接続先 URL と起動方法の案内）を追加
+  _Boundary:_ `packages/ai-core/src/models/ollama-preflight.ts`, `packages/ai-core/src/models/ollama-preflight.test.ts`, `packages/ai-core/src/models/gateway.ts`, `packages/ai-core/src/models/gateway.test.ts`
+  _Depends:_ 14.1
+  _Requirements:_ 2.3, 2.7
+  _Traces:_ REQ-002, C6
+- [ ] 14.3 `gateway.ts`: 機能への対応の検査（`CapabilityUnsupportedError`）、`resolveEmbedding`、`availableModels`（現在の実行モードを `modes` に含み、認証情報のそろったプロバイダのものだけ。D9）、録画時だけの `recordingMiddleware` の合成 + `gateway.test.ts` に各ケースを追加
+  _Boundary:_ `packages/ai-core/src/models/gateway.ts`, `packages/ai-core/src/models/gateway.test.ts`
+  _Depends:_ 14.2
+  _Requirements:_ 2.9, 2.10, 2.13, 3.2, 3.9
+  _Traces:_ REQ-002, REQ-003, C6
+- [ ] 14.4 `models/index.ts`: `./models` の公開API（クライアントへ渡すのは Zod を含まない型だけ）
+  _Boundary:_ `packages/ai-core/src/models/index.ts`
+  _Depends:_ 14.3
+  _Requirements:_ 2.1
+  _Traces:_ REQ-002, C6
+  _Verify:_ 17・19・20 のテストが公開サブパス `@platform/ai-core/models` から import して通る
+- [ ] 14.5 `models/catalog.local.test.ts`: `local` 限定で、既定モデルが実際にツール呼び出しと構造化出力に応答することを確認する（`describeLocal`。Ollama がなければ理由付きでスキップ）
+  _Boundary:_ `packages/ai-core/src/models/catalog.local.test.ts`
+  _Depends:_ 14.4, 11
+  _Requirements:_ 1.13, 1.14, 2.3
+  _Traces:_ REQ-001, REQ-002, C6, C18
+- [ ] 14.6 完成タグ `module/1-1`: モジュール 1-1（Req 1、2 のリファレンス実装: モノレポ基盤、品質ゲート、実行モード、モデルカタログ、ゲートウェイ、モック）が完了した統合ブランチのコミットに、注釈付きタグをローカルで付ける（plan C22）。タグの push は 29.4 で人間の承認後に行う
+  _Boundary:_ git タグのみ（ファイルの変更なし）
+  _Depends:_ 1〜13, 14.1, 14.2, 14.3, 14.4, 14.5
+  _Requirements:_ 7.11
+  _Traces:_ REQ-007, C22
+  _Verify:_ タグのコミットで `mise run gate`（その時点の構成）が成功する。タグのメッセージに、そのコミットに含まれる後続モジュールの途中の実装（並列に進めた 15〜18）を列挙する
 
 ### Implementation Notes
 
 ---
 
-## 7. eval-suite パッケージ scaffold（C21）(P)
+## 15. AciToolkit とサンプルツール（C9）(P)
 
-`@platform/eval-suite` ワークスペースの骨格（評価の実体は M4）を用意する。
+ツール定義の共通規約（リスク区分、タイムアウト、エラーのツール結果化、Clock 注入）と M1 の
+サンプルツールを提供する。`TAVILY_API_KEY` は 1.5 の `.env.example` に含まれる。
 
-_Boundary:_ `packages/eval-suite/package.json`, `packages/eval-suite/tsconfig.json`, `packages/eval-suite/vitest.config.ts`, `packages/eval-suite/tests/capability/README.md`
-_Depends:_ 4, 6.1
-_Requirements:_ 1.1, 1.13, 1.14
-_Traces:_ REQ-001, C21
+_Boundary:_ `packages/ai-core/src/aci/types.ts`, `packages/ai-core/src/aci/define-tool.ts`, `packages/ai-core/src/aci/tool-set.ts`, `packages/ai-core/src/aci/tools/current-time.ts`, `packages/ai-core/src/aci/tools/calculator.ts`, `packages/ai-core/src/aci/tools/currency.ts`, `packages/ai-core/src/aci/tools/rates.json`, `packages/ai-core/src/aci/tools/weather.ts`, `packages/ai-core/src/aci/tools/web-search.ts`, `packages/ai-core/src/aci/index.ts`, `packages/ai-core/src/aci/define-tool.test.ts`, `packages/ai-core/src/aci/tool-set.test.ts`, `packages/ai-core/src/aci/tools/calculator.test.ts`, `packages/ai-core/src/aci/tools/tools.test.ts`
+_Depends:_ 10, 12, 13
+_Requirements:_ 5.2, 5.3, 5.4, 5.7, 5.8, 6.4
+_Traces:_ REQ-005, REQ-006, C9
 
-- [ ] 7.1 `package.json`（`@platform/ai-core` に依存）、`tsconfig.json`。`test`・`test:coverage` スクリプトは最初のテストと同時に 19.1 で加える（テスト0件のプロジェクトで gate の `test` 段が失敗するのを防ぐ）
-  _Boundary:_ `packages/eval-suite/package.json`, `packages/eval-suite/tsconfig.json`
-  _Depends:_ 6.1
-  _Requirements:_ 1.1
-  _Traces:_ REQ-001, C21
-  _Verify:_ `mise run setup` と `mise run typecheck` が成功する
-- [ ] 7.2 `vitest.config.ts`（`setup-hermetic`/`global-setup-local`/`gate-reporter` の登録、`AI_TEST_SUITE` によるテストの選択。ルートからは集約しない。plan C18「テストの実行単位」）
-  _Boundary:_ `packages/eval-suite/vitest.config.ts`
-  _Depends:_ 7.1, 4
-  _Requirements:_ 1.13, 1.14
-  _Traces:_ REQ-001, C21
-  _Verify:_ 19.1・19.2 のテストの実行で確認する
-- [ ] 7.3 `tests/capability/README.md`: Capability / Regression の配置規約と 004 への引き継ぎ事項
-  _Boundary:_ `packages/eval-suite/tests/capability/README.md`
-  _Depends:_ 7.1
-  _Requirements:_ 1.13
-  _Traces:_ REQ-001, C21
-  _Verify:_ 文書のみ。レビューで確認する
-
-### Implementation Notes
-
----
-
-## 8. apps/web ワークスペース scaffold（C13 一部）(P)
-
-Next.js アプリのワークスペース骨格（機能ロジックは含まない）を用意する。
-
-_Boundary:_ `apps/web/package.json`, `apps/web/tsconfig.json`, `apps/web/next.config.ts`, `apps/web/vitest.config.ts`, `apps/web/components.json`, `apps/web/app/globals.css`
-_Depends:_ 7.1
-_Requirements:_ 1.1, NFR-09
-_Traces:_ REQ-001, C13
-
-- [ ] 8.1 `package.json`（plan の File Structure Plan の `apps/web/package.json` の行に列挙した依存・開発依存をすべて宣言する。Next.js・React・`@ai-sdk/react`・`babel-plugin-react-compiler`・`server-only`・Tailwind CSS・shadcn/ui の生成部品の実行時依存・`jsdom`・Testing Library・`@vitejs/plugin-react`・`vite-tsconfig-paths`・Playwright・axe。`typecheck`（`next typegen && tsc --noEmit`）等のスクリプト。`test`・`test:coverage` スクリプトは 21.1 で加える）、`tsconfig.json`
-  _Boundary:_ `apps/web/package.json`, `apps/web/tsconfig.json`
-  _Depends:_ 7.1
-  _Requirements:_ 1.1
-  _Traces:_ REQ-001, C13
-  _Verify:_ `mise run setup` と `mise run typecheck` が成功する
-- [ ] 8.2 `next.config.ts`（`reactCompiler: true`、`typedRoutes: true`、`serverExternalPackages`（jsdom 等））
-  _Boundary:_ `apps/web/next.config.ts`
-  _Depends:_ 8.1
-  _Requirements:_ 1.1
-  _Traces:_ REQ-001, C13
-  _Verify:_ `mise run typecheck` が成功する。`next build` の成功は 25.2 で確認する
-- [ ] 8.3 `vitest.config.ts`（jsdom 環境のコンポーネントテストと node 環境の Route Handler テストの2プロジェクト。両方に `setup-hermetic` と `gate-reporter` を登録し、`AI_TEST_SUITE` によるテストの選択（plan C18「テストの実行単位」）を適用する。`@vitejs/plugin-react`、`vite-tsconfig-paths`、`server-only` の空モジュールへの別名解決）、`components.json`（shadcn/ui 生成設定）、`app/globals.css`（Tailwind CSS v4、`tw-animate-css`、WCAG 2.2 AA のコントラスト）
-  _Boundary:_ `apps/web/vitest.config.ts`, `apps/web/components.json`, `apps/web/app/globals.css`
-  _Depends:_ 8.1
-  _Requirements:_ 1.1, NFR-09
-  _Traces:_ REQ-001, C13
-  _Verify:_ Vitest の構成は 21.1 以降のテストの実行で、コントラストは 27.3 の axe 検査で確認する
-
-### Implementation Notes
-
----
-
-## 9. ModelCatalog（C5）
-
-モデルID、対応機能、コンテキスト上限、単価、用途別既定モデルを1か所で定義する。
-
-_Boundary:_ `packages/ai-core/src/models/types.ts`, `packages/ai-core/src/models/catalog.ts`, `packages/ai-core/src/models/catalog.test.ts`
-_Depends:_ 6
-_Requirements:_ 2.2, 2.8, 2.10, 2.17, 2.18, NFR-13
-_Traces:_ REQ-002, C5
-
-- [ ] 9.1 `models/types.ts`: `ProviderId`・`ModelId`・`Capability`・`ModelPurpose`・`ModelEntry` の Zod 非依存の型（クライアントからも import 可能）
-  _Boundary:_ `packages/ai-core/src/models/types.ts`
-  _Depends:_ 6
-  _Requirements:_ 2.17
-  _Traces:_ REQ-002, C5
-  _Verify:_ 型のみ。`mise run typecheck` と 9.2 のテストで確認する
-- [ ] 9.2 `models/catalog.ts`・`catalog.test.ts`: `MODEL_CATALOG`（`as const satisfies ModelCatalog`）、`getModelEntry`、`listModels`、`defaultModelFor`、`estimateCost`。watsonx.ai は含めない。テストはカタログ整合性（既定モデルの実在、機能と用途の一致、`live` の単価の存在）と、同梱カセットの `modelId` がカタログに実在することを検証する。モデル ID の値は実装時に各社公式ドキュメントで確認する（constitution 原則 8）
-  _Boundary:_ `packages/ai-core/src/models/catalog.ts`, `packages/ai-core/src/models/catalog.test.ts`
-  _Depends:_ 9.1
-  _Requirements:_ 2.2, 2.8, 2.10, 2.17, 2.18, NFR-13
-  _Traces:_ REQ-002, C5
-
-### Implementation Notes
-
----
-
-## 10. Ports（C10）(P)
-
-時刻と外部サービスへのアクセスをインターフェースとして定義し、実装を差し替え可能にする。
-録画用ラッパ（`recordingHttpFetcher`・`recordingTranscriptSource`・`recordingWebSearch`）は C7 に属する（13.4）。
-
-_Boundary:_ `packages/ai-core/src/ports/clock.ts`, `packages/ai-core/src/ports/clock.test.ts`, `packages/ai-core/src/ports/http.ts`, `packages/ai-core/src/ports/http.test.ts`, `packages/ai-core/src/ports/transcript.ts`, `packages/ai-core/src/ports/transcript.test.ts`, `packages/ai-core/src/ports/web-search.ts`, `packages/ai-core/src/ports/web-search.test.ts`, `packages/ai-core/src/ports/index.ts`
-_Depends:_ 6
-_Requirements:_ 2.15, 5.7
-_Traces:_ REQ-002, REQ-005, C10
-
-- [ ] 10.1 (P) `ports/clock.ts`: `Clock`、`systemClock`、`createFakeClock()` + `clock.test.ts`（時刻の進行、`timeoutSignal` の中断）
-  _Boundary:_ `packages/ai-core/src/ports/clock.ts`, `packages/ai-core/src/ports/clock.test.ts`
-  _Depends:_ 6
-  _Requirements:_ 5.7
-  _Traces:_ REQ-005, C10
-- [ ] 10.2 `ports/http.ts`: `HttpFetcher` と `createNodeHttpFetcher()` + `http.test.ts`（注入した `fetch` で、ステータス・ヘッダー・本文の写像と `AbortSignal` の伝播）
-  _Boundary:_ `packages/ai-core/src/ports/http.ts`, `packages/ai-core/src/ports/http.test.ts`
-  _Depends:_ 10.1
-  _Requirements:_ 2.15
-  _Traces:_ REQ-002, C10
-- [ ] 10.3 `ports/transcript.ts`: `TranscriptSource` と `createYoutubeiTranscriptSource()` + `transcript.test.ts`（異常理由 `no-captions`/`private`/`fetch-failed` の写像を、`youtubei.js` の応答を模したテスト内のスタブで検証する。C7 の fixture 実装には依存しない）
-  _Boundary:_ `packages/ai-core/src/ports/transcript.ts`, `packages/ai-core/src/ports/transcript.test.ts`
-  _Depends:_ 10.1
-  _Requirements:_ 2.15
-  _Traces:_ REQ-002, C10
-- [ ] 10.4 `ports/web-search.ts`・`index.ts`: `WebSearchProvider` と `createTavilySearch(apiKey)`、`./ports` の公開API + `web-search.test.ts`（注入した Tavily クライアントのスタブで `SearchHit` への写像と `AbortSignal` の伝播）
-  _Boundary:_ `packages/ai-core/src/ports/web-search.ts`, `packages/ai-core/src/ports/web-search.test.ts`, `packages/ai-core/src/ports/index.ts`
-  _Depends:_ 10.2, 10.3
-  _Requirements:_ 2.15
-  _Traces:_ REQ-002, C10
-
-### Implementation Notes
-
----
-
-## 11. ai-core testing ヘルパ（C18・ai-core/testing）
-
-`@platform/ai-core/testing` サブパスとして、モックモデルのファクトリと `local` 限定テストの
-ヘルパを提供する。
-
-_Boundary:_ `packages/ai-core/src/testing/index.ts`, `packages/ai-core/src/testing/mock-models.ts`, `packages/ai-core/src/testing/mock-models.test.ts`, `packages/ai-core/src/testing/local-only.ts`, `packages/ai-core/src/testing/local-only.test.ts`
-_Depends:_ 10
-_Requirements:_ 1.13, 1.14
-_Traces:_ REQ-001, C18
-
-- [ ] 11.1 `testing/mock-models.ts`: `createTextStreamModel`・`createToolCallingModel`・`createObjectModel`（`MockLanguageModelV4` + `simulateReadableStream`）+ `mock-models.test.ts`（生成とストリームの両方で指定した内容を返す）
-  _Boundary:_ `packages/ai-core/src/testing/mock-models.ts`, `packages/ai-core/src/testing/mock-models.test.ts`
+- [ ] 15.1 (P) `aci/types.ts`・`define-tool.ts`: `ToolRisk`・`ToolOutcome`・`ToolFailure`・`ToolRuntime`（`clock`、`toolTimeoutMs`）・`GuardedToolSet`（`unique symbol` のブランド型。plan C9）・`defineAciTool`（`AciTool` を返す。AI SDK の `Tool` への変換は `ToolRuntime` を受け取って行い、実効のタイムアウトは `min(definition.timeoutMs ?? runtime.toolTimeoutMs, runtime.toolTimeoutMs)`、中断は `AbortSignal.any([options.abortSignal, runtime.clock.timeoutSignal(実効値)])` で合成する。例外とタイムアウトのツール結果化）+ テスト（fake Clock で、実効タイムアウトの選択（定義なし・定義が短い・定義が長い）、タイムアウトと例外のツール結果化、呼び出し元の中断の伝播）
+  _Boundary:_ `packages/ai-core/src/aci/types.ts`, `packages/ai-core/src/aci/define-tool.ts`, `packages/ai-core/src/aci/define-tool.test.ts`
   _Depends:_ 10
-  _Requirements:_ 1.13
-  _Traces:_ REQ-001, C18
-- [ ] 11.2 `testing/local-only.ts`・`index.ts`: `describeLocal`/`itLocal`（`localAvailability` 不可時は理由付きスキップ）と `createFakeClock` の再公開 + `local-only.test.ts`（不可なら理由付きでスキップ、可なら実行）
-  _Boundary:_ `packages/ai-core/src/testing/local-only.ts`, `packages/ai-core/src/testing/local-only.test.ts`, `packages/ai-core/src/testing/index.ts`
-  _Depends:_ 11.1
+  _Requirements:_ 5.8, 6.4
+  _Traces:_ REQ-005, REQ-006, C9
+- [ ] 15.2 `aci/tool-set.ts`: `buildToolSet(tools, availability, runtime: ToolRuntime)`（`runtime` で各 `AciTool` を AI SDK の `Tool` に変換し、`GuardedToolSet` として返す。無効化ツールの一覧、`risk` が `read-only` 以外は `ConfigError` で拒否）+ テスト（`runtime.toolTimeoutMs`（`AGENT_TOOL_TIMEOUT_MS` 由来）と `runtime.clock` が全ツールに届くこと、戻り値が `GuardedToolSet` であること）
+  _Boundary:_ `packages/ai-core/src/aci/tool-set.ts`, `packages/ai-core/src/aci/tool-set.test.ts`
+  _Depends:_ 15.1, 12
+  _Requirements:_ 5.4
+  _Traces:_ REQ-005, C9
+- [ ] 15.3 `aci/tools/current-time.ts`・`calculator.ts`: 現在時刻ツール（Clock 注入）と再帰下降パーサの計算ツール（`eval` を使わない）+ `calculator.test.ts`
+  _Boundary:_ `packages/ai-core/src/aci/tools/current-time.ts`, `packages/ai-core/src/aci/tools/calculator.ts`, `packages/ai-core/src/aci/tools/calculator.test.ts`
+  _Depends:_ 15.1
+  _Requirements:_ 5.2, 5.7
+  _Traces:_ REQ-005, C9
+- [ ] 15.4 `aci/tools/currency.ts`・`rates.json`・`weather.ts`・`web-search.ts`: 為替・天気（Open-Meteo）・Web検索（Tavily、キー未設定時は登録しない）ツール + `tools.test.ts`（fake Clock と 13.6 の fixture 実装を使う）
+  _Boundary:_ `packages/ai-core/src/aci/tools/currency.ts`, `packages/ai-core/src/aci/tools/rates.json`, `packages/ai-core/src/aci/tools/weather.ts`, `packages/ai-core/src/aci/tools/web-search.ts`, `packages/ai-core/src/aci/tools/tools.test.ts`
+  _Depends:_ 10, 13, 15.1
+  _Requirements:_ 5.2, 5.3
+  _Traces:_ REQ-005, C9
+- [ ] 15.5 `aci/index.ts`: `./aci` の公開API集約
+  _Boundary:_ `packages/ai-core/src/aci/index.ts`
+  _Depends:_ 15.2, 15.3, 15.4
+  _Requirements:_ 5.2
+  _Traces:_ REQ-005, C9
+  _Verify:_ 19.1 と 23.1 のテストが公開サブパス `@platform/ai-core/aci` から import して通る
+
+### Implementation Notes
+
+---
+
+## 16. GuardedAgent（C8）(P)
+
+3種の停止条件と停止理由を必ず持つ `ToolLoopAgent` を生成し、実行サマリを返す。
+
+_Boundary:_ `packages/ai-core/src/agents/stop-conditions.ts`, `packages/ai-core/src/agents/stop-reason.ts`, `packages/ai-core/src/agents/guarded-agent.ts`, `packages/ai-core/src/agents/index.ts`, `packages/ai-core/src/agents/stop-conditions.test.ts`, `packages/ai-core/src/agents/stop-reason.test.ts`, `packages/ai-core/src/agents/guarded-agent.test.ts`
+_Depends:_ 11, 12, 13（16.3 は 15.2 にも依存する）
+_Requirements:_ 5.1, 5.6, 6.1, 6.2, 6.3, 6.5
+_Traces:_ REQ-005, REQ-006, C8
+
+- [ ] 16.1 (P) `agents/stop-conditions.ts`: `stepLimit`（`isStepCount` ラッパ）・`tokenBudget`・`deadline`（Clock 経過）+ テスト（境界値: ちょうど上限、上限の1つ手前）
+  _Boundary:_ `packages/ai-core/src/agents/stop-conditions.ts`, `packages/ai-core/src/agents/stop-conditions.test.ts`
+  _Depends:_ 11
+  _Requirements:_ 6.1
+  _Traces:_ REQ-006, C8
+- [ ] 16.2 `agents/stop-reason.ts`: `deriveStopReason`（優先順位: `aborted`→`error`→成立した停止条件→`completed`）+ テスト（6種の網羅）
+  _Boundary:_ `packages/ai-core/src/agents/stop-reason.ts`, `packages/ai-core/src/agents/stop-reason.test.ts`
+  _Depends:_ 16.1
+  _Requirements:_ 6.2
+  _Traces:_ REQ-006, C8
+- [ ] 16.3 `agents/guarded-agent.ts`・`guarded-agent.test.ts`: `createGuardedAgent`（1回の実行に束縛、`tools` は 15.2 の `GuardedToolSet` だけを受け付ける、ツール数20超で `ConfigError`、`abortSignal = AbortSignal.any([signal, timeoutSignal])` の合成、`onStepEnd`/`onEnd`/`onError` によるサマリの1回だけの確定、`RunObserver.onRunEnd`）。テストはシナリオモデル（13）で、ツール呼び出しの反復、知識のみの回答（ツールを呼ばず `toolsCalled` が空）、並行する2実行の状態分離、ツール数21件での生成拒否、生の `ToolSet` を `tools` に渡すと型エラーになること（`@ts-expect-error`）、応答しないLLM呼び出しの `timeout` 化、学習者の停止による `aborted`、サマリ確定が1回だけであることを検証する
+  _Boundary:_ `packages/ai-core/src/agents/guarded-agent.ts`, `packages/ai-core/src/agents/guarded-agent.test.ts`
+  _Depends:_ 16.2, 15.2, 12, 13
+  _Requirements:_ 5.1, 5.6, 6.1, 6.2, 6.3, 6.5
+  _Traces:_ REQ-005, REQ-006, C8
+- [ ] 16.4 `agents/index.ts`: `./agents` の公開API
+  _Boundary:_ `packages/ai-core/src/agents/index.ts`
+  _Depends:_ 16.3
+  _Requirements:_ 5.1
+  _Traces:_ REQ-005, C8
+  _Verify:_ 17.3・19.1・23.1 のテストが公開サブパス `@platform/ai-core/agents` から import して通る
+
+### Implementation Notes
+
+---
+
+## 17. ChatCore（C11）
+
+ペルソナのテンプレート、モデル切り替え時の履歴変換、応答メタデータの組み立てを提供する。
+
+_Boundary:_ `packages/ai-core/src/chat/personas/index.ts`, `packages/ai-core/src/chat/personas/general-assistant.ts`, `packages/ai-core/src/chat/personas/python-mentor.ts`, `packages/ai-core/src/chat/personas/strict-reviewer.ts`, `packages/ai-core/src/chat/adapt-history.ts`, `packages/ai-core/src/chat/metadata.ts`, `packages/ai-core/src/chat/request-schema.ts`, `packages/ai-core/src/chat/index.ts`, `packages/ai-core/src/chat/adapt-history.test.ts`, `packages/ai-core/src/chat/personas/personas.test.ts`, `packages/ai-core/src/chat/metadata.test.ts`, `packages/ai-core/src/chat/request-schema.test.ts`
+_Depends:_ 9, 16
+_Requirements:_ 3.3, 3.7, 3.10, 5.6
+_Traces:_ REQ-003, REQ-005, C11
+
+- [ ] 17.1 (P) `chat/personas/*`: 汎用アシスタント・Python講師・厳密レビュアの3テンプレート（`id`/`version`/`title`/`render`）+ テスト（ID一意性、版の形式、描画結果）
+  _Boundary:_ `packages/ai-core/src/chat/personas/index.ts`, `packages/ai-core/src/chat/personas/general-assistant.ts`, `packages/ai-core/src/chat/personas/python-mentor.ts`, `packages/ai-core/src/chat/personas/strict-reviewer.ts`, `packages/ai-core/src/chat/personas/personas.test.ts`
+  _Depends:_ 9
+  _Requirements:_ 3.10
+  _Traces:_ REQ-003, C11
+- [ ] 17.2 (P) `chat/adapt-history.ts`: `adaptHistoryForModel`（推論・プロバイダ固有メタデータ・非対応画像の除外・変換、表示用履歴は変えない）+ テスト
+  _Boundary:_ `packages/ai-core/src/chat/adapt-history.ts`, `packages/ai-core/src/chat/adapt-history.test.ts`
+  _Depends:_ 9
+  _Requirements:_ 3.3
+  _Traces:_ REQ-003, C11
+- [ ] 17.3 `chat/metadata.ts`・`request-schema.ts`・`index.ts`: `buildResponseMetadata`、`chatRequestSchema`/`agentRequestSchema`（`z.strictObject`）、`./chat` の公開API + `metadata.test.ts`（使用量の写し替え、`run` と `toolsCalled` の有無）・`request-schema.test.ts`（未知フィールド・カタログ外のモデル ID・未知のペルソナ ID の拒否）
+  _Boundary:_ `packages/ai-core/src/chat/metadata.ts`, `packages/ai-core/src/chat/metadata.test.ts`, `packages/ai-core/src/chat/request-schema.ts`, `packages/ai-core/src/chat/request-schema.test.ts`, `packages/ai-core/src/chat/index.ts`
+  _Depends:_ 17.1, 17.2, 16
+  _Requirements:_ 3.7, 3.10, 5.6
+  _Traces:_ REQ-003, REQ-005, C11
+
+### Implementation Notes
+
+---
+
+## 18. SummaryPipeline（C12）(P)
+
+記事URL・YouTube URL・字幕テキストから本文を取得し、分割の要否を判断して、スキーマ検証済みの
+要約オブジェクトを逐次生成する。
+
+_Boundary:_ `packages/ai-core/src/summarize/schema.ts`, `packages/ai-core/src/summarize/schema.test.ts`, `packages/ai-core/src/summarize/source.ts`, `packages/ai-core/src/summarize/tokens.ts`, `packages/ai-core/src/summarize/plan.ts`, `packages/ai-core/src/summarize/cache-policy.ts`, `packages/ai-core/src/summarize/cache-policy.test.ts`, `packages/ai-core/src/summarize/prompts.ts`, `packages/ai-core/src/summarize/retry.ts`, `packages/ai-core/src/summarize/pipeline.ts`, `packages/ai-core/src/summarize/errors.ts`, `packages/ai-core/src/summarize/index.ts`, `packages/ai-core/src/summarize/source.test.ts`, `packages/ai-core/src/summarize/plan.test.ts`, `packages/ai-core/src/summarize/retry.test.ts`, `packages/ai-core/src/summarize/pipeline.test.ts`
+_Depends:_ 9, 10, 11, 13
+_Requirements:_ 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 4.7, 4.8, 4.9, 4.10, 4.11, 4.12
+_Traces:_ REQ-004, C12
+
+- [ ] 18.1 `summarize/schema.ts`・`errors.ts`: 要約スキーマ（`title`/`keyPoints`ちょうど3件/`tags`/`actionItems`/`chapters?`）、`summarizeRequestSchema`（`z.strictObject`）と `SourceFetchError`・`TranscriptUnavailableError`・`SummaryValidationError` + `schema.test.ts`（要点が3件でない、上限超過、要約リクエストの未知フィールドの拒否）
+  _Boundary:_ `packages/ai-core/src/summarize/schema.ts`, `packages/ai-core/src/summarize/schema.test.ts`, `packages/ai-core/src/summarize/errors.ts`
+  _Depends:_ 9
+  _Requirements:_ 4.1, 4.3, 4.10
+  _Traces:_ REQ-004, C12
+- [ ] 18.2 `summarize/source.ts`: 記事本文抽出（`@mozilla/readability` + `jsdom`）、YouTube URL 解析と字幕取得、字幕テキストの直接入力の受付 + テスト（13.6 の fixture 実装で、HTTP失敗・空本文・字幕なしでLLMを呼ばないこと）
+  _Boundary:_ `packages/ai-core/src/summarize/source.ts`, `packages/ai-core/src/summarize/source.test.ts`
+  _Depends:_ 18.1, 10, 13
+  _Requirements:_ 4.1, 4.2, 4.7, 4.9, 4.11
+  _Traces:_ REQ-004, C12
+- [ ] 18.3 (P) `summarize/tokens.ts`・`plan.ts`: `gpt-tokenizer` によるトークン推定（安全係数1.2）と全文/分割の判断（コンテキスト上限の80%境界）+ テスト
+  _Boundary:_ `packages/ai-core/src/summarize/tokens.ts`, `packages/ai-core/src/summarize/plan.ts`, `packages/ai-core/src/summarize/plan.test.ts`
+  _Depends:_ 18.1
+  _Requirements:_ 4.6, 4.12
+  _Traces:_ REQ-004, C12
+- [ ] 18.4 (P) `summarize/cache-policy.ts`・`prompts.ts`: プロバイダ別のプロンプトキャッシュ指定方法（`anthropic`明示/自動系は記録のみ/`ollama`・`mock`はなし）と要約・部分要約・統合のプロンプト + `cache-policy.test.ts`
+  _Boundary:_ `packages/ai-core/src/summarize/cache-policy.ts`, `packages/ai-core/src/summarize/cache-policy.test.ts`, `packages/ai-core/src/summarize/prompts.ts`
+  _Depends:_ 18.1
+  _Requirements:_ 4.8
+  _Traces:_ REQ-004, C12
+- [ ] 18.5 (P) `summarize/retry.ts`: スキーマ検証失敗時の最大2回までの再生成 + テスト（1回目・2回目の成功、3回目失敗時のエラー内容）
+  _Boundary:_ `packages/ai-core/src/summarize/retry.ts`, `packages/ai-core/src/summarize/retry.test.ts`
+  _Depends:_ 18.1
+  _Requirements:_ 4.4
+  _Traces:_ REQ-004, C12
+- [ ] 18.6 `summarize/pipeline.ts`・`index.ts`: `streamSummary`（`partial`/`restart`/`final`/`meta` のイベント列、`final` だけを検証済み要約として扱う）+ テスト（13.6 の `m1-3` シナリオと 11 のモックモデルで、部分オブジェクトの順序、チャプターの生成、キャッシュ読み出し量の記録）
+  _Boundary:_ `packages/ai-core/src/summarize/pipeline.ts`, `packages/ai-core/src/summarize/index.ts`, `packages/ai-core/src/summarize/pipeline.test.ts`
+  _Depends:_ 18.2, 18.3, 18.4, 18.5, 11, 13
+  _Requirements:_ 4.3, 4.5, 4.8, 4.10, 4.12
+  _Traces:_ REQ-004, C12
+
+### Implementation Notes
+
+---
+
+## 19. 評価スイート: 回帰テストと Capability の例（C21 続き）
+
+M1 のツールエージェントの通し実行を回帰として検証し、`local` 限定の品質評価の適用例を1件置く。
+W3 の締めとして gate を結線する。
+
+_Boundary:_ `packages/eval-suite/package.json`, `packages/eval-suite/tests/regression/tool-agent-run.test.ts`, `packages/eval-suite/tests/capability/summary-quality.local.test.ts`, `mise.toml`, `.github/workflows/ci.yml`
+_Depends:_ 7, 9, 13, 15, 16, 18（19.3 は 14、17 にも依存する）
+_Requirements:_ 1.1, 1.4, 1.7, 1.13, 1.14, 1.15, 1.16
+_Traces:_ REQ-001, C21, C1, C2
+
+- [ ] 19.1 `tests/regression/tool-agent-run.test.ts`: `mock` シナリオでツールエージェントを最後まで実行し、停止理由・ツール呼び出し列・最終回答の Outcome を回帰として検証する。`packages/eval-suite/package.json` に `test`・`test:coverage`（`vitest run --coverage.enabled --coverage.reporter=html --coverage.thresholds.lines=0`。閾値の強制は gate の `test` 段。plan C18）スクリプトを加える
+  _Boundary:_ `packages/eval-suite/tests/regression/tool-agent-run.test.ts`, `packages/eval-suite/package.json`
+  _Depends:_ 7, 13, 15, 16
+  _Requirements:_ 1.1, 1.13
+  _Traces:_ REQ-001, C21
+- [ ] 19.2 `tests/capability/summary-quality.local.test.ts`: `local` 限定で要約が3件の要点を持つことを実モデルで確認する例
+  _Boundary:_ `packages/eval-suite/tests/capability/summary-quality.local.test.ts`
+  _Depends:_ 7, 18, 11
   _Requirements:_ 1.13, 1.14
-  _Traces:_ REQ-001, C18
-
-### Implementation Notes
-
----
-
-## 12. PlatformConfig（C4）
-
-環境変数を Zod で検証し、実行モード・プロバイダ・用途別モデル・上限値を型付きの設定として返す。
-環境変数名の一覧（`.env.example`）は 1.5 で作成済み。
-
-_Boundary:_ `packages/ai-core/src/config/env-schema.ts`, `packages/ai-core/src/config/env-schema.test.ts`, `packages/ai-core/src/config/feature-requirements.ts`, `packages/ai-core/src/config/feature-requirements.test.ts`, `packages/ai-core/src/config/defaults.ts`, `packages/ai-core/src/config/run-mode.ts`, `packages/ai-core/src/config/run-mode.test.ts`, `packages/ai-core/src/config/load.ts`, `packages/ai-core/src/config/load.test.ts`, `packages/ai-core/src/config/index.ts`
-_Depends:_ 9
-_Requirements:_ 1.9, 2.1, 2.5, 2.8, 2.12, 2.13, 2.18, 6.1, NFR-07
-_Traces:_ REQ-001, REQ-002, REQ-006, C4
-
-- [ ] 12.1 `config/env-schema.ts`・`defaults.ts`: 環境変数の Zod スキーマと既定値（停止条件、レート制限、入力上限）+ `env-schema.test.ts`（既定値、型の変換、不正値の拒否）
-  _Boundary:_ `packages/ai-core/src/config/env-schema.ts`, `packages/ai-core/src/config/defaults.ts`, `packages/ai-core/src/config/env-schema.test.ts`
-  _Depends:_ 9
-  _Requirements:_ 2.1, 2.8, 6.1, NFR-07
-  _Traces:_ REQ-002, REQ-006, C4
-- [ ] 12.2 `config/feature-requirements.ts`: 機能IDと必須環境変数の対応表 + `feature-requirements.test.ts`（全変数がスキーマに存在し、全機能が1件以上の変数を持つ）
-  _Boundary:_ `packages/ai-core/src/config/feature-requirements.ts`, `packages/ai-core/src/config/feature-requirements.test.ts`
-  _Depends:_ 12.1
-  _Requirements:_ 1.9
-  _Traces:_ REQ-001, C4
-- [ ] 12.3 `config/run-mode.ts`: `resolveRunMode`（テストランナー内は `AI_TEST_RUN_MODE ?? "mock"`、それ以外は `AI_RUN_MODE ?? "local"`）+ テスト
-  _Boundary:_ `packages/ai-core/src/config/run-mode.ts`, `packages/ai-core/src/config/run-mode.test.ts`
-  _Depends:_ 12.1
-  _Requirements:_ 2.5, 2.12
-  _Traces:_ REQ-002, C4
-- [ ] 12.4 `config/load.ts`・`index.ts`: `loadPlatformConfig`・`ConfigError`（不足変数名と機能名の列挙）。`AI_RECORD=1` と実行モード `mock` の組み合わせは `ConfigError` で拒否する（録画は `local`/`live` だけ。`mise run record` はこの検査で `mock` での起動を止める）+ テスト（不足変数の列挙、既定値、カタログ外のモデル ID の拒否、`AI_RECORD=1` + `mock` の拒否、`.env.example` の変数名とスキーマの一致）
-  _Boundary:_ `packages/ai-core/src/config/load.ts`, `packages/ai-core/src/config/index.ts`, `packages/ai-core/src/config/load.test.ts`
-  _Depends:_ 12.2, 12.3
-  _Requirements:_ 1.9, 2.13, 2.18, NFR-07
-  _Traces:_ REQ-001, REQ-002, C4
-
-### Implementation Notes
-
----
-
-## 13. MockRuntime（C7）
-
-`mock` モードで、ネットワークを使わずに決定論的な応答を返す。`local`/`live` の録画（LLM と外部サービス）も扱う。
-W2 の締めとして gate を結線する。
-
-_Boundary:_ `packages/ai-core/src/mock/request-key.ts`, `packages/ai-core/src/mock/request-key.test.ts`, `packages/ai-core/src/mock/scenario.ts`, `packages/ai-core/src/mock/cassette-store.ts`, `packages/ai-core/src/mock/resolve.ts`, `packages/ai-core/src/mock/scenario-model.ts`, `packages/ai-core/src/mock/recording.ts`, `packages/ai-core/src/mock/redactor.ts`, `packages/ai-core/src/mock/deterministic-embedding.ts`, `packages/ai-core/src/mock/fixtures.ts`, `packages/ai-core/src/mock/index.ts`, `packages/ai-core/src/mock/scenario-model.test.ts`, `packages/ai-core/src/mock/resolve.test.ts`, `packages/ai-core/src/mock/recording.test.ts`, `packages/ai-core/src/mock/deterministic-embedding.test.ts`, `packages/ai-core/src/mock/fixtures.test.ts`, `packages/ai-core/fixtures/scenarios/m1-2.ts`, `packages/ai-core/fixtures/scenarios/m1-3.ts`, `packages/ai-core/fixtures/http/*.json`, `packages/ai-core/fixtures/transcripts/*.json`, `packages/ai-core/fixtures/web-search/*.json`, `packages/ai-core/fixtures/cassettes/.gitkeep`, `mise.toml`
-_Depends:_ 9, 10（13.7 は 6〜12 にも依存する）
-_Requirements:_ 1.4, 1.15, 2.4, 2.13, 2.14, 2.15, 2.16, NFR-02, NFR-03
-_Traces:_ REQ-001, REQ-002, C7, C1
-
-- [ ] 13.1 `mock/request-key.ts`: 呼び出しパラメータの正規化と `requestKey()`（正規化JSONのSHA-256）+ `request-key.test.ts`（キー順やプロバイダ固有オプションで値が変わらず、プロンプト・ツール名・用途で変わる）
-  _Boundary:_ `packages/ai-core/src/mock/request-key.ts`, `packages/ai-core/src/mock/request-key.test.ts`
-  _Depends:_ 9
-  _Requirements:_ 2.4, NFR-02
-  _Traces:_ REQ-002, C7
-- [ ] 13.2 `mock/scenario.ts`・`scenario-model.ts`: `defineScenario`・`createScenarioModel`（述語照合、`stepIndex`/`toolResultFor`/`purpose` の導出と束縛、生成・ストリームの決定論的応答）+ テスト
-  _Boundary:_ `packages/ai-core/src/mock/scenario.ts`, `packages/ai-core/src/mock/scenario-model.ts`, `packages/ai-core/src/mock/scenario-model.test.ts`
-  _Depends:_ 13.1
-  _Requirements:_ 2.4, NFR-02
-  _Traces:_ REQ-002, C7
-- [ ] 13.3 `mock/cassette-store.ts`・`resolve.ts`: シナリオ→カセット→`MockFixtureMissingError` の解決順序（ネットワークへフォールバックしない）+ テスト（曖昧な述語の検出を含む）
-  _Boundary:_ `packages/ai-core/src/mock/cassette-store.ts`, `packages/ai-core/src/mock/resolve.ts`, `packages/ai-core/src/mock/resolve.test.ts`
-  _Depends:_ 13.2
-  _Requirements:_ 2.14
-  _Traces:_ REQ-002, C7
-- [ ] 13.4 `mock/redactor.ts`・`recording.ts`: 録画ミドルウェアと、C10 の3つのポートを包む録画用ラッパ（`recordingHttpFetcher`・`recordingTranscriptSource`・`recordingWebSearch`）、秘密値・ヘッダーの伏せ字化。`youtubei.js` と `@tavily/core` は `HttpFetcher` を通らないため、字幕と Web 検索はポートの入出力（`videoId`→`TranscriptResult`、`query`→`SearchHit[]`）を、13.6 の fixture 実装がそのまま読める形式（`TranscriptFixture`・`WebSearchFixture`）で録画する + テスト（LLM と3種の外部サービスの録画に秘密情報とヘッダーが残らないこと、録画した字幕・Web 検索を 13.6 の fixture 実装で再生すると同じ結果になること）
-  _Boundary:_ `packages/ai-core/src/mock/redactor.ts`, `packages/ai-core/src/mock/recording.ts`, `packages/ai-core/src/mock/recording.test.ts`
-  _Depends:_ 10, 13.1
-  _Requirements:_ 2.13
-  _Traces:_ REQ-002, C7
-- [ ] 13.5 `mock/deterministic-embedding.ts`: ハッシュ由来の決定論的な埋め込みモデル（L2正規化）+ テスト（決定性・次元数・正規化）
-  _Boundary:_ `packages/ai-core/src/mock/deterministic-embedding.ts`, `packages/ai-core/src/mock/deterministic-embedding.test.ts`
-  _Depends:_ 13.1
-  _Requirements:_ 2.16
-  _Traces:_ REQ-002, C7
-- [ ] 13.6 `mock/fixtures.ts`・`index.ts`・`packages/ai-core/fixtures/*`: HTTP・字幕・Web検索の fixture 実装（手書きの fixture と、`fixtures/cassettes/` 配下に録画した fixture の両方を読む）、M1 のシナリオ・cassette 保存先、公開API + `fixtures.test.ts`（登録済みの要求に fixture を返し、未登録で `MockFixtureMissingError`）
-  _Boundary:_ `packages/ai-core/src/mock/fixtures.ts`, `packages/ai-core/src/mock/fixtures.test.ts`, `packages/ai-core/src/mock/index.ts`, `packages/ai-core/fixtures/scenarios/m1-2.ts`, `packages/ai-core/fixtures/scenarios/m1-3.ts`, `packages/ai-core/fixtures/http/*.json`, `packages/ai-core/fixtures/transcripts/*.json`, `packages/ai-core/fixtures/web-search/*.json`, `packages/ai-core/fixtures/cassettes/.gitkeep`
-  _Depends:_ 10, 13.3, 13.4, 13.5
-  _Requirements:_ 2.15, NFR-03
-  _Traces:_ REQ-002, C7
-- [ ] 13.7 W2 の締め: `mise.toml` の `gate` に W2 の段と規則（[tasks.md](tasks.md)「gate と CI の段階的な結線」）を加える
-  _Boundary:_ `mise.toml`
-  _Depends:_ 6, 7, 8, 9, 10, 11, 12, 13.1, 13.2, 13.3, 13.4, 13.5, 13.6
-  _Requirements:_ 1.4, 1.15
-  _Traces:_ REQ-001, C1
-  _Verify:_ `mise run gate` が成功し、`typecheck` 段（ルートの `//#typecheck` を含む）と追加した4規則が走査件数を出力する。ai-core の行カバレッジが80%以上である
+  _Traces:_ REQ-001, C21
+- [ ] 19.3 W3 の締め: `mise.toml` の `gate` に W3 の規則を、`ci.yml` に `mutation` ジョブ（`mise run test:mutation`）と `ci-status` の `needs` を加える（[tasks.md](tasks.md)「gate と CI の段階的な結線」）
+  _Boundary:_ `mise.toml`, `.github/workflows/ci.yml`
+  _Depends:_ 14, 15, 16, 17, 18, 19.1, 19.2
+  _Requirements:_ 1.4, 1.7, 1.15, 1.16
+  _Traces:_ REQ-001, C1, C2
+  _Verify:_ `mise run gate` が成功し、`tool-risk-declared` が走査件数を出力する。gate-reporter が `*.local.test.ts` を理由付きのスキップとして数える。`mise run test:mutation` がローカルで閾値（70）を満たし、PR の `ci-status` が `mutation` を含めて成功する
 
 ### Implementation Notes

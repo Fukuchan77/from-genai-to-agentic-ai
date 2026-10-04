@@ -78,7 +78,7 @@ packages/ai-core/src/agents/
 - エージェント実行の結果を記録・送出する処理（トレース、評価レポート）→ `RunObserver` の実装として
   `createGuardedAgent` の `observers` に渡す（`guarded-agent.ts` を直接改変しない）
 - 新しいモデル → `packages/ai-core/src/models/catalog.ts` だけ
-- `mock` の応答 → `packages/ai-core/fixtures/`（`scenarios/`、`cassettes/`、`http/`、`transcripts/`）
+- `mock` の応答 → `packages/ai-core/fixtures/`（`scenarios/`、`cassettes/`、`http/`、`transcripts/`、`web-search/`）
 - 評価 → `packages/eval-suite/tests/{capability,regression}/`
 - リポジトリ規約の機械検査 → `scripts/check-repo-rules.mjs` に規則を追加（走査件数 0 なら失敗）
 - 解説 → `docs/modules/`（`_template.md` の必須節に従い、チェックリストはテストを参照する）

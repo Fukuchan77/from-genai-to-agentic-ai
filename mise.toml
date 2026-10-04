@@ -30,7 +30,17 @@ run = "pnpm exec biome check --write ."
 
 [tasks.typecheck]
 description = "Type-check all workspaces"
-run = "pnpm exec turbo run typecheck"
+run = '''
+pnpm exec turbo run typecheck
+report_file="$(mktemp)"
+trap 'rm -f "$report_file"' EXIT HUP INT TERM
+for config in tsconfig.json packages/*/tsconfig.json apps/*/tsconfig.json; do
+  [ -f "$config" ] || continue
+  printf '::tsconfig::%s\n' "$config" >> "$report_file"
+  pnpm exec tsc -p "$config" --noEmit --listFilesOnly >> "$report_file"
+done
+node scripts/gate/count-tsc.mjs < "$report_file"
+'''
 
 [tasks.test]
 description = "Run deterministic mock-mode tests"
@@ -67,6 +77,7 @@ run = [
   "mise run lint",
   "mise run check:model-ids",
   "mise run check:repo-rules",
+  "mise run typecheck",
   "mise run test",
 ]
 
@@ -141,4 +152,4 @@ run = "node scripts/check-model-ids.mjs"
 
 [tasks."check:repo-rules"]
 description = "Validate repository governance rules"
-run = "node scripts/check-repo-rules.mjs --only no-dynamic-eval,actions-pinned,frozen-lockfile,allow-builds-reasoned"
+run = "node scripts/check-repo-rules.mjs --only no-dynamic-eval,actions-pinned,frozen-lockfile,allow-builds-reasoned,no-deprecated-object-api,guarded-agent-only,ai-core-no-ui-deps,no-sensitive-logging"

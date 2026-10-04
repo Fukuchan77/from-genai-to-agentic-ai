@@ -83,7 +83,7 @@ flowchart LR
   web --> react["@ai-sdk/react / next / react"]
 ```
 
-- `@platform/ai-core` は React・Next.js に依存しない（Req 1.2）。公開 API は `package.json#exports` のサブパス（`./models`、`./agents`、`./aci`、`./chat`、`./summarize`、`./mock`、`./ports`、`./testing`、`./config`）に限る。
+- `@platform/ai-core` は React・Next.js に依存しない（Req 1.2）。公開 API は `package.json#exports` のサブパス（`./models`、`./agents`、`./aci`、`./chat`、`./summarize`、`./mock`、`./ports`、`./testing`、`./config`、`./errors`）に限る。`./errors` は `src/errors.ts` を直接指し、`PlatformError` と `PlatformErrorCode` を公開する（`apps/web` の `lib/server/errors.ts` が使う。2026-10-04、W2 `/sdd-validate-impl` の D11 で決定し、T-21.1 で加える）。
 - `@platform/eval-suite` は M1 では足場だけとする（`capability/`、`regression/` の空ディレクトリ、共通の Vitest 設定、`local` 限定テストのヘルパ）。評価の実体は 004 で作る。
 - `apps/web` のサーバー専用モジュールは `apps/web/lib/server/` に集め、`server-only` を import する。クライアントへ渡す型は Zod を含まない `@platform/ai-core/models` の型だけにする（Req 1.10）。
 
@@ -125,16 +125,16 @@ flowchart LR
 - **Responsibility**: 環境変数を Zod で検証し、実行モード・プロバイダ・用途別モデル・上限値を型付きの設定として返す。
 - **Public interface**:
   - `loadPlatformConfig(env?: EnvSource, options?: { features?: readonly FeatureId[] }): PlatformConfig`
-  - `resolveRunMode(env: EnvSource): RunMode` — テストランナーの中（`VITEST` が定義されている）では `AI_TEST_RUN_MODE ?? "mock"`、それ以外では `AI_RUN_MODE ?? "local"`
+  - `resolveRunMode(env: EnvSource): RunMode` — テストランナーの中（`VITEST` が定義されている）では `AI_TEST_RUN_MODE ?? "mock"`、それ以外では `AI_RUN_MODE ?? "local"`（空文字は未設定として扱う）
   - `class ConfigError extends PlatformError { missing: readonly { variable: string; feature: FeatureId }[] }`
-- **Owns**: 環境変数のスキーマ（`env-schema.ts`）、機能と必須変数の対応表（`feature-requirements.ts`）、上限値の既定値（`defaults.ts`: 停止条件、レート制限、入力サイズ）。設定の組み合わせの検査: `AI_RECORD=1` と実行モード `mock` の組み合わせは `ConfigError` で拒否する（録画は `local` / `live` だけ。`mise run record` の `mock` での起動拒否はこの検査で実現する。Req 2.13）。
+- **Owns**: 環境変数のスキーマ（`env-schema.ts`）、機能と必須変数の対応表（`feature-requirements.ts`）、上限値の既定値（`defaults.ts`: 停止条件、レート制限、入力サイズ）。設定の組み合わせの検査: `AI_RECORD=1` と実行モード `mock` の組み合わせは `ConfigError` で拒否する（録画は `local` / `live` だけ。`mise run record` の `mock` での起動拒否はこの検査で実現する。Req 2.13）。空文字の値は未設定として扱う（`.env.example` は全変数を空値で配布するため、無編集のコピーで既定値が適用される。2026-09-30 の `/sdd-ship` T-12）。`loadPlatformConfig` はスキーマの検証を実行モードの解決より先に行い、形式の誤り（不正な実行モードを含む）も `ConfigError` で報告する。
 - **Does NOT own**: モデル ID の一覧（C5）、秘密情報の実体。`process.env` を直接読むのは既定引数の1か所だけで、他のモジュールは `EnvSource` を受け取る。
 - **Requirements**: 1.9, 2.1, 2.5, 2.8, 2.12, 2.13（録画の設定の検査）, NFR（秘密情報）
 
 #### C5 ModelCatalog（`ai-core/src/models/catalog.ts`）
 
 - **Responsibility**: モデル ID、プロバイダ、対応機能、コンテキスト上限、入出力トークン単価、実行モード・用途ごとの既定モデルを1か所で定義する。
-- **Public interface**: `MODEL_CATALOG`（`as const satisfies ModelCatalog`）、`getModelEntry(id: ModelId): ModelEntry`、`listModels(filter: { mode: RunMode; provider?: ProviderId; capability?: Capability }): readonly ModelEntry[]`、`defaultModelFor(mode, provider, purpose): ModelId`、`estimateCost(usage, entry): CostEstimate | undefined`。型 `ProviderId`、`ModelId`、`Capability`、`ModelPurpose` は Zod を含まない（クライアントでも import できる）。
+- **Public interface**: `MODEL_CATALOG`（`as const satisfies ModelCatalog`）、`getModelEntry(id: CatalogModelId): ModelEntry`、`listModels(filter: { mode: RunMode; provider?: ProviderId; capability?: Capability }): readonly ModelEntry[]`、`defaultModelFor(mode, provider, purpose): CatalogModelId`（宣言していない mode / provider / purpose の組み合わせ、たとえば埋め込みモデルを持たない Anthropic・Azure の `embedding` は `RangeError`）、`estimateCost(usage, entry): CostEstimate | undefined`。型 `ProviderId`、`ModelId`（`string`）、`Capability`、`ModelPurpose` は `types.ts` に置き、Zod を含まない（クライアントでも import できる）。カタログのキーから導出したリテラル union は `CatalogModelId`（`keyof typeof MODEL_CATALOG`）として `catalog.ts` が export する。`types.ts` は `catalog.ts` に依存しない（2026-09-28、T-9 ship）。
 - **Owns**: カタログのデータ。モデル ID の文字列リテラルを書いてよいのは、このファイルと C4 の `env-schema.ts`（既定値）だけ（Req 2.18）。
 - **Does NOT own**: モデル実装の生成（C6）、コストの表示（004）。
 - **Requirements**: 2.2, 2.8, 2.10, 2.17, 2.18, NFR（コスト可視化の算出元）
@@ -156,16 +156,18 @@ flowchart LR
 
 - **Responsibility**: `mock` モードで、ネットワークを使わずに決定論的な応答（テキスト、構造化オブジェクト、ツール呼び出し、ストリームチャンク）を返す。`local` / `live` の録画を扱う。
 - **Public interface**:
-  - `defineScenario(scenario: ScenarioDefinition): ScenarioDefinition`、`createScenarioModel(options: { scenarios: readonly ScenarioDefinition[]; cassettes?: CassetteStore }): LanguageModelV4`
-  - `createCassetteStore(dir: string): CassetteStore`（`get(key)`、`put(key, cassette)`）
-  - `recordingMiddleware(store: CassetteStore, redactor: Redactor): LanguageModelMiddleware`、`createRedactor(env: EnvSource): Redactor`
+  - `defineScenario(scenario: ScenarioDefinition): ScenarioDefinition`、`createScenarioModel(options: { purpose: ModelPurpose; scenarios: readonly ScenarioDefinition[]; cassettes?: CassetteStore }): MockLanguageModelV4`（`ai/test` のクラスで、`LanguageModelV4` を満たす。`modelId` は `mock:<purpose>`）
+  - `createCassetteStore(dir: string): CassetteStore`（`get(key: RequestKey): Promise<Cassette | undefined>`、`put(key: string, value: unknown): Promise<void>`）。保存キーは `<種類>/<SHA-256 の64桁16進>`（種類は `llm`・`http`・`transcripts`・`web-search`）だけを受け付け、裸の `RequestKey` は `llm/` を補う。それ以外（`../` を含むキー等）は書き込まずに拒否する。書き込みは UUID 付きの一時ファイルから rename し、同じキーへの並行書き込みでも壊れない。`get` は Cassette v1 を Zod で検証し（ストリームパートは `type` ごとの必須フィールドまで検証する）、ファイル名のキーと中の `key` が一致しなければ拒否する。`response-metadata` の ISO 8601 の `timestamp` は読み込み時に `Date` に戻す（2026-09-30、W2 敵対的レビュー r1・r2 の指摘への対応）
+  - `recordingMiddleware(store: RecordingStore, redactor: Redactor, options?: RecordingMiddlewareOptions): LanguageModelMiddleware`（`RecordingStore` は `put(key, value)` だけを持つ。`CassetteStore` もこれを満たす。`options` は `purpose`（既定 `"chat"`）、`recordedWith`（`"local" | "live"`、既定 `"live"`）、`now`（録画時刻の注入、既定 `() => new Date()`）。最後まで読み終えたストリームだけを録画し、途中でキャンセルされたストリームは部分的なカセットを作らない）、`createRedactor(env: EnvSource): Redactor`
   - 外部サービスの録画用ラッパ（Req 2.13 の外部サービス部分。C10 の3つのポートを包む）: `recordingHttpFetcher(inner: HttpFetcher, store, redactor): HttpFetcher`、`recordingTranscriptSource(inner: TranscriptSource, store, redactor): TranscriptSource`、`recordingWebSearch(inner: WebSearchProvider, store, redactor): WebSearchProvider`。`youtubei.js` と `@tavily/core` は内部で独自に HTTP 通信し `HttpFetcher` を通らないため、字幕と Web 検索は HTTP ではなくポートの入出力（`videoId` → `TranscriptResult`、`query` → `SearchHit[]`）を録画する。録画の形式は fixture 実装がそのまま読める `HttpFixture` / `TranscriptFixture` / `WebSearchFixture` とし、`packages/ai-core/fixtures/cassettes/` 配下に種類別（`llm/`、`http/`、`transcripts/`、`web-search/`）に保存する。ライブラリ内部の通信形式に依存しないので、ライブラリを差し替えても録画は再生できる
   - `requestKey(params: LanguageModelV4CallOptions, purpose: ModelPurpose): RequestKey`（正規化した JSON の SHA-256）
   - `createDeterministicEmbeddingModel(options: { dimensions: number }): EmbeddingModelV4`（テキストの SHA-256 をシードにした PRNG で生成し、L2 正規化したベクトル）
   - `class MockFixtureMissingError extends PlatformError { key: RequestKey; nearest: readonly string[] }`
-  - 外部サービスの fixture: `createFixtureHttpFetcher(fixtures)`、`createFixtureTranscriptSource(fixtures)`、`createFixtureWebSearch(fixtures)`。手書きの fixture（`fixtures/http/`、`fixtures/transcripts/`、`fixtures/web-search/`）と、`fixtures/cassettes/` 配下の録画の両方を読む
+  - 外部サービスの fixture: `createFixtureHttpFetcher(fixtures)`、`createFixtureTranscriptSource(fixtures)`、`createFixtureWebSearch(fixtures)`。手書きの fixture（`fixtures/http/`、`fixtures/transcripts/`、`fixtures/web-search/`）と、`fixtures/cassettes/` 配下の録画の両方を読む（`loadFixtureSet(dir?): Promise<FixtureSet>`。ディレクトリがなければ空として扱う。既定の場所は `DEFAULT_FIXTURE_DIRECTORY`・`CASSETTE_FIXTURE_DIRECTORY`）
+  - **外部サービスの fixture の同一性**（2026-09-30、W2 敵対的レビュー r1 の指摘への対応）: 録画した fixture は、秘密情報を含まない照合キー `requestKey` を持つ。録画用ラッパと fixture 実装は、同じ関数でキーを計算する: `httpFixtureRequestKey(url, init)`、`transcriptFixtureRequestKey(videoId)`、`webSearchFixtureRequestKey(query)`。HTTP のキーは、次の2つの SHA-256 である: 機密のクエリパラメータ（`api_key`・`token` 等）の値を伏せてから並べ替えた URL、`describeHttpFixtureRequest(init)` の値（method と、機密でないヘッダーのダイジェスト、body のダイジェスト。`Authorization`・`Cookie`・`X-Api-Key` 等は含めない）。このため、同じ URL でも method や body が異なれば別の fixture になる。fixture 実装はまず `requestKey` で照合し、`requestKey` のない手書き fixture だけを URL（字幕は `videoId`、検索は `query`）で照合する。伏せ字化した URL を保存していても、元の入力で再生できる
+  - 公開 API（`@platform/ai-core/mock`）: 上記に加え、`normalizeRequest`（`requestKey` のハッシュ前の正規化値）、`resolveMockResponse`・`findAmbiguousScenarioMatches`（解決規則の本体と、曖昧な述語の検出）、`deriveScenarioContext`・`scenarioMatches`（照合に使う値の導出と述語の評価）、M1 のシナリオ定数 `M1_2_SCENARIOS`・`M1_3_SCENARIOS`、各型（`Cassette`、`CassetteStore`、`RecordingStore`、`RecordingMiddlewareOptions`、`FixtureSet`、`HttpFixture`、`TranscriptFixture`、`WebSearchFixture`、`Scenario*`、`ResolvedMockResponse`、`ScenarioMatchLocation`）を公開する。後続タスク（C6 のゲートウェイ、C19 の SSE fixture 生成、C21 の回帰テスト）が同じ規則で解決・照合するため
 - **解決規則**（ADR-5）:
-  1. **シナリオは述語で照合する**。`ScenarioTurn.match` の条件（すべて AND）を、定義順に評価する。一致したターンが複数あればエラーにせず、定義順で最初のものを使う。述語が曖昧なシナリオを書いた場合に気づけるよう、`resolve.test.ts` で「同一要求に2つ以上のターンが一致する fixture」を検出する検査を行う。
+  1. **シナリオは述語で照合する**。`ScenarioTurn.match` の条件（すべて AND）を、定義順に評価する。一致したターンが複数あればエラーにせず、定義順で最初のものを使う。述語が曖昧なシナリオを書いた場合に気づけるよう、`resolve.test.ts` で同梱シナリオ（`M1_2_SCENARIOS`・`M1_3_SCENARIOS`）の各ターンについて、そのターンの述語だけを満たす最小の要求（`lastUserTextIncludes` の文字列だけの user メッセージ、`stepIndex` 回の tool 呼び出しと結果、`toolResultFor` のツール名）が、そのターン1つにだけ一致することを検査する。述語は部分文字列の AND なので、複数の述語の文字列を同時に含む入力（例:「こんにちは、東京の天気は？」）は常に作れる。この検査はそうした入力を対象にせず、広すぎる述語や接頭辞が重なる述語（例: `fixture:summary` と `fixture:summary-full`）を検出する（2026-10-04、W2 `/sdd-validate-impl` の D3 への対応）。
   2. **カセットはキーで照合する**。シナリオが一致しなかったときだけ、`requestKey()` の値でカセットを探す。
   3. どちらにもなければ `MockFixtureMissingError`。ネットワークへはフォールバックしない。
 - **照合に使う値の出どころ**: `LanguageModelV4CallOptions` には用途もステップ番号も含まれないため、次のように決める。
@@ -213,7 +215,7 @@ flowchart LR
 #### C10 Ports（`ai-core/src/ports/`）
 
 - **Responsibility**: 時刻と外部サービスへのアクセスをインターフェースとして定義し、実装を差し替えられるようにする。
-- **Public interface**: `interface Clock { now(): number; timeoutSignal(ms: number): AbortSignal }`（`systemClock`、`createFakeClock()`）。`interface HttpFetcher { fetch(url: string, init?: FetchInit): Promise<HttpResponse> }`、`interface TranscriptSource { fetchTranscript(videoId: string, signal?: AbortSignal): Promise<TranscriptResult> }`、`interface WebSearchProvider { search(query: string, signal?: AbortSignal): Promise<readonly SearchHit[]> }`。実装は `createNodeHttpFetcher()`、`createYoutubeiTranscriptSource()`、`createTavilySearch(apiKey)`。
+- **Public interface**: `interface Clock { now(): number; timeoutSignal(ms: number): AbortSignal }`（`systemClock`、`createFakeClock()`）。`interface HttpFetcher { fetch(url: string, init?: FetchInit): Promise<HttpResponse> }`、`interface TranscriptSource { fetchTranscript(videoId: string, signal?: AbortSignal): Promise<TranscriptResult> }`、`interface WebSearchProvider { search(query: string, signal?: AbortSignal): Promise<readonly SearchHit[]> }`。実装は `createNodeHttpFetcher(fetch?)`、`createYoutubeiTranscriptSource({ createClient? })`、`createTavilySearch(apiKey, { client? })`（省略可能な引数はテストでの注入用で、既定は `globalThis.fetch`・`Innertube.create()`・`tavily({ apiKey })`）。失敗の契約: `fetchTranscript` は `TranscriptSourceError`（`PlatformError` の `source-unavailable`、`reason: "no-captions" | "private" | "fetch-failed"`。`./ports` から公開）で reject し、C12 の `TranscriptUnavailableError` はこの `reason` を写像する。`search` は SDK の例外と Zod 検証の失敗を `PlatformError("source-unavailable", { provider: "tavily" })` に閉じ、http/https 以外の URL を1件でも含む応答は全体を拒否する（fail-closed）。中断: 呼び出し元の `AbortSignal` が中断されると、その `reason` で即時に reject する。`@tavily/core` 0.7.13 は中断の option を持たないため、SDK の HTTP 要求自体は止まらない（2026-09-28、T-10 ship）。
 - **Owns**: ポートの型と本番実装。
 - **Does NOT own**: `mock` 用の fixture 実装と、3つのポートの録画用ラッパ（`recordingHttpFetcher`、`recordingTranscriptSource`、`recordingWebSearch`。どれも C7。伏せ字化の `Redactor` と同じ場所に置くため。2026-09-27、`/sdd-analyze` H-4、2回目の M-2）。後続 spec のポート（Rerank、E2B、arXiv、MCP は各 spec が同じ規約で追加する）。
 - **Requirements**: 2.15, 5.7
@@ -297,7 +299,7 @@ flowchart LR
   - `tooling/vitest/global-setup-local.ts`: `AI_TEST_RUN_MODE=local` のときだけ Ollama の到達性と必要モデルを確認し、結果を `provide("localAvailability", ...)` で渡す。
   - `@platform/ai-core/testing`: `describeLocal(name, fn)`、`itLocal(name, fn)`（`localAvailability` が不可なら理由付きでスキップする）、`createTextStreamModel`、`createToolCallingModel`、`createObjectModel`（`MockLanguageModelV4` + `simulateReadableStream`）、`createFakeClock`。
   - `tooling/vitest/gate-reporter.ts`: 実行・成功・失敗・スキップ（理由別）の件数と、DB 依存で未実行の件数（`*.pg.test.ts` のファイル数）を表示する。実行件数が 0 なら終了コードを非ゼロにする。
-  - **テストの実行単位**（2026-09-27、3回目の `/sdd-analyze` H-1）: gate の `test` 段は `turbo run test` で、`test` スクリプトを持つ各ワークスペースと、ルートタスク `//#test`（ルートの `vitest.config.ts`。対象は `tooling/`・`scripts/` のテストだけ）を、それぞれ独立した Vitest プロセスで1回ずつ実行する。ルートの設定は `projects` でワークスペースを集約しない（同じテストを2回実行しないため）。ルートと各ワークスペースの `vitest.config.ts` は、`setup-hermetic` と `gate-reporter` を共通に登録する。`gate-reporter` は実行単位ごとに件数を表示し、その単位の実行件数が 0 なら失敗する。テストの選択は CLI のファイル名フィルタではなく、mise タスクが設定する `AI_TEST_SUITE` で行う（2026-09-27、Task 1 の実装検証。Vitest の CLI フィルタは `exclude` で外したファイルを戻せないため）。ルートと各ワークスペースの `vitest.config.ts` は同じ規則に従う: `gate`（既定。`test`・`test:coverage`）は `*.pg.test.*` 以外のすべてを収集し、`*.local.test.*` は `local` が使えなければ理由付きでスキップされる。`local`（`test:local`）は `*.local.test.*` だけ、`pg`（`test:db`）は `*.pg.test.*` だけを収集する。0件での失敗（`passWithNoTests: false` と `gate-reporter`）は `gate` だけに適用し、`local`・`pg` では対象のない実行単位を許す。未知の値は設定の読み込み時に失敗する。`turbo.json` の `test` と `//#test` は、strict env モードでも値が渡りキャッシュキーに入るよう、`AI_TEST_RUN_MODE`・`AI_TEST_SUITE`・`OLLAMA_BASE_URL` を `env` に宣言する。ワークスペースの `test` スクリプトと `test:coverage` スクリプト（`vitest run --coverage.enabled --coverage.reporter=html`）は最初のテストと同時に加える（`ai-core` は 6.3、`eval-suite` は 19.1、`apps/web` は 21.1。スクリプトのないワークスペースは turbo の実行対象にならない）。
+  - **テストの実行単位**（2026-09-27、3回目の `/sdd-analyze` H-1）: gate の `test` 段は `turbo run test` で、`test` スクリプトを持つ各ワークスペースと、ルートタスク `//#test`（ルートの `vitest.config.ts`。対象は `tooling/`・`scripts/` のテストだけ）を、それぞれ独立した Vitest プロセスで1回ずつ実行する。ルートの設定は `projects` でワークスペースを集約しない（同じテストを2回実行しないため）。ルートと各ワークスペースの `vitest.config.ts` は、`setup-hermetic` と `gate-reporter` を共通に登録する。`localAvailability` を利用する `packages/ai-core` と `packages/eval-suite` は `global-setup-local.ts` も登録する。`gate-reporter` は実行単位ごとに件数を表示し、その単位の実行件数が 0 なら失敗する。テストの選択は CLI のファイル名フィルタではなく、mise タスクが設定する `AI_TEST_SUITE` で行う（2026-09-27、Task 1 の実装検証。Vitest の CLI フィルタは `exclude` で外したファイルを戻せないため）。ルートと各ワークスペースの `vitest.config.ts` は同じ規則に従う: `gate`（既定。`test`・`test:coverage`）は `*.pg.test.*` 以外のすべてを収集し、`*.local.test.*` は `local` が使えなければ理由付きでスキップされる。`local`（`test:local`）は `*.local.test.*` だけ、`pg`（`test:db`）は `*.pg.test.*` だけを収集する。0件での失敗（`passWithNoTests: false` と `gate-reporter`）は `gate` だけに適用し、`local`・`pg` では対象のない実行単位を許す。未知の値は設定の読み込み時に失敗する。`turbo.json` の `test` と `//#test` は、strict env モードでも値が渡りキャッシュキーに入るよう、`AI_TEST_RUN_MODE`・`AI_TEST_SUITE`・`OLLAMA_BASE_URL` を `env` に宣言する。ワークスペースの `test` スクリプトと `test:coverage` スクリプト（`vitest run --coverage.enabled --coverage.reporter=html --coverage.thresholds.lines=0`。HTML レポートの生成だけを行い、行カバレッジ80%の閾値は gate の `test` 段だけが強制する）は最初のテストと同時に加える（`ai-core` は 6.3、`eval-suite` は 19.1、`apps/web` は 21.1。スクリプトのないワークスペースは turbo の実行対象にならない）。
   - カバレッジ（NFR テストカバレッジ）: `packages/ai-core/vitest.config.ts` はカバレッジを常に有効にし（`coverage.enabled: true`、`thresholds.lines: 80`）、gate の `test` 段で閾値を下回れば失敗させる。`mise run test:coverage` は `turbo run test:coverage` で各ワークスペースの `test:coverage` スクリプトを実行し、HTML レポートを作るだけのタスクで、閾値の強制は gate が担う（2026-09-27、`/sdd-analyze` M-6）。
   - `stryker.config.mjs`: 対象は制御ロジック（`agents/stop-conditions.ts`、`agents/stop-reason.ts`、`aci/define-tool.ts`、`config/run-mode.ts`、`mock/resolve.ts`、`summarize/plan.ts`、`summarize/retry.ts`）に限る。`typescript-checker` は使わない。変異対象はすべて `packages/ai-core` にあるため、`vitest.configFile` は `packages/ai-core/vitest.config.ts` とする。閾値 `break: 70`。
 - **Owns**: テストファイルの命名規約: `*.test.ts`（gate で実行）、`*.local.test.ts`（比較・品質評価。`local` のときだけ実行）、`*.db.test.ts`（インプロセス DB で gate に含める）、`*.pg.test.ts`（Docker の Postgres が必要。`mise run test:db` だけで実行）。
@@ -384,7 +386,7 @@ erDiagram
 
 | Entity | Field | Type | Notes |
 |--------|-------|------|-------|
-| ModelEntry | id | `ModelId`（カタログのキーから導出したリテラル union） | プロバイダ上の実モデル ID。値は実装時に各社公式ドキュメントで確認する |
+| ModelEntry | id | `ModelId`（`string`。カタログ内では `CatalogModelId` のリテラル union に絞られる） | プロバイダ上の実モデル ID。値は実装時に各社公式ドキュメントで確認する |
 | | provider | `"anthropic" \| "openai" \| "azure" \| "google" \| "ollama" \| "mock"` | watsonx は v7 対応の実装が出るまで含めない（Req 2.10） |
 | | modes | `readonly RunMode[]` | `mock` / `local` / `live` のどれで選べるか |
 | | capabilities | `{ tools: boolean; structuredOutput: boolean; reasoning: boolean; imageInput: boolean; embedding: boolean; promptCache: "explicit" \| "automatic" \| "none" }` | Req 2.9、2.17、4.8 |
@@ -392,7 +394,7 @@ erDiagram
 | | maxOutputTokens | `number` | 分割判断の出力予約に使う |
 | | pricing | `{ inputPerMTok: number; outputPerMTok: number; cacheReadPerMTok?: number; currency: "USD" } \| null` | `local` / `mock` は `null`。NFR コスト可視化 |
 | | displayName | `string` | UI の選択肢に表示する |
-| ModeDefault | mode × provider × purpose | `Record<RunMode, Partial<Record<ProviderId, Record<ModelPurpose, ModelId>>>>` | `ModelPurpose = "chat" \| "structured" \| "embedding" \| "judge"`（Req 2.8） |
+| ModeDefault | mode × provider × purpose | `Record<RunMode, Partial<Record<ProviderId, Partial<Record<ModelPurpose, ModelId>>>>>` | `ModelPurpose = "chat" \| "structured" \| "embedding" \| "judge"`（Req 2.8）。対応モデルがない用途は省く（Anthropic・Azure の `embedding`） |
 
 **実行サマリとツール結果（C8、C9）**
 
@@ -449,10 +451,11 @@ erDiagram
 | | key | `string`（SHA-256） | `requestKey()` の値 |
 | | request | `{ purpose: ModelPurpose; modelId: string; promptDigest: string; toolNames: string[] }` | 秘密情報を含まない要約だけを保存する |
 | | parts | `LanguageModelV4StreamPart[]` | `generate` の呼び出しもパート列に正規化して保存する |
-| | recordedAt / recordedWith | `string`（ISO 8601）/ `RunMode` | |
+| | recordedAt / recordedWith | `string`（ISO 8601）/ `"local" \| "live"` | 保存先は `cassettes/llm/<key>.json`。読み込み時に Zod で検証する |
 | HttpFixture | url / status / headers / body | `string` / `number` / `Record<string, string>` / `string` | Web 取得・天気の fixture。`Authorization` 等のヘッダーは保存しない |
-| TranscriptFixture | videoId / result | `string` / `TranscriptResult \| { error: "no-captions" \| "private" \| "fetch-failed" }` | Req 4.11 の異常系も fixture にする。`recordingTranscriptSource` も同じ形式で録画する |
-| WebSearchFixture | query / result | `string` / `readonly SearchHit[] \| { error: string }` | Web 検索の fixture。`recordingWebSearch` も同じ形式で録画する（API キーは保存しない） |
+| | requestKey? / request? | `string`（SHA-256）/ `{ method: string; headersDigest?: string; bodyDigest?: string }` | 録画した fixture だけが持つ。`httpFixtureRequestKey()` の値と、その元になった要求の要約（秘密値を含まない）。`requestKey` を持つ fixture はキーで、持たない手書き fixture は `url` で照合する |
+| TranscriptFixture | videoId / requestKey? / result | `string` / `string`（SHA-256）/ `TranscriptResult \| { error: "no-captions" \| "private" \| "fetch-failed" }` | Req 4.11 の異常系も fixture にする。`recordingTranscriptSource` も同じ形式で録画し、`transcriptFixtureRequestKey()` の値を `requestKey` に入れる |
+| WebSearchFixture | query / requestKey? / result | `string` / `string`（SHA-256）/ `readonly SearchHit[] \| { error: string }` | Web 検索の fixture。`recordingWebSearch` も同じ形式で録画し、`webSearchFixtureRequestKey()` の値を `requestKey` に入れる（API キーは保存しない） |
 
 ## Interfaces / Contracts
 
@@ -534,7 +537,7 @@ erDiagram
 | `pnpm-workspace.yaml` | Create | `apps/*`、`packages/*` の宣言、`minimumReleaseAge: 1440`、監査済みの `allowBuilds`。 |
 | `pnpm-lock.yaml` | Create | pnpm が生成するロックファイル。`--frozen-lockfile` によるクリーンな clone での再現（Req 1.3）の前提。 |
 | `turbo.json` | Create | `typecheck`、`test`、`build` のタスクグラフと入出力（キャッシュ対象）の定義。 |
-| `biome.json` | Create | リポジトリ全体の lint / format 規約（ADR-3）。 |
+| `biome.json` | Create | リポジトリ全体の lint / format 規約（ADR-3）。Tailwind CSS v4 の `@theme` / `@custom-variant` / `@apply` を走査できるよう、Web scaffold 導入時に CSS parser の `tailwindDirectives` を有効化する。 |
 | `tsconfig.base.json` | Create | 全ワークスペース共通の strict な TypeScript 設定。 |
 | `tsconfig.json` | Create | ルートの型検査の設定（ベースを継承し、`tooling/**/*.ts` とルートの設定ファイルを対象にする。`turbo.json` のルートタスク `//#typecheck` が使う）。 |
 | `vitest.config.ts` | Create | ルート直下の `tooling/`・`scripts/` のテストの Vitest 設定（`setup-hermetic` と `gate-reporter` の登録）。ワークスペースは集約しない（C18「テストの実行単位」）。 |
@@ -594,9 +597,9 @@ erDiagram
 
 | File | Create/Modify | Responsibility |
 |------|---------------|----------------|
-| `packages/ai-core/package.json` | Create | 依存（ai、@ai-sdk/*、ollama-ai-provider-v2、zod、@tavily/core、@mozilla/readability、jsdom、youtubei.js、gpt-tokenizer）とサブパス `exports`。M1 の依存は scaffold のタスクで一度に宣言する（後続のタスクが並列に `package.json` とロックファイルを編集しないため）。 |
+| `packages/ai-core/package.json` | Create | 依存（ai、@ai-sdk/*、ollama-ai-provider-v2、zod、@tavily/core、@mozilla/readability、jsdom、youtubei.js、gpt-tokenizer）とサブパス `exports`。M1 の依存は scaffold のタスクで一度に宣言する（後続のタスクが並列に `package.json` とロックファイルを編集しないため）。`./errors` のサブパスだけは T-21.1 が加える（依存を変えないため、ロックファイルは更新しない）。 |
 | `packages/ai-core/tsconfig.json` | Create | ベース設定の継承。 |
-| `packages/ai-core/vitest.config.ts` | Create | node 環境、`setup-hermetic` と `gate-reporter` の登録、カバレッジを常に有効にした 80% の閾値（C18）。Stryker もこの設定を使う。 |
+| `packages/ai-core/vitest.config.ts` | Create | node 環境、`setup-hermetic`・`global-setup-local`・`gate-reporter` の登録、カバレッジを常に有効にした 80% の閾値（C18）。Stryker もこの設定を使う。 |
 | `packages/ai-core/src/errors.ts` | Create | `PlatformError` 基底クラスと、閉じた語彙の `PlatformErrorCode`。 |
 | `packages/ai-core/src/errors.test.ts` | Create | `code`・`message`・`details` の保持と、`instanceof` による判別を検証する。 |
 | `packages/ai-core/src/config/env-schema.ts` | Create | 環境変数の Zod スキーマと既定値。 |
@@ -631,7 +634,7 @@ erDiagram
 | `packages/ai-core/src/mock/fixtures.ts` | Create | HTTP・字幕・Web 検索の fixture 実装。 |
 | `packages/ai-core/src/mock/index.ts` | Create | `./mock` の公開 API。 |
 | `packages/ai-core/src/mock/scenario-model.test.ts` | Create | 同一入力で同一のテキスト・オブジェクト・ツール呼び出し・チャンクを返すことを検証する。 |
-| `packages/ai-core/src/mock/resolve.test.ts` | Create | 解決順序（シナリオの述語 → カセットのキー → エラー）、複数一致時に定義順で最初のターンを使うこと、`stepIndex` / `toolResultFor` の導出、同梱 fixture に曖昧な述語がないこと、不足時にネットワークへフォールバックせずエラーになることを検証する。 |
+| `packages/ai-core/src/mock/resolve.test.ts` | Create | 解決順序（シナリオの述語 → カセットのキー → エラー）、複数一致時に定義順で最初のターンを使うこと、`stepIndex` / `toolResultFor` の導出、同梱シナリオの各ターンの最小の要求がそのターンだけに一致すること、不足時にネットワークへフォールバックせずエラーになることを検証する。 |
 | `packages/ai-core/src/mock/recording.test.ts` | Create | LLM と3種の外部サービスの録画に秘密情報とヘッダーが残らないことと、録画した字幕・Web 検索を fixture 実装で再生すると同じ結果になることを検証する。 |
 | `packages/ai-core/src/mock/deterministic-embedding.test.ts` | Create | 決定性、次元数、正規化を検証する。 |
 | `packages/ai-core/src/mock/fixtures.test.ts` | Create | HTTP・字幕・Web 検索の fixture 実装が、登録済みの要求に fixture を返し、未登録の要求で `MockFixtureMissingError` を投げることを検証する。 |
@@ -643,6 +646,7 @@ erDiagram
 | `packages/ai-core/src/ports/web-search.ts` | Create | `WebSearchProvider` と Tavily 実装。 |
 | `packages/ai-core/src/ports/web-search.test.ts` | Create | 注入した Tavily クライアントのスタブで、検索結果の `SearchHit` への写像と、`AbortSignal` の伝播を検証する。 |
 | `packages/ai-core/src/ports/index.ts` | Create | `./ports` の公開 API。 |
+| `packages/ai-core/src/ports/abort.ts` | Create | 字幕と Web 検索のポートが共有する中断の race（内部 helper。`./ports` からは公開しない）。2026-09-28 の Task 10 の修正で追加。 |
 | `packages/ai-core/src/ports/transcript.test.ts` | Create | 字幕の各異常理由への写像を、`youtubei.js` の応答を模したテスト内のスタブで検証する（C7 の fixture 実装には依存しない）。 |
 | `packages/ai-core/src/aci/types.ts` | Create | `ToolRisk`、`ToolOutcome`、`ToolFailure`、`ToolRuntime`、`AciToolDefinition`、`GuardedToolSet`（ブランド型）。 |
 | `packages/ai-core/src/aci/define-tool.ts` | Create | `defineAciTool`（タイムアウト合成、例外とタイムアウトのツール結果化）。 |
@@ -704,7 +708,7 @@ erDiagram
 | `packages/ai-core/fixtures/http/*.json` | Create | 記事・天気の HTTP fixture。 |
 | `packages/ai-core/fixtures/transcripts/*.json` | Create | 字幕の正常系と異常系の fixture。 |
 | `packages/ai-core/fixtures/web-search/*.json` | Create | Web 検索の fixture（`WebSearchFixture`）。 |
-| `packages/ai-core/fixtures/cassettes/.gitkeep` | Create | 録画の保存先（`llm/`、`http/`、`transcripts/`、`web-search/`）。 |
+| `packages/ai-core/fixtures/cassettes/**/.gitkeep` | Create | 録画の保存先。`cassettes/` と種類別の `llm/`、`http/`、`transcripts/`、`web-search/` に置く。 |
 
 ### packages/eval-suite（C21）
 
@@ -721,12 +725,14 @@ erDiagram
 
 | File | Create/Modify | Responsibility |
 |------|---------------|----------------|
-| `apps/web/package.json` | Create | 依存（Next.js、React、@ai-sdk/react、`babel-plugin-react-compiler`（`reactCompiler: true` に必要）、`server-only`、Tailwind CSS、shadcn/ui の生成部品の実行時依存（`radix-ui`、`class-variance-authority`、`clsx`、`tailwind-merge`、`lucide-react`、`tw-animate-css`））、開発依存（`jsdom`（コンポーネントテストの環境）、`@testing-library/react`、`@testing-library/dom`、`@vitejs/plugin-react`、`vite-tsconfig-paths`、`@playwright/test`、`@axe-core/playwright`）と、`typecheck`（`next typegen && tsc --noEmit`）などのスクリプト。M1 の依存は scaffold のタスクで一度に宣言する。依存の根拠は research.md の External dependencies。 |
+| `apps/web/package.json` | Create | 依存（Next.js、React、@ai-sdk/react、`babel-plugin-react-compiler`（`reactCompiler: true` に必要）、`server-only`、Tailwind CSS、shadcn/ui の生成部品の実行時依存（`radix-ui`、`class-variance-authority`、`clsx`、`tailwind-merge`、`lucide-react`、`tw-animate-css`））、開発依存（`jsdom`（コンポーネントテストの環境）、`@testing-library/react`、`@testing-library/dom`、`@vitejs/plugin-react`、`@playwright/test`、`@axe-core/playwright`）と、`typecheck`（`next typegen && tsc --noEmit`）などのスクリプト。Vite 8 の native `resolve.tsconfigPaths` を使い、非保守の `vite-tsconfig-paths` / `tsconfck` は導入しない。M1 の依存は scaffold のタスクで一度に宣言する。依存の根拠は research.md の External dependencies。 |
 | `apps/web/tsconfig.json` | Create | Next.js 用の設定（ベースを継承）。 |
+| `apps/web/next-env.d.ts` | Create (generated) | `next typegen` が生成する Next.js の型入口。型検査後も恒常的な未追跡差分を残さないため追跡する。 |
 | `apps/web/next.config.ts` | Create | `reactCompiler`、`typedRoutes`、`serverExternalPackages`（jsdom など）。 |
-| `apps/web/vitest.config.ts` | Create | jsdom 環境のコンポーネントテストと、node 環境の Route Handler テスト（`@vitejs/plugin-react`、`vite-tsconfig-paths`）。両方に `setup-hermetic` と `gate-reporter` を登録する。`server-only` はテストでは空モジュールへ別名解決する。 |
+| `apps/web/vitest.config.ts` | Create | jsdom 環境のコンポーネントテストと、node 環境の Route Handler テスト（`@vitejs/plugin-react`、Vite 8 native `resolve.tsconfigPaths`）。両方に `setup-hermetic` と `gate-reporter` を登録する。`server-only` はテストでは空モジュールへ別名解決する。 |
 | `apps/web/components.json` | Create | shadcn/ui の生成設定。 |
 | `apps/web/app/globals.css` | Create | Tailwind CSS v4 とデザイントークン（WCAG 2.2 AA のコントラスト）。 |
+| `scripts/check-web-theme.test.mjs` | Create | `globals.css` の light/dark token を OKLCH から相対輝度へ変換し、テキスト 4.5:1・UI 境界 3:1 の最小コントラストを決定論的に検査する。Web の `test` script を 21.1 より前に追加せず、root execution unit で scaffold の静的契約だけを検査する。 |
 | `apps/web/instrumentation.ts` | Create | 起動時の設定検証とエラーの整形出力。 |
 | `apps/web/app/layout.tsx` | Create | 日本語のルートレイアウトとナビゲーション。 |
 | `apps/web/app/page.tsx` | Create | モジュール一覧と現在の実行モードの表示。 |
@@ -794,7 +800,7 @@ erDiagram
 | `apps/web/e2e/agent-tools.spec.ts` | Create | ツール状態の表示とカードの描画。 |
 | `apps/web/e2e/summarize.spec.ts` | Create | カードの逐次描画と取得失敗の表示。 |
 | `apps/web/e2e/keyboard.spec.ts` | Create | 主要操作をキーボードだけで行えること。 |
-| `apps/web/e2e/a11y.spec.ts` | Create | 各画面の axe 検査。 |
+| `apps/web/e2e/a11y.spec.ts` | Create | 各画面の axe 検査。代表的な focusable component をキーボード focus し、`getComputedStyle` で outline / ring の実効色と隣接背景を取得して 3:1 以上であることも3エンジンで検査する。 |
 | `apps/web/e2e/latency.spec.ts` | Create | 反映遅延が 100 ms 以内であること（NFR ストリーミング応答性）。 |
 
 ### docs（C22）

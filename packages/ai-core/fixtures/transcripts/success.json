@@ -1,0 +1,12 @@
+{
+	"videoId": "m1-agentic-ai",
+	"result": {
+		"videoId": "m1-agentic-ai",
+		"title": "Agentic AI 入門",
+		"language": "ja",
+		"segments": [
+			{ "text": "Agentic AI の基本を説明します。", "startSeconds": 0, "durationSeconds": 8 },
+			{ "text": "次に安全なツール利用を実装します。", "startSeconds": 90, "durationSeconds": 10 }
+		]
+	}
+}

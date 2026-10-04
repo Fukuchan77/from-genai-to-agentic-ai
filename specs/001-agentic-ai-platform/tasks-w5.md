@@ -86,7 +86,7 @@ _Traces:_ REQ-001, REQ-003, C19
   _Depends:_ 26
   _Requirements:_ 1.17, 3.3, NFR-10
   _Traces:_ REQ-001, REQ-003, C19
-- [ ] 27.3 (P) `keyboard.spec.ts`・`a11y.spec.ts`: 主要操作をキーボードだけで行えること、各画面の axe 検査（WCAG 2.2 AA）
+- [ ] 27.3 (P) `keyboard.spec.ts`・`a11y.spec.ts`: 主要操作をキーボードだけで行えること、各画面の axe 検査（WCAG 2.2 AA）。代表的な focusable component を focus し、`getComputedStyle` の outline / ring 実効色と隣接背景のコントラストが3:1以上であることを3エンジンで検証する
   _Boundary:_ `apps/web/e2e/keyboard.spec.ts`, `apps/web/e2e/a11y.spec.ts`
   _Depends:_ 26
   _Requirements:_ 1.19, NFR-09
@@ -150,6 +150,11 @@ _Traces:_ REQ-001, REQ-002, REQ-006, REQ-007, C22
   _Traces:_ REQ-002, REQ-007, C22
 
 ### Implementation Notes
+
+- spec [`005-hub-alignment`](../005-hub-alignment/spec.md) が承認された場合、本タスクは次の影響を受ける（001 Clarifications Session 2026-10-04）。005 の承認後に plan C22・C20 と本タスクを改訂してから着手し、未承認の間は現行の定義のまま進める。
+  - 28.2 のテンプレートと 28.4〜28.7 の各解説に「本番ではどう作るか」節を加え、[`specs/curriculum/README.md`](../curriculum/README.md)「本番実装との対応」の表が割り当てたハブの手法ページへリンクする（1-1 はハブの `CLAUDE.md` / `AGENTS.md`）。ハブの本文は転載しない（005 Req 2.2、2.5）
+  - 解説内のリンク先の文字列を対応表と照合する検査を、ネットワークに接続しないリポジトリ規則として加える。走査 0 件で失敗し、解説が未作成のモジュールは一覧として出力する（005 Req 2.3、2.4）。`check:repo-rules` の規則数（現行の全9規則）と tasks.md「gate と CI の段階的な結線」の表もあわせて改訂する
+  - `apps/web` のテーマトークン（大タスク 8.3 の `app/globals.css` とコントラスト検査）を、ハブが参照する元として文書化する（005 Req 3.3、3.4）
 
 ---
 

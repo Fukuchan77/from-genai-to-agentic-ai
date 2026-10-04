@@ -1,0 +1,6 @@
+{
+	"url": "https://api.open-meteo.com/v1/forecast?latitude=35.6762&longitude=139.6503&current=temperature_2m,weather_code",
+	"status": 200,
+	"headers": { "content-type": "application/json" },
+	"body": "{\"current\":{\"temperature_2m\":22,\"weather_code\":0}}"
+}

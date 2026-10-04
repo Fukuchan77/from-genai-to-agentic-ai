@@ -1658,3 +1658,1437 @@ $ (echo ::tsconfig::tsconfig.json; pnpm exec tsc -p tsconfig.json --listFilesOnl
   - 生存1件を修正: ブロックコメントをコードとして走査する変異が生き残った。fixture の `/* console.log(messages) */` は `;` の直後にあり、変異後も正規表現リテラルとして読み飛ばされていた。複数行のブロックコメントと、式の後のブロックコメント（`1 /* eval(source) */`）を fixture に加え、同じ変異で scan semantics のテストが失敗することを確認した。
 - 境界: 新規の `scripts/lib/memory-io.mjs` を Task 5 の `_Boundary:_` に追記した（共有ヘルパの扱いは W1 レビュー対応と同じ）。
 - Final: `mise run gate` → Biome 29 files → Model ID 21 files → W1 規則（no-dynamic-eval 20、actions-pinned 1、frozen-lockfile 2、allow-builds-reasoned 1 files）→ `executed=234 passed=234 failed=0 skipped=0`（212 → 234、+22）。`tsc -p tsconfig.json --noEmit` exit 0。
+
+### 2026-09-28 Task 6 Started
+
+- Objective: `@platform/ai-core` のワークスペース骨格、共通 Vitest 設定、共通エラー基底型を Task 6.1〜6.3 の順で実装する。
+- Success criteria:
+  - Task fidelity: plan が列挙する M1 依存と9個の公開サブパスを `package.json` に宣言する。
+  - Consistency: ワークスペースのテスト選択・hermetic setup・gate reporter がルートの C18 規則と一致する。
+  - Type safety: `PlatformErrorCode` は閉じた union、`details` は構造化値として保持され、公開 API に `any` を含めない。
+  - Coverage: ai-core のテスト実行では行カバレッジを常に計測し、80% 未満を失敗させる。
+  - Safety: gate テストは共通 hermetic setup を必ず登録し、外部ネットワークへフォールバックしない。
+
+### 2026-09-28 Task 6.1 Started
+
+- Objective: ai-core の manifest と TypeScript 設定を作り、依存解決とロックファイル更新を行う。
+- Approach: approved research の 2026-09-27 時点の完全一致バージョンを使い、後続タスクが並列でも manifest を再編集しない依存集合を先に宣言する。
+
+### 2026-09-28 Error Encountered
+
+**Error**: `mise exec -- pnpm view ... version --json` が60秒間応答せず、手動で中断した。
+
+**Context**: research.md で「実装時に固定」とされた M1 依存のレジストリ最新版を確認しようとした。
+
+**Root Cause Investigation**:
+
+1. **Documentation source**: `research.md` は 2026-09-27 に npm レジストリと型定義を確認した完全一致版（または採用下限）を記録している。
+2. **Codebase search**: 現在の lockfile には新しい ai-core 依存がまだなく、ローカル解決済み版から確定できない。
+3. **Hypothesis**: 実行環境のレジストリ接続が応答しないため、リモート照会だけが停止しており、approved research の版情報は利用可能である。
+
+**Solution Design**:
+
+- Approach: 同日の approved research に記録された版を完全一致で採用し、`mise run setup` の frozen-compatible lockfile 更新で実在と互換性を検証する。
+- Rationale: 推測で版を上げず、承認済み設計の根拠を維持できる。`@ai-sdk/openai` と `@ai-sdk/google` は記録された採用下限を固定する。
+
+**Execution**: manifest に approved research の版を記述した。
+
+**Result**: 依存解決の検証待ち。
+
+**Learning**: 実装日のレジストリ照会が利用不能な場合は、同日の approved research を版の正本として使い、セットアップで解決可能性を検証する。
+
+### 2026-09-28 Error Encountered
+
+**Error**: sandbox 内の `mise exec -- pnpm install --lockfile-only` が `@ai-sdk/azure` の npm metadata 取得に失敗した。
+
+**Context**: 新規ワークスペース依存を `pnpm-lock.yaml` に反映していた。
+
+**Root Cause Investigation**:
+
+1. **Command evidence**: supply-chain policy 検査は通過し、失敗箇所は `https://registry.npmjs.org/@ai-sdk%2Fazure` への metadata request だった。
+2. **Codebase search**: manifest の版は research.md に宣言済みで、依存名・版の誤記を示すローカル証拠はない。
+3. **Hypothesis**: sandbox のネットワーク制限がレジストリ通信を遮断した。
+
+**Solution Design**:
+
+- Approach: 同じ lockfile-only install を承認済みのネットワークアクセスで1回実行する。
+- Rationale: コマンドや依存指定を変えず、観測された外部通信制限だけを解消する。
+
+**Execution**: escalated `mise exec -- pnpm install --lockfile-only` を実行した。
+
+**Result**: `Done in 962ms using pnpm v12.6.0`。lockfile 更新成功。
+
+**Learning**: metadata fetch の通信失敗は依存指定の変更で回避せず、同一コマンドを必要最小限のネットワーク権限で再実行する。
+
+### 2026-09-28 Task 6.1 Verification
+
+- Lockfile update: `mise exec -- pnpm install --lockfile-only` → `Done in 962ms using pnpm v12.6.0`。
+- Frozen setup: `mise run setup` → `Lockfile is up to date`、296 packages added、exit 0。
+- Manifest: plan の M1 依存12件、ai-core 公開APIの9サブパス、`typecheck` script を宣言した。
+- PROVE: Task 6.1 はテスト対象の実装ではなく、明示された command-based `_Verify:` を使用するため該当なし。
+
+### 2026-09-28 Task 6.2 Implemented
+
+- Added: node 環境、C18 と同じ `AI_TEST_SUITE` 選択、共通 hermetic setup / gate reporter、常時有効の V8 coverage、行80%閾値。
+- Verification is paired with Task 6.3, because Task 6.2 explicitly requires the first ai-core test and the below-threshold failure check to exist first.
+
+### 2026-09-28 Task 6.3 RED Started
+
+- Added three tests for field preservation, `instanceof` discrimination, and the closed TypeScript code vocabulary before creating `src/errors.ts`.
+
+### 2026-09-28 Task 6.3 RED Evidence
+
+- Command: `pnpm exec vitest run --config packages/ai-core/vitest.config.ts`
+- Failure: `Cannot find module './errors' imported from .../src/errors.test.ts`。
+- Collection evidence: test file was discovered, but 0 tests executed because the required implementation module did not exist; gate reporter also failed the execution unit as designed.
+- SCAN: `packages/ai-core` は新規ワークスペースで、変更対象シンボルに触れる既存テストは0件。回帰ベースライン対象なし。
+
+### 2026-09-28 Task 6.3 GREEN
+
+- Implemented: closed `PlatformErrorCode` union, readonly structured details, Japanese-message-preserving `PlatformError`, subclass-aware `name`.
+- Added scripts: `test` and required HTML-producing `test:coverage`; retained `typecheck`.
+
+### 2026-09-28 Error Encountered
+
+**Error**: PROVE 用スクリプトで zsh の予約済み readonly 変数 `status` へ代入し、復元処理の前にシェルが停止した。
+
+**Context**: `PlatformError` を意図的に壊したテスト失敗後、元実装へ自動復元しようとした。
+
+**Root Cause Investigation**:
+
+1. **Command evidence**: 期待した assertion failure の直後に `zsh: read-only variable: status` が出た。
+2. **Codebase state**: `/tmp/ai-core-errors.ts.prove` に実装前の完全なバックアップが残っていた。
+3. **Hypothesis**: zsh の特殊パラメーター名とローカル変数名が衝突し、後続の `cp` が実行されなかった。
+
+**Solution Design**:
+
+- Approach: バックアップから即時復元し、以降は `command_status` を使い、復元を終了コード処理より先に置く。
+- Rationale: テスト失敗そのものは期待どおりであり、実装の安全な復元だけを確実にする。
+
+**Execution**: `/tmp/ai-core-errors.ts.prove` から `src/errors.ts` を復元し、diff が空であることを確認した。
+
+**Result**: 正常実装へ復元済み。
+
+**Learning**: zsh スクリプトでは `status` を汎用変数名に使わず、意図的破壊の復元を終了コード伝播より先に行う。
+
+### 2026-09-28 Task 6.2 Threshold Evidence
+
+- Deliberate break: `thresholds.lines` を一時的に `101` へ上げ、実測100%を閾値未満にした。
+- Failure observed: `ERROR: Coverage for lines (100%) does not meet global threshold (101%)`。
+- Restored: `thresholds.lines: 80` へ復元済み。
+- This confirms the gate-mode `test` script enforces coverage, while `test:coverage` can focus on HTML output.
+
+### 2026-09-28 Task 6.3 PROVE Evidence
+
+- Test: `preserves the closed error code, Japanese message, and structured details`
+  - Break applied: constructor が常に `output-error` と空 details を保持するよう一時変更。
+  - Failure observed: `expected 'output-error' to be 'invalid-request'`。
+  - Restored: yes.
+- Test: `supports discrimination with instanceof across the error hierarchy`
+  - Break applied: constructor の最後で prototype を `Object.prototype` に置き換えた。
+  - Failure observed: `expected ExamplePlatformError ... to be an instance of ExamplePlatformError`。
+  - Restored: yes.
+- Test: `exposes only the declared PlatformErrorCode vocabulary to TypeScript`
+  - Break applied: `provider-unavailable` を union から一時削除した。
+  - Failure observed: `TS1360: Type '"provider-unavailable"' does not satisfy the expected type 'PlatformErrorCode'`。
+  - Restored: yes.
+
+### 2026-09-28 Task 6.3 Verification
+
+- Formatting: `pnpm exec biome check --write packages/ai-core` → 5 files checked, no fixes required.
+- Typecheck: `pnpm --filter @platform/ai-core typecheck` → exit 0.
+- Tests: `pnpm --filter @platform/ai-core test` → 1 file, 3 tests passed, gate reporter `executed=3 passed=3 failed=0 skipped=0`。
+- Coverage: lines 100% (5/5), required threshold 80%.
+- Collection delta: ai-core workspace previously had 0 tests; Task 6 adds 3 executed tests.
+- Status: Tasks 6.1, 6.2, and 6.3 marked `[x]`.
+
+### 2026-09-28 Task 6 Adversarial Review Round 1: REQUEST_CHANGES
+
+- Report: `.sdd/reviews/001-agentic-ai-platform-6.md`
+- HIGH confirmed: `coverage.enabled` と80%閾値を全スイートへ適用したため、C18 が0件を許可する `local` / `pg` も0%で失敗した。
+- MEDIUM partially confirmed: error-code union にこのタスクの一次資料から直接たどれない値が含まれ、テストも語彙全体を固定していなかった。
+- MEDIUM disputed: `./errors` export の追加は plan.md:86 の「公開APIは9サブパスに限る」に反する。Task 6 では設計外の10番目の公開サブパスを追加せず、後続の既存サブパス index からの再export判断に委ねる。
+- LOW confirmed: Task 6 の Implementation Notes を追記する。
+
+### 2026-09-28 Error Encountered
+
+**Error**: `local` / `pg` の0件実行が、`passWithNoTests: true` にもかかわらず行カバレッジ0%として失敗した。
+
+**Context**: adversarial reviewer が C18 の空スイート契約を実コマンドで検証した。
+
+**Root Cause Investigation**:
+
+1. **Design check**: plan C18 は coverage を常時有効にする一方、80%閾値は gate の `test` 段で強制し、`local` / `pg` は0件を許可すると定める。
+2. **Configuration check**: `thresholds.lines: 80` が suite 条件なしで coverage 全体へ設定されていた。
+3. **Hypothesis**: Vitest の `passWithNoTests` はテスト収集だけを成功扱いにし、coverage threshold 判定は独立して0%を失敗させる。
+
+**Solution Design**:
+
+- Approach: `coverage.enabled: true` は全スイートで維持し、`thresholds.lines: 80` だけを `suiteName === "gate"` の場合に設定する。
+- Rationale: 「常時計測」「gate で80%強制」「local/pg 0件許可」の3契約を同時に満たす。
+
+**Execution**: conditional coverage thresholds に変更した。
+
+**Result**: local/pg の再検証待ち。
+
+**Learning**: `passWithNoTests` と coverage threshold は別の終了条件なので、空スイート契約は両方を含めて検証する必要がある。
+
+### 2026-09-28 Error Vocabulary Remediation RED Evidence
+
+- Test first: `PLATFORM_ERROR_CODES` の完全一致を要求するテストへ変更した。
+- Command: `pnpm --filter @platform/ai-core test`
+- Failure: `expected undefined to deeply equal [ 'invalid-request', ... ]`。
+- Implementation: plan の M1 HTTP 契約に直接現れる platform-side codes へ絞り、const tuple から union を導出した。Task 6 時点で根拠のない内部コードは削除した。
+
+### 2026-09-28 Error Encountered
+
+**Error**: Biome が型の否定例を囲む `if (false)` を `noConstantCondition` で拒否した。
+
+**Context**: arbitrary string が `PlatformErrorCode` に入らないことを typecheck だけで検査し、runtime では実行しない構造にしていた。
+
+**Root Cause Investigation**:
+
+1. **Lint evidence**: `packages/ai-core/src/errors.test.ts:40:7 lint/correctness/noConstantCondition`。
+2. **Available test API**: Vitest の `expectTypeOf` は runtime の無効コード分岐を作らず exact type equality を typecheck できる。
+3. **Hypothesis**: `@ts-expect-error` のための到達不能分岐より、union 全体の型同値検査が task の「閉じた語彙」に直接対応する。
+
+**Solution Design**:
+
+- Approach: negative assignment を削除し、`expectTypeOf<PlatformErrorCode>().toEqualTypeOf<...>()` へ置換する。
+- Rationale: lint に適合し、任意文字列1件の拒否より完全な union 同値を強く検証できる。
+
+**Execution**: runtime tuple assertion と compile-time exact union assertion の組み合わせへ変更した。
+
+**Result**: 再検証待ち。
+
+**Learning**: 閉じた union の検査は到達不能な `@ts-expect-error` より exact type equality を優先する。
+
+### 2026-09-28 Error Encountered
+
+**Error**: gate-mode test と pg-mode test を同じ workspace で並列実行し、Vitest が共通 `coverage/` ディレクトリのロック競合で失敗した。
+
+**Context**: remediation 後の `local`、`pg`、gate/typecheck を並列検証していた。
+
+**Root Cause Investigation**:
+
+1. **Error evidence**: `coverage report directory .../packages/ai-core/coverage is already in use by another Vitest process`。
+2. **Configuration check**: C18 により coverage は全スイートで常時有効で、既定 reportsDirectory は共通である。
+3. **Hypothesis**: 同一 workspace の複数 Vitest coverage process を並列化した検証手順が競合を作った。実装の機能不良ではない。
+
+**Solution Design**:
+
+- Approach: 同一 workspace の coverage-enabled test lanes は逐次実行する。
+- Rationale: 本番の mise/turbo タスクも同一 workspace 内で複数 lane を同時実行しないため、実運用と一致する。
+
+**Execution**: local と pg の完了後に gate-mode package test を単独で再実行する。
+
+**Result**: 再検証待ち。
+
+**Learning**: coverage reportsDirectory を共有する test lane の検証は並列化しない。
+
+### 2026-09-28 Error Vocabulary Remediation PROVE Evidence
+
+- Break applied: `source-unavailable` を `PLATFORM_ERROR_CODES` tuple から一時削除した。
+- Failure observed: exact vocabulary test の diff が missing `source-unavailable` を示して失敗した。
+- Restored: yes.
+
+### 2026-09-28 Adversarial Review Round 1 Remediation Verification
+
+- `mise run test:local` → root/ai-core とも0件を理由どおり許可、2 tasks successful。
+- `AI_TEST_SUITE=pg ... @platform/ai-core test` → 0 tests、0% coverage を報告しつつ exit 0。
+- `pnpm --filter @platform/ai-core typecheck` → exit 0。
+- `pnpm --filter @platform/ai-core test` → 3/3 passed、lines 100% (6/6)。
+- Implementation Notes: lockfile exception、suite別threshold、error vocabulary の判断を追記した。
+
+### 2026-09-28 Task 6 Adversarial Review Round 2: APPROVE_WITH_NOTES
+
+- Report: `.sdd/reviews/001-agentic-ai-platform-6.md`
+- Round 1 findings: empty local/pg fixed; vocabulary and test strengthened; Implementation Notes added; `./errors` finding withdrawn as a Task 6 defect because plan limits public API to nine subpaths.
+- Trigger resolution: dependencies are plan-declared and exactly pinned; lockfile is a justified generated exception.
+- Reviewer verification: `mise run setup`, `mise run audit`, and `mise run gate` succeeded.
+- Remaining LOW note: `test:coverage` inherits the gate threshold because Task 6.3 prescribes the exact script while `AI_TEST_SUITE=gate`; no correctness or gate failure, retained for later C18 task-interface refinement rather than adding an undeclared flag in Task 6.
+
+### 2026-09-28 Task 6 Coverage Report Verification
+
+- Command: `mise run test:coverage`
+- Result: ai-core 1 test file / 3 tests passed; HTML coverage reporter completed; turbo 1 task successful.
+
+### 2026-09-28 Adversarial Review LOW Note Remediation RED Evidence
+
+- Contract: plan C18 requires `test:coverage` to generate the HTML report without enforcing the gate threshold.
+- Deliberate state: config threshold temporarily raised to 101% while implementation remained at the original script.
+- Command: `pnpm --filter @platform/ai-core test:coverage`
+- Failure: all 3 tests passed, then `Coverage for lines (100%) does not meet global threshold (101%)` caused exit 1.
+- Root cause: CLI inherited the config threshold because the report command did not override it.
+- Fix: use Vitest's official nested CLI override `--coverage.thresholds.lines=0`; gate-mode `test` still uses the configured 80% threshold.
+
+### 2026-09-28 Adversarial Review LOW Note Remediation PROVE Evidence
+
+- Break applied: config threshold was temporarily raised to 101%, above the measured 100% coverage.
+- Fixed command: `pnpm --filter @platform/ai-core test:coverage` with `--coverage.thresholds.lines=0`.
+- Result: 3/3 tests passed and the HTML-report command exited 0 despite the temporary 101% config threshold.
+- Restored: config threshold returned to 80%; gate-mode `test` does not carry the override and continues enforcing 80%.
+- Official API check: Vitest CLI supports `--coverage.thresholds.lines <number>` and CLI values override config values by deep merge.
+
+### 2026-09-28 Task 6 Final Verification Checkpoint
+
+- Selected tasks 6.1〜6.3 are complete and remain marked `[x]`.
+- Final commands: package typecheck/test, HTML coverage report, and repository `mise run gate`.
+
+### 2026-09-28 Task 6 Final Verification Evidence
+
+- `pnpm --filter @platform/ai-core typecheck` → exit 0.
+- `pnpm --filter @platform/ai-core test` → 1 file / 3 tests passed; gate reporter `executed=3 passed=3 failed=0 skipped=0`; line coverage 100% (6/6).
+- `mise run test:coverage` → 1 turbo task successful; HTML reporter completed with 3/3 tests passed and report-only threshold override.
+- `mise run gate` → Biome 34 files; model-ID check 24 files; repository rules scanned 23/1/2/1 files; root `executed=234 passed=234 failed=0 skipped=0`; ai-core `executed=3 passed=3 failed=0 skipped=0`, lines 100%; turbo 2/2 tasks successful.
+
+### 2026-09-28 Error Encountered
+
+**Error**: `git restore --staged` が `.git/index.lock: Operation not permitted` で失敗した。
+
+**Context**: reviewer が残した部分的な staging を、working tree を変更せず解除しようとした。
+
+**Root Cause Investigation**:
+
+1. **State check**: initial working tree was clean; review後に `A` / `AM` が現れ、index と working tree が不一致だった。
+2. **Permission check**: workspace sandbox は `.git` を読み取り専用として扱い、index lock の作成を拒否した。
+3. **Hypothesis**: コマンド内容ではなく、git index への sandbox 書き込み制限が原因である。
+
+**Solution Design**:
+
+- Approach: working tree を保持する同じ `git restore --staged` を、git index だけの最小権限昇格で実行する。
+- Rationale: reset/checkout で実装を失わず、ユーザーが依頼していない staging だけを元に戻せる。
+
+**Execution**: escalated `git restore --staged` を対象ファイルに限定して実行した。
+
+**Result**: staging 解除成功。実装ファイルの内容は保持された。
+
+**Learning**: review subagent 後は index/working-tree の両方を確認し、部分 staging を残さない。
+
+### 2026-09-28 Task 6 Validation Follow-ups
+
+- Source: `/sdd-validate-impl agentic-ai-platform Task6` → 条件付き GO（CRITICAL 1件: `pnpm-lock.yaml` が literal boundary 外、WARNING: 6.3 の `test:coverage` 文面が実装・plan の mise タスク表と不一致）。
+- Boundary: `pnpm-lock.yaml` を大タスク 6/7/8 と 6.1/7.1/8.1 の `_Boundary:_` に追加した（tasks.md の「6.1 → 7.1 → 8.1 は lockfile を更新する」を literal 化）。
+- Script contract: `test:coverage` の正本文面を `vitest run --coverage.enabled --coverage.reporter=html --coverage.thresholds.lines=0` にそろえた（tasks.md 6.3、plan.md C18「テストの実行単位」、tasks-w3.md 19.1、tasks-w4.md 21.1）。plan の mise タスク表「HTML レポートだけ、閾値の強制は gate の `test` 段」と一致させ、後続ワークスペースで同じ LOW 指摘が再発しないようにする。
+- Code changes: none（文書のみ）。
+
+### 2026-09-28 Task 6 Ship Validation
+
+- Verdict: GO（`/sdd-validate-impl` の CRITICAL 1件と WARNING 1件は上記の Validation Follow-ups で解消）。
+- Mechanical fixes: AGENTS.md（プロジェクト状態と gate の説明に ai-core のワークスペーステストを追加）、README.md（W1 gate の説明）、tasks.md の進捗表（W2 を「進行中。6 完了」へ）、traceability.md（1.2・NFR-05・NFR-06 の Test/Commit と Gaps）。
+- Final gate: `mise run gate` → exit 0。Biome 34 files、Model ID 24 files、W1 規則4件、ai-core `executed=3 passed=3 failed=0 skipped=0`（0 → 3、`src/errors.test.ts`）、`errors.ts` lines 100%、root `executed=234 passed=234 failed=0 skipped=0`、turbo 2/2 successful。
+- Commit: `930f464` feat(ai-core): scaffold ai-core workspace with PlatformError base。
+
+### 2026-09-28 Task 7 Started
+
+- Objective: `@platform/eval-suite` の workspace、共通 Vitest 設定、Capability / Regression 配置規約を scaffold する。
+- Scope: Task 7.1〜7.3 の宣言済み boundary のみ。外部サービスを使うテストはないため preflight は不要。
+- Success criteria:
+  1. `@platform/eval-suite` が `@platform/ai-core` のみに実行時依存し、strict TypeScript で型検査できる。
+  2. `AI_TEST_SUITE=gate|local|pg` が C18 の命名規約どおりテストを選び、未知値を設定読込時に拒否する。
+  3. hermetic setup、local availability global setup、gate reporter が workspace 単位で登録される。
+  4. README が Capability / Regression の役割、実行レーン、004 への引き継ぎを日本語で明示する。
+- TDD note: Task 7 は scaffold / configuration / documentation task で、新しい実行テストを追加しない。Task 7.1 は `mise run setup` / `mise run typecheck`、7.2 は構成の直接検証、7.3 はレビューで検証する。最初の eval test と scripts は Task 19.1 で追加する。
+
+### 2026-09-28 Error Encountered
+
+**Error**: `mise run setup` が `ERR_PNPM_PACKAGE_MANAGER_NO_IMPORTER` で失敗した。
+
+**Context**: Task 7.1 の新規 workspace manifest を作成した直後、frozen lockfile setup を検証した。
+
+**Root Cause Investigation**:
+
+1. **Error evidence**: `pnpm-lock.yaml` に `importers["packages/eval-suite"]` がないため、`--frozen-lockfile` は更新せず停止した。
+2. **Codebase search**: Task 6.1 でも新規 workspace 作成時に `mise exec -- pnpm install --lockfile-only` で importer を生成してから `mise run setup` を検証している。
+3. **Hypothesis**: `mise run setup` は再現可能なインストール専用であり、新規 manifest から lockfile importer を生成するコマンドではない。Task 7.1 の生成物 `pnpm-lock.yaml` を先に更新する必要がある。
+
+**Solution Design**:
+
+- Previous approach: importer がない状態で frozen setup を実行した。
+- New approach: mise で固定された pnpm を使い、`pnpm install --lockfile-only` で Task 7.1 の importer だけを生成した後、frozen `mise run setup` を再検証する。
+- Rationale: frozen install の規約を弱めず、宣言済み boundary の生成物を正規化できる。
+
+**Execution**: `mise exec -- pnpm install --lockfile-only` を実行する。
+
+**Result**: 実行待ち。
+
+**Learning**: 新規 workspace は lockfile-only 更新と frozen setup 検証を別ステップとして扱う。
+
+### 2026-09-28 Lockfile Update Investigation
+
+- Observation: `mise exec -- pnpm install --lockfile-only` は supply-chain policy 検証後に90秒以上進まず、lockfile に変更を作らなかったため中断した。
+- Evidence: 新規依存の版はすべて既存 root / ai-core importer と lockfile に存在し、pnpm store も repository-local にある。registry は通常の npm registry、offline 設定は未指定だった。
+- Hypothesis: importer 解決に不要な registry 通信を待っており、sandbox のネットワーク制限で進行しない。依存変更ではなく実行環境の外部通信が原因である。
+- Different approach: 既存 lockfile と store だけで解決可能なことを検証するため、同じ lockfile-only 更新を `--offline` で実行する。解決情報が不足していればその時点で明示的に失敗させる。
+
+### 2026-09-28 Setup Network Error Resolution
+
+- Error: sandbox 内の `mise run setup` が npm tarball の DNS lookup に失敗し、依存復元を完了できなかった。
+- Root cause: frozen lockfile は正しかったが、pnpm の content-addressable store から workspace の `node_modules` を再リンクする過程で registry 検証が発生し、sandbox の外部 DNS 制限に阻まれた。
+- Solution: lockfile や依存指定を変更せず、同じ `mise run setup` を必要最小限の network approval で実行した。
+- Result: `Lockfile is up to date`、296 packages、exit 0。Task 7 importer を含む frozen setup が成功した。
+- Learning: frozen install も supply-chain policy 検証時に registry access を必要とする場合がある。依存指定で回避せず、観測された network 制限だけを解消する。
+
+### 2026-09-28 Task 7 Verification Evidence
+
+- Task 7.1: `mise exec -- pnpm install --lockfile-only --offline` → eval-suite importer を生成、exit 0。`mise run setup` → `Lockfile is up to date`、296 packages、exit 0。`mise run typecheck` → root / ai-core / eval-suite の3 tasks successful。
+- Task 7.2 direct configuration checks:
+  - `AI_TEST_SUITE=local ... vitest run --config packages/eval-suite/vitest.config.ts` → include `tests/**/*.local.test.ts`、0件を許可、exit 0。
+  - `AI_TEST_SUITE=pg ...` → include `tests/**/*.pg.test.ts`、0件を許可、exit 0。
+  - `AI_TEST_SUITE=unknown ...` → `Unknown AI_TEST_SUITE "unknown". Expected one of: gate, local, pg`、exit 1。
+  - `AI_TEST_SUITE=gate ...`（まだテストなし）→ `Gate reporter error: no tests executed in the gate suite.`、exit 1。`test` script を19.1まで置かない理由を確認した。
+- Task 7.3: README に Capability / Regression の責務、命名別レーン、hermetic 制約、004 の引き継ぎを記載した。
+- RED / PROVE: 新しい実行テストを持たない scaffold / configuration / documentation task のため該当なし。代わりに `_Verify:` の command evidence と、空 gate / unknown suite の意図した failure evidence を記録した。
+- Full gate: `mise run gate` → Biome 37 files、model-ID 25 files、repo rules 24/1/2/1 files、root `executed=234 passed=234 failed=0 skipped=0`、ai-core `executed=3 passed=3 failed=0 skipped=0`、turbo 2/2 successful。
+- Status: 7.1〜7.3 を `[x]` に更新。VDD trigger は package manifest の第三者 devDependencies 追加であり、独立 reviewer を実行する。
+
+### 2026-09-28 Task 7 Adversarial Review
+
+- Verdict: `APPROVE_WITH_NOTES`。
+- Report: `.sdd/reviews/001-agentic-ai-platform-7.md`。
+- Trigger resolution: 新規 devDependencies 4件は plan 宣言済み・完全一致固定、lockfile は eval-suite importer のみ、依存方向は `eval-suite → ai-core`。既存テスト変更なし。reviewer は setup / typecheck / gate / audit / suite別 checks を独立実行した。
+- LOW note: README の実行レーンにインプロセス DB 用 `*.db.test.ts` が欠落していた。
+- Resolution: `*.db.test.ts` は gate に含め、`*.pg.test.ts` は Docker Postgres が必要な評価だけに使う規約を追記した。
+
+### 2026-09-28 Task 7 Final Verification Checkpoint
+
+- Selected tasks 7.1〜7.3 are complete and marked `[x]`。
+- Reviewer LOW note remediation applied: README now distinguishes in-process `*.db.test.ts` from Docker-backed `*.pg.test.ts`。
+- Final `mise run gate` → exit 0。Biome 37 files、model-ID 25 files、repository rules 24/1/2/1 files、root `executed=234 passed=234 failed=0 skipped=0`、ai-core `executed=3 passed=3 failed=0 skipped=0`、turbo 2/2 successful。
+- Task 7 adds no eval tests by design; the first eval-suite tests and `test` scripts remain assigned to Task 19.1/19.2。
+
+### 2026-09-28 Task 7 Ship
+
+- `/sdd-validate-impl agentic-ai-platform Task7` → GO。境界違反なし、前提タスク 4・6.1 は完了、新規テストなしのため PROVE は該当なし。
+- Independent config checks: eval-suite `AI_TEST_SUITE=gate` → exit 1（No test files found）、`local` / `pg` → exit 0、`bogus` → exit 1（`Unknown AI_TEST_SUITE "bogus"`）。
+- Gate: `mise run gate` → exit 0。Biome 37 files、model-ID 25 files、repo rules 24/1/2/1、root `executed=234 passed=234 failed=0 skipped=0`、ai-core `executed=3 passed=3 failed=0 skipped=0`（`errors.ts` lines 100%）、turbo 2/2。`mise run typecheck` → 3/3 successful。
+- Mechanical fixes: traceability.md（1.1・1.13・1.14 の Test/Commit と Gaps）、AGENTS.md（プロジェクト状態に eval-suite scaffold を追加）。
+- Commit: `0f587c5` feat(eval-suite): scaffold eval-suite workspace with suite-selecting Vitest config。
+
+### 2026-09-28 20:23 Task 8 Started
+
+- Objective: Next.js App Router の `apps/web` workspace scaffold を、機能ロジックなしで作成する。
+- Success criteria:
+  - Task 8.1: plan 宣言済みの Web/UI/test 依存を完全一致で固定し、`next typegen && tsc --noEmit` が成功する。
+  - Task 8.2: `reactCompiler`、`typedRoutes`、`serverExternalPackages` を型安全な NextConfig として宣言する。
+  - Task 8.3: component(jsdom) / route(node) の2 Vitest project、hermetic setup、gate reporter、suite 選択、`server-only` 空モジュール alias を構成する。
+  - Safety: `test` / `test:coverage` scripts は Task 21.1 まで追加せず、gate の実行対象を早期に増やさない。
+  - Accessibility: light/dark の foreground/background、primary、muted、destructive token を高コントラストで定義する。
+- Baseline: `mise run gate` → root 234 tests、ai-core 3 tests、すべて成功。`mise run typecheck` → 3/3 tasks successful。
+- Dependency evidence: 2026-09-28 に npm registry の version/time と peerDependencies を実測し、すべて公開後24時間以上の版を選定した。
+
+### 2026-09-28 20:23 Task 8 RED Evidence
+
+- Command: required scaffold 6 filesへの `test -f` assertion。
+- Failure: `RED: missing required scaffold file: apps/web/package.json`（exit 1）。
+- Scope note: Task 8 は自動テスト追加を境界に含まない configuration scaffold のため、RED は command-based contract とし、Task 21.1 で実行テストを追加する。
+
+### 2026-09-28 20:25 Error Encountered
+
+**Error**: lockfile 更新後の sandbox 内 `mise run lint` が pnpm の workspace 再リンクを開始し、npm tarball の DNS lookup で失敗した。
+
+**Context**: 新規 importer 追加後、依存をまだ materialize していない状態で Biome を実行した。
+
+**Root Cause Investigation**:
+
+1. **Error evidence**: `Failed to fetch https://registry.npmjs.org/... dns error` が新旧 package に対して発生した。
+2. **Codebase / package check**: `pnpm peers check` は `No peer dependency issues found`。lockfile の解決自体は成功済み。
+3. **Hypothesis**: 実装不良ではなく、lockfile-only 更新後の `node_modules` 再リンクに必要な tarball 取得が sandbox network 制限で止まった。
+
+**Solution Design**:
+
+- Approach: lockfile と依存指定を変更せず、repo 既定の `mise run setup` を network approval 付きで1回実行する。
+- Rationale: frozen lockfile と supply-chain policy を維持したまま、必要な package materialization だけを完了する。
+
+**Execution**: `mise run setup` を実行。
+
+**Result**: `Lockfile is up to date`、429 packages、exit 0。peer の個別検査結果は後段の warning investigation に記録した。
+
+**Learning**: importer 追加直後は lint より先に frozen setup を完了し、pnpm の暗黙再リンクを sandbox 内で発生させない。
+
+### 2026-09-28 20:26 Task 8 Configuration Error Resolution
+
+**Error 1**: Biome が `@custom-variant` / `@theme` / `@apply` を `Tailwind-specific syntax is disabled` として拒否した。
+
+- Documentation / diagnostic evidence: Biome 自身が CSS parser の `tailwindDirectives` 有効化を指示した。
+- Root cause: Task 8 で初めて Tailwind v4 directive を持つ CSS が走査対象に入ったが、repository-wide parser は標準 CSS のままだった。
+- Solution: `biome.json` の `css.parser.tailwindDirectives` を有効化した。Task boundary 外変更のため VDD review trigger とする。
+- Result: `mise run lint` → Biome 44 files、exit 0。
+
+**Error 2**: Vitest project 内の `passWithNoTests` が TypeScript で `NonProjectOptions` として拒否された。
+
+- Documentation evidence: Vitest 5 の project config は root-only option を持てず、reporter も root に1回だけ登録する。
+- Root cause: root execution unit の設定を project object にも複製していた。
+- Solution: `passWithNoTests` と reporter は root に置き、environment/include/setupFiles だけを component / route project に分けた。
+- Result: `mise run typecheck` → 4/4 tasks successful。`local` / `pg` は0件で exit 0、`gate` は0件を検出して意図どおり exit 1、unknown suite は config load 時に exit 1。
+
+**Warning investigation**: `pnpm peers check` は `vite-tsconfig-paths@6.1.1 → tsconfck@3.1.6 → typescript ^5` と TypeScript 7.1 prerelease の peer mismatch を報告した。npm metadata で tsconfck 3.1.6 が最新版かつ peer が `^5.0.0` のままと確認した。plan が TypeScript 7.1 と `vite-tsconfig-paths` の両方を明示し、実際の config load / typecheck は成功するため、偽の互換範囲 override は追加せず既知警告として記録した。
+
+**Command wrapper error**: scaffold assertion の最初の shell loop で zsh 特殊配列 `path` を loop 変数に使い、後続 `mise` が PATH から消えた。変数名を `file` に変更し、同じ assertion は `7 files present; no premature test scripts` で成功した。
+
+### 2026-09-28 20:26 Task 8 PROVE Evidence
+
+- Temporary component probe: `import "server-only"` が empty alias で成功することを確認。
+- Break applied: alias target を `server-only/index.js` に変更。
+- Failure observed: `This module cannot be imported from a Client Component module. It should only be used from a Server Component.`
+- Restored: `server-only/empty.js` alias に戻し、component probe green。
+- Temporary route probe: hermetic setup が `fetch` を `NETWORK_BLOCKED` にすることを確認。
+- Break applied: route project の `setupFiles` を空にした。
+- Failure observed: expected `NETWORK_BLOCKED` に対し実ネットワークの `getaddrinfo ENOTFOUND example.invalid` が返り assertion failure。
+- Restored: route project の `setupFiles` を戻し、component / route の2 tests が green。temporary probe files は削除した。
+
+### 2026-09-28 20:27 Task 8 Verification Evidence
+
+- `mise run setup` → frozen lockfile、429 packages、exit 0。
+- `mise run typecheck` → root / ai-core / eval-suite / web の4/4 tasks successful。web は `next typegen` と `tsc --noEmit` に成功。
+- Suite config checks:
+  - `AI_TEST_SUITE=local ... web ... vitest` → component / route の temporary probes 2/2 passed。その後 probe 削除状態では0件許可を確認。
+  - `AI_TEST_SUITE=pg ...` → 0件許可、exit 0。
+  - `AI_TEST_SUITE=gate ...` → 0件を `Gate reporter error` として拒否、exit 1（21.1 まで web に test script を置かない）。
+  - `AI_TEST_SUITE=unknown ...` → `Unknown AI_TEST_SUITE`、exit 1。
+- Scaffold contract: required 7 files present、`test` / `test:coverage` scripts 不在。
+- Full gate: `mise run gate` → Biome 44 files、model-ID 28 files、repo rules 27/1/2/1 files、root 234 tests、ai-core 3 tests、2/2 turbo tasks successful、exit 0。
+- Status: 8.1〜8.3 を `[x]` に更新。第三者依存追加、task boundary 外の `biome.json`、生成 `next-env.d.ts` があるため、独立 VDD reviewer を実行する。
+
+### 2026-09-28 20:34 Task 8 Adversarial Review Round 1: REQUEST_CHANGES
+
+- Report: `.sdd/reviews/001-agentic-ai-platform-8.md`。
+- HIGH: `biome.json` と generated `next-env.d.ts` が task boundary 外。
+- MEDIUM: `@ai-sdk/react@4.0.121` が `ai@7.0.118` を導入し、ai-core の `ai@7.0.113` と release cohort が分裂。
+- MEDIUM: `vite-tsconfig-paths` が非保守の `tsconfck` と TypeScript 7 未充足 peer を導入。
+- MEDIUM: light/dark の input/border token が WCAG 2.2 非テキスト 3:1 を未達。
+- LOW: temporary PROVE source が恒久的に残っていない。
+
+### 2026-09-28 20:36 Task 8 Review Remediation
+
+- Boundary / design:
+  - `plan.md` の root Biome ownership に Tailwind directive parser を追記し、`apps/web/next-env.d.ts` の generated/committed ownership を追加した。
+  - Task 8 boundary に `biome.json`、`next-env.d.ts`、静的 contrast test を追加した。
+- AI SDK release cohort:
+  - `@ai-sdk/react` を research で d.ts 実測済みの 4.0.116 に固定した。
+  - `pnpm --filter web list ai --depth 10` で Web / ai-core / Ollama peer がすべて `ai@7.0.113` へ収束した。
+- Vite path aliases:
+  - Vite 8 native `resolve.tsconfigPaths: true` へ移行し、`vite-tsconfig-paths` と transitive `tsconfck` を lockfile から除去した。
+  - `pnpm peers check` → `No peer dependency issues found`。
+  - research / plan / tasks の旧指定を実測結果に合わせて改訂した。
+- Contrast TDD RED:
+  - 新規 `scripts/check-web-theme.test.mjs` は OKLCH を linear sRGB relative luminance に変換し、text pair 4.5:1、input/border pair 3:1 を検査する。
+  - 初回実行は light 1.5649:1、dark 2.1063:1 で4 tests が失敗した。
+- Contrast GREEN:
+  - light input/border を `oklch(0.62 0.015 265)`、dark を `oklch(0.53 0.02 265)` に変更。
+  - 20/20 tests passed。
+- Contrast PROVE:
+  - Break applied: light `--border` だけを旧 `oklch(0.84 0.01 265)` に戻した。
+  - Failure observed: `expected 1.5649080652585672 to be greater than or equal to 3`。
+  - Restored: yes。20/20 tests passed。
+- Verification:
+  - `mise run setup` → frozen lockfile、424 packages、exit 0。
+  - `mise run typecheck` → 4/4 tasks successful。
+  - `mise run gate` → Biome 45 files、model-ID 29 files、repo rules 28/1/2/1、root `executed=254 passed=254 failed=0`、ai-core `executed=3 passed=3 failed=0`、exit 0。
+  - web `local` / `pg` config → 0件許可、exit 0。Vite の旧 plugin warning は解消。
+
+### 2026-09-28 20:39 Task 8 Adversarial Review Round 2: REQUEST_CHANGES
+
+- Report: `.sdd/reviews/001-agentic-ai-platform-8-r2.md`。
+- MEDIUM: base style が実際に使う `outline-ring/50` の alpha 合成後コントラストが light 2.2024:1、dark 2.5111:1 で3:1未達。静的 test も ring を検査していなかった。
+- LOW: alias / hermetic temporary probe の source と完全 command が未記録。
+- LOW: Task 8.3 `_Verify:_` が現在の静的 contrast gate を記載していない。
+- Round 1 の boundary、AI SDK cohort、Vite native path、border/input contrast の各修正は確認済み。
+
+### 2026-09-28 20:40 Task 8 Round 2 Remediation
+
+- Focus ring test RED:
+  - `scripts/check-web-theme.test.mjs` に sRGB alpha composition を追加し、background と 50% ring の実効コントラスト3:1を検査した。
+  - 既存 token で light 2.202404011776173:1、dark 2.5111493439967947:1 の2 tests が失敗した。
+- GREEN:
+  - light ring を `oklch(0.25 0.04 255)`、dark ring を `oklch(0.9 0.03 255)` に変更した。
+  - text / border / input / 50% ring の22/22 tests passed。
+- PROVE:
+  - Break applied: light ring を旧 `oklch(0.48 0.08 255)` に戻した。
+  - Failure observed: `expected 2.202404011776173 to be greater than or equal to 3`。
+  - Restored: yes。22/22 tests passed。
+- Task contract: 8.3 `_Verify:_` に current gate の text 4.5:1、UI boundary / 50% ring 3:1 と、27.3 の axe が完成画面を補完することを追記した。
+- Auto-debug escalation: contrast coverage の不足で2ラウンド続けて rejection となったため、fresh debugger に root-cause investigation を依頼した。
+
+### 2026-09-28 20:40 Temporary Probe Reproduction Record
+
+Task 21.1 より前に Web workspace の `test` script を追加しない所有分離を維持しつつ、Task 8 の config を再現できるよう temporary probe の完全な source と command を残す。
+
+**Component probe** — `apps/web/components/task8-probe.local.test.ts`:
+
+```ts
+import "server-only";
+import { expect, it } from "vitest";
+
+it("resolves server-only to its empty test module", () => {
+	expect(true).toBe(true);
+});
+```
+
+**Route probe** — `apps/web/app/api/task8-probe.local.test.ts`:
+
+```ts
+import { expect, it } from "vitest";
+import { consumeBlockedConnections } from "../../../../tooling/vitest/network-guard";
+
+it("loads the hermetic setup in the route project", async () => {
+	await expect(fetch("https://example.invalid/task8-probe")).rejects.toMatchObject({
+		code: "NETWORK_BLOCKED",
+	});
+	expect(consumeBlockedConnections()).toEqual(["https://example.invalid/task8-probe"]);
+});
+```
+
+**Creation / execution**:
+
+```sh
+mkdir -p apps/web/components apps/web/app/api
+cat > apps/web/components/task8-probe.local.test.ts <<'PROBE'
+import "server-only";
+import { expect, it } from "vitest";
+
+it("resolves server-only to its empty test module", () => {
+	expect(true).toBe(true);
+});
+PROBE
+cat > apps/web/app/api/task8-probe.local.test.ts <<'PROBE'
+import { expect, it } from "vitest";
+import { consumeBlockedConnections } from "../../../../tooling/vitest/network-guard";
+
+it("loads the hermetic setup in the route project", async () => {
+	await expect(fetch("https://example.invalid/task8-probe")).rejects.toMatchObject({
+		code: "NETWORK_BLOCKED",
+	});
+	expect(consumeBlockedConnections()).toEqual(["https://example.invalid/task8-probe"]);
+});
+PROBE
+cp apps/web/vitest.config.ts /tmp/task8-vitest.config.ts
+
+# Baseline: component / route の2 test が passed、reporter は executed=2 passed=2。
+AI_TEST_SUITE=local mise exec -- pnpm --filter web exec vitest run --config vitest.config.ts
+
+# Alias PROVE: index.js は client import を拒否するため、この command は failure でなければならない。
+perl -0pi -e 's|server-only/empty\.js|server-only/index.js|' apps/web/vitest.config.ts
+if AI_TEST_SUITE=local mise exec -- pnpm --filter web exec vitest run --config vitest.config.ts; then
+	echo "alias probe unexpectedly passed"
+	exit 1
+fi
+cp /tmp/task8-vitest.config.ts apps/web/vitest.config.ts
+
+# Hermetic PROVE: routes project だけ setupFiles を外し、この command は failure でなければならない。
+perl -0pi -e 's/(name: "routes",.*?setupFiles:) \[setupFile\]/$1 []/s' apps/web/vitest.config.ts
+if AI_TEST_SUITE=local mise exec -- pnpm --filter web exec vitest run --config vitest.config.ts; then
+	echo "hermetic setup probe unexpectedly passed"
+	exit 1
+fi
+cp /tmp/task8-vitest.config.ts apps/web/vitest.config.ts
+
+# Restoration: 2/2 passed を再確認して temporary files を削除する。
+AI_TEST_SUITE=local mise exec -- pnpm --filter web exec vitest run --config vitest.config.ts
+rm apps/web/components/task8-probe.local.test.ts apps/web/app/api/task8-probe.local.test.ts
+rmdir apps/web/components apps/web/app/api
+rm /tmp/task8-vitest.config.ts
+```
+
+Alias break の failure は `This module cannot be imported from a Client Component module`。Hermetic break の failure は expected `NETWORK_BLOCKED` に対する `getaddrinfo ENOTFOUND example.invalid`。
+
+### 2026-09-28 20:42 Auto-Debug Hypothesis and Different Approach
+
+- Debugger hypothesis (confidence: high): token 単体と実際の描画後の実効色を取り違え、既知 failure pair だけを逐次追加したため、Tailwind opacity modifier の `/50` を検査対象から漏らした。
+- Evidence: Tailwind は opacity modifier を透明色との mix として生成し、WCAG は author-defined focus indicator の隣接色に対する実効コントラストを評価する。最後の green（Task 7）には Web CSS / contrast test 自体が存在しなかった。
+- Recommended direction: generated CSS / computed style を完成画面の基準とし、静的 token test は高速な補助 guard とする。
+- Different approach applied in Task 8 scaffold:
+  - 半透明の `outline-ring/50` を token 調整だけで成立させる方式をやめ、base focus outline を `outline-ring`（opaque）へ変更した。
+  - static test は `@apply border-border outline-ring;` の契約と、background / ring token の3:1を検査する。これにより scaffold 時点では token ratio と rendered ratio を一致させる。
+  - 27.3 の browser lane で完成部品の generated CSS / computed style を検査する契約を Task 8.3 `_Verify:_` に明記した。
+- TDD RED: opaque outline contract を先に追加し、既存 `/50` に対して `expected ... to contain '@apply border-border outline-ring;'` で失敗した。
+- GREEN: CSS を opaque outline に変更し、23/23 tests passed。
+- PROVE: GREEN 後に `/50` へ戻すと同じ contract test が失敗。`outline-ring` へ復元して23/23 passed。
+
+### 2026-09-28 20:45 Task 8 Adversarial Review Round 3: REQUEST_CHANGES
+
+- Report: `.sdd/reviews/001-agentic-ai-platform-8-r3.md`。
+- MEDIUM: Task 8.3 が参照する future computed-style focus contrast test が Task 27.3 / plan の実行契約に未反映。
+- LOW: temporary probe 記録が literal `\\t` と非実行 comment/diff を含み、そのまま再現不能。
+- LOW: opaque-outline test が CSS 全文の `toContain` で、active universal base rule に限定されていない。
+
+### 2026-09-28 20:46 Task 8 Round 3 Remediation
+
+- Future browser ownership:
+  - `plan.md` の `apps/web/e2e/a11y.spec.ts` と `tasks-w5.md` 27.3 に、3エンジンで representative focusable component を focus し、`getComputedStyle` の outline/ring 実効色と隣接背景が3:1以上であることを検証する契約を追加した。
+- Scoped static contract:
+  - CSS comment を除去後、`@layer base` 内の universal `*` rule body だけを抽出する `baseUniversalRule()` を追加した。
+  - `@apply border-border outline-ring;` を検査し、`outline-ring/` opacity modifier がないことも検査する。23/23 tests passed。
+- Reproducible temporary probes:
+  - PDCA の probe source を実インデントへ修正し、heredoc 作成、config backup、alias break、routes setup break、restore、green rerun、cleanup の全 command をコピー実行可能な形で記録した。
+  - 記録した command をそのまま実行し、baseline 2/2 passed → alias expected failure → hermetic expected failure → restored 2/2 passed → cleanup を確認した。
+
+### 2026-09-28 20:50 Task 8 Adversarial Review Round 4: APPROVE
+
+- Report: `.sdd/reviews/001-agentic-ai-platform-8-r4.md`。
+- Unresolved findings: なし。Hallucination Signal は `forced: true`。
+- Confirmed: Task 27.3 の computed-style focus contrast ownership、copy-executable temporary probe、scoped opaque-outline test、single AI SDK cohort、native tsconfig paths、clean peer graph。
+
+### 2026-09-28 20:50 Task 8 Final Verification Checkpoint
+
+- `mise run setup` → frozen lockfile、424 packages、exit 0（Round 4 reviewer も独立再実行）。
+- `mise run typecheck` → 4/4 tasks successful。web の `next typegen && tsc --noEmit` を含む。
+- `mise run gate` → exit 0:
+  - Biome: 45 files。
+  - model-ID: 29 files。
+  - repository rules: 28 / 1 / 2 / 1 files。
+  - root: 10 files、`executed=257 passed=257 failed=0 skipped=0`（23 theme contrast tests を含む）。
+  - ai-core: `executed=3 passed=3 failed=0 skipped=0`、lines 100%。
+  - Turbo: 2/2 test tasks successful。
+- `pnpm peers check` → `No peer dependency issues found`。
+- `pnpm --filter web list ai --depth 10` → Web / ai-core / Ollama peer はすべて `ai@7.0.113`。
+- `git diff --check` → exit 0。
+- Status: Task 8.1〜8.3 complete、current wave の unchecked subtask は19件。
+
+### 2026-09-28 Task 8 Ship
+
+- `/sdd-ship agentic-ai-platform` → GO。境界違反なし、前提タスク 7.1 は完了。spec drift なし（`vite-tsconfig-paths` の不採用は plan・research に反映済み）。PROVE は Round 2 の temporary probe 記録と Round 4 の APPROVE で確認済み。
+- Gate: `mise run gate` → exit 0。model-ID 29 files、repo rules 28/1/2/1、root 10 files `executed=257 passed=257 failed=0 skipped=0`（+23: `scripts/check-web-theme.test.mjs`）、ai-core `executed=3 passed=3 failed=0 skipped=0`（`errors.ts` lines 100%）、turbo 2/2。
+- Mechanical fixes: AGENTS.md（プロジェクト状態に apps/web scaffold を追加）、traceability.md（1.1・NFR-09 の Test/Commit と Gaps）。
+- Commit: `1b456fb` feat(web): scaffold apps/web workspace with Vitest projects and WCAG theme tokens。
+
+### 2026-09-28 21:18 Task 9 Started
+
+- Objective: ModelCatalog の Zod 非依存型、6プロバイダのモデル情報、用途別既定値、検索、コスト見積もりを実装する。
+- Success criteria:
+  1. カタログの全エントリと用途別既定値が mode / provider / capability と整合する。
+  2. `mock` / `local` は単価なし、`live` は入出力単価ありで、watsonx.ai を含めない。
+  3. 検索・既定値解決・コスト見積もりが決定論的で、未知の組み合わせを拒否する。
+  4. 型は Zod 非依存で、モデル ID リテラルの一元管理 gate を通過する。
+- Official documentation checked: Anthropic models overview, OpenAI models/pricing, Microsoft Azure Foundry model catalog/pricing guidance, Google Gemini models/pricing, Ollama qwen3 and embeddinggemma library pages（2026-09-28 閲覧）。
+
+### 2026-09-28 21:18 Task 9 RED Evidence
+
+- Test: `packages/ai-core/src/models/catalog.test.ts`（7 tests を先に作成）
+- Command: `mise exec -- pnpm --filter @platform/ai-core exec vitest run src/models/catalog.test.ts --coverage.enabled=false`
+- Failure: `Cannot find module './catalog' imported from .../catalog.test.ts`、0 tests collected、exit 1。
+- SCAN: `packages/ai-core/src/models/` に既存テスト・実装はなく、回帰対象は `src/errors.test.ts` の3 tests のみだった。GREEN 後に新旧10 tests を同時実行して全件 green を確認した。
+
+### 2026-09-28 21:19 ❌ Error Encountered
+
+**Error**: GREEN 後の `mise run typecheck` で、literal tuple union に対する `includes()` の引数が `never` になり、価格オブジェクト union の optional property 参照も拒否された。`mise run lint` は optional-chain と format の違反を報告した。
+
+**Root Cause Investigation**:
+
+1. **Codebase Search**: エラーは新規 `catalog.ts` / `catalog.test.ts` に限定され、既存コードの型エラーではなかった。
+2. **Hypothesis**: `as const satisfies ModelCatalog` が各エントリの tuple / pricing を精密な union のまま保持するため、TypeScript 7.1 が union 上の `includes` 共通引数を `never` と推論し、全 variant にない `cacheReadPerMTok` の直接参照を許可しなかった。
+3. **Lint evidence**: Biome は同じ narrowing 条件を optional chain に簡約し、長い関数 signature の整形を要求した。
+
+**Solution Design / Execution**:
+
+- `includes` を `some((mode) => mode === target)` に変更し、価格の optional property は `"cacheReadPerMTok" in pricing` で narrow した。
+- mode のテスト cast は `never` でなく公開 `RunMode` 型を使い、`mise run lint:fix` で規約どおり整形した。
+
+**Result**: `mise run typecheck` → 4/4 tasks successful。対象7 tests と既存3 tests → 10/10 passed。
+
+**Learning**: `as const satisfies` で heterogeneous literal object を保持する場合、union の共通メソッド引数と optional property は明示的な predicate / `in` narrowing を使う。
+
+### 2026-09-28 21:20 Task 9 PROVE Evidence
+
+- Break applied: `estimateCost` の `total` を一時的に `0` 固定へ変更した。
+- Failure observed: `estimates input, output, and cache-read cost in USD and omits unpriced modes` が `expected total: 52.2`, `received total: 0` で失敗（1 failed / 6 passed）。
+- Restore incident: PROVE shell の一時変数名 `status` が zsh の read-only parameter と衝突し、restore 行の前で shell が停止した。バックアップ `/tmp/task9-catalog.ts` の存在を確認して即時復元し、同じ対象テストを 7/7 green で再実行した。実装上の不具合ではなく検証 harness の変数名衝突であり、以後 zsh では `status` を一時変数に使わない。
+- Restored: yes。
+
+### 2026-09-28 21:21 Task 9 Verification Evidence
+
+- Targeted regression: `mise exec -- pnpm --filter @platform/ai-core exec vitest run src/errors.test.ts src/models/catalog.test.ts --coverage.enabled=false --reporter=verbose` → 2 files、10/10 passed。新規7 tests は個別名付きで実行された。
+- Touched-file coverage: `mise exec -- pnpm --filter @platform/ai-core exec vitest run src/models/catalog.test.ts --coverage.enabled --coverage.reporter=text --coverage.thresholds.lines=0 --coverage.include=src/models/catalog.ts --coverage.include=src/models/types.ts` → 7/7 passed、`catalog.ts` lines 100%、functions 100%、branches 82.35%。`types.ts` は型のみのため V8 executable coverage 対象外。
+- Typecheck: `mise run typecheck` → root / ai-core / eval-suite / web の4/4 tasks successful。
+- Model ID policy: `mise run check:model-ids` → 31 files scanned、exit 0。
+- Status: 9.1・9.2 を `[x]` に更新。依存追加、既存テスト変更、task boundary 外変更なし。
+
+### 2026-09-28 21:22 Task 9 Complete Non-Vacuous Audit
+
+GREEN 後、7件すべての新規テストについて独立した deliberate break を適用し、対象テストだけを `-t` で実行した。各 mutation は期待した assertion で exit 1 となり、毎回ファイルを復元した。
+
+| Test | Break applied | Failure observed |
+|---|---|---|
+| catalog consistency | 最初の `contextWindow` を `0` | `expected 0 to be greater than 0` |
+| default compatibility | mock structured 既定値を embedding model に変更 | `expected false not to be false` |
+| filter behavior | `listModels` の predicate を常に false に変更 | `expected [] to deeply equal [ …(4) ]` |
+| cost estimate | `total: 0` | expected `52.2`, received `0` |
+| unknown rejection | unknown ID で先頭 entry を返す | `expected function to throw an error, but it didn't` |
+| cassette catalog membership | cassette discovery を常に `[]` に変更 | synthetic cassette に対し `expected [] to deeply equal [ 'claude-sonnet-4-6' ]` |
+| client-safe types | `types.ts` に一時的な `from "zod"` 文字列を追加 | `expected ... not to match /from\\s+["']zod["']/` |
+
+- Cassette test refinement: 現時点では同梱カセットが0件のため将来分の loop だけでは vacuous になる。`MODEL_CATALOG` から動的に得た ID を temporary cassette に書き、scanner が1件を抽出してカタログ照合する assertion を同じテストへ追加した。後続タスクで同梱カセットが追加されると、同じ test が bundled IDs も走査する。
+- Restore verification: audit 後に対象 suite を再実行し 7/7 passed。
+
+### 2026-09-28 21:22 Task 9 Final Gate
+
+- `mise run gate` → exit 0。
+- Biome: 48 files。model-ID: 31 files。repository rules: 31 / 1 / 2 / 1 files。
+- Root execution unit: 10 files、`executed=257 passed=257 failed=0 skipped=0`。
+- ai-core execution unit: 2 files、10/10 passed（Task 9 で +7 tests）、lines 100%、functions 100%、branches 83.33% overall。`catalog.ts` lines 100%、functions 100%、branches 82.35%。
+- Turbo: 2/2 test tasks successful。既知の `no output files found for @platform/ai-core#test` warning は test task に生成物を宣言していないための非失敗 warning。
+- VDD risk gate: task boundary 外変更なし、依存追加なし、既存テスト変更なし、coverage drop なし、全7新規テストの PROVE evidence あり。独立 reviewer trigger なし。
+
+### 2026-09-28 21:35 Task 9 Validation & Ship
+
+- Verdict: GO（spec drift 1件は人間の判断で plan を実装に合わせて解消）。
+- Spec drift: plan C5 の ModeDefault は provider ごとに全用途必須だったが、Anthropic・Azure は埋め込みモデルを持たないため実装は `Partial` で、未定義の組み合わせは `RangeError`。`ModelId` は plan ではリテラル union だったが、`types.ts` を `catalog.ts` から独立させるため `ModelId = string`、リテラル union は `CatalogModelId`。承認を得て plan.md（C5 Public interface、データモデル表）を更新した。
+- Validation check: `toHaveProperty(id)` にドットを含む ID（`gpt-5.1` など）を渡しても自身のキーとして照合されることを一時テストで確認し、削除した（将来のカセット照合での誤検出はない）。
+- Gate: `mise run gate` → exit 0。ai-core `executed=10 passed=10 failed=0 skipped=0`（`catalog.test.ts` 7 tests）、`catalog.ts` lines 100% / branches 82.35%。root `executed=257 passed=257`。`mise run typecheck` → 4/4 successful。
+- Mechanical fixes: traceability.md（2.2・2.8・2.10・2.17・2.18・NFR-13 の Test/Commit、Gaps）、AGENTS.md（プロジェクト状態にモデルカタログを追加）。
+- Commit: `9b4631b` feat(ai-core): add model catalog with defaults, lookup, and cost estimation。
+
+### 2026-09-28 Task 10 Started
+
+- Objective: C10 Ports（Clock / HTTP / YouTube transcript / Tavily search）を差し替え可能な公開 API として実装する。
+- Success criteria:
+  1. fake Clock は手動進行で `now()` と期限到来時の `AbortSignal` を決定論的に更新する。
+  2. HTTP ポートは注入した `fetch` の status / headers / body を写像し、呼び出し元の signal を同一参照で渡す。
+  3. YouTube 字幕ポートはタイムスタンプ付き segment を写像し、字幕なし・非公開・その他取得失敗を閉じた理由へ分類する。
+  4. Tavily ポートは result を `SearchHit` へ写像し、signal を注入クライアントへ渡して中断を呼び出し元へ反映する。
+  5. `@platform/ai-core/ports` は UI 依存や `any` を公開せず、全 gate を通過する。
+- Approach: 4サブタスク分の契約テストを先に追加し、RED を確認後、最小実装・個別 PROVE・全 gate の順に進める。
+
+### 2026-09-28 21:39 ❌ Typecheck / Lint Error Encountered
+
+**Error**: `mise run typecheck` が implicit any、`exactOptionalPropertyTypes` 下の youtubei 構造型不一致、未解決 `signal: undefined`、pending Promise の推論 `Promise<unknown>` で失敗。`mise run lint` は import 順・改行など6件の整形違反。
+
+**Context**: GREEN の runtime tests 12件成功後、strict typecheck と Biome を初実行した。
+
+**Root Cause Investigation**:
+
+1. **Documentation / dependency declarations**: インストール済み `youtubei.js@18.1.0` の `VideoInfo.basic_info` はプロパティ自体が必須で値が `undefined` を含む。一方、最初のテスト用構造型は exact optional property として宣言したため代入互換でなかった。Tavily の SDK options は index signature を持つが公式の専用 `AbortSignal` option はない。
+2. **Codebase / compiler output**: `tsconfig.base.json` の strict + `exactOptionalPropertyTypes` により、optional property へ明示的な `undefined` を渡すことと、`Promise(() => {})` の未指定 generic が拒否された。`Object.freeze` の object literal では Clock の contextual typing が失われ `ms` が implicit any になった。
+3. **Hypothesis**: 外部ライブラリ型をテスト用最小 interface へ直接代入しようとしたことと、exact optional の値を常に構築したことが原因。runtime ロジックの失敗ではない。
+
+**Solution Design**:
+
+- youtubei 本番 client は小さな adapter で内部ポート形へ明示写像し、テスト double と本番型を同じ interface に直接代入しない。
+- optional `signal` は存在するときだけ options に加え、pending Promise に結果型を付ける。
+- callback parameter を明示し、Biome は定義済み `mise run lint:fix` で機械整形する。
+
+### 2026-09-28 21:37 Task 10 RED Evidence
+
+- Command: `mise exec -- pnpm --filter @platform/ai-core exec vitest run src/ports/clock.test.ts src/ports/http.test.ts src/ports/transcript.test.ts src/ports/web-search.test.ts --coverage.enabled=false --reporter=verbose`
+- Result: exit 1。4 suite すべてが実装 module 不在の `ERR_MODULE_NOT_FOUND`（`./clock` / `./http` / `./transcript` / `./web-search`）で失敗した。
+- SCAN baseline: 対象 symbol と `src/ports/` は新規で既存 test 参照なし。回帰対象として既存 `errors.test.ts` / `models/catalog.test.ts` を最終 gate で再実行する。
+
+### 2026-09-28 21:38 Task 10 GREEN Evidence
+
+- Minimal implementation: `Clock`、Web 標準 fetch adapter、youtubei adapter と閉じた失敗理由、Tavily adapter、`ports/index.ts` の公開 API を追加した。
+- Targeted verification: 4 files、12/12 passed。
+- Typecheck / lint resolution result: youtubei の外部型を内部の最小 interface へ明示写像し、exact optional property を条件付き spread で構築した。`signal` も存在時だけ option に追加した。`mise run typecheck` は4/4 tasks successful、`mise run lint` は57 files scanned で成功。
+- Learning: 外部 SDK の巨大な戻り型をテスト seam の構造型へ直接代入せず、本番 adapter とテスト double が共有する小さな内部契約へ正規化すると、strict/exact optional を保ったまま差し替え可能になる。
+
+### 2026-09-28 21:39 Task 10 PROVE Evidence
+
+各新規 test について実装を1か所ずつ deliberate break し、対象 test だけを実行して exit 1 と期待 assertion を確認後、毎回復元した。最初の自動化は package-relative test path を root-relative のまま渡して test discovery で失敗したため、原因を確認して `packages/ai-core/` prefix を除くよう修正し、全12件を再実施した。
+
+| Test | Break applied | Failure observed |
+|---|---|---|
+| fake time progression | `currentTime += 0` | `expected 1000 to be 1250` |
+| fake timeout | deadline 判定を常に false | `expected false to be true` |
+| system clock | `now()` を `0` に固定 | 差分が `expected ... to be less than 100` |
+| HTTP mapping | status を `0` に固定 | response object の deep equality failure |
+| HTTP signal | fetch へ空 init を渡す | injected fetch の call arguments mismatch |
+| transcript mapping | `startSeconds` を `0` に固定 | `TranscriptResult` deep equality failure |
+| no-captions mapping | 理由を `fetch-failed` に変更 | expected `no-captions`, received `fetch-failed` |
+| private mapping | 理由を `fetch-failed` に変更 | expected `private`, received `fetch-failed` |
+| fetch-failed mapping | fallback を `no-captions` に変更 | expected `fetch-failed`, received `no-captions` |
+| private metadata | private 判定を無効化 | expected `private`, received `no-captions` |
+| Tavily mapping | snippet を空文字に固定 | `SearchHit[]` deep equality failure |
+| Tavily signal | client へ空 options を渡す | injected client の call arguments mismatch |
+
+- Restore verification: 4 files、12/12 passed。
+
+### 2026-09-28 21:40 Task 10 Verification Evidence
+
+- Targeted tests: 4 files、12/12 passed。
+- Touched-file coverage run: lines 77%。内訳は `clock.ts` 96.42%、`http.ts` 100%、`transcript.ts` 67.27%、`web-search.ts` 71.42%。未実行行の中心は実ネットワーク用 youtubei adapter と abort race の resolve/reject cleanup で、gate 全体の ai-core lines は 81.45% と NFR 80% を維持した。
+- Full gate: `mise run gate` → exit 0。Biome 57 files、model-ID 40 files、repository rules 40 / 1 / 2 / 1 files。root `executed=257 passed=257 failed=0 skipped=0`。ai-core 6 files、22/22 passed、lines 81.45%。
+- Typecheck: `mise run typecheck` → 4/4 tasks successful。
+- Status: 10.1〜10.4 を `[x]` に更新。依存追加・既存 test 変更・task 実装 boundary 外のコード変更なし。全12新規 test の PROVE evidence あり、VDD reviewer trigger なし。
+
+### 2026-09-28 Task 10.3・10.4 Remediation（`/sdd-ship` NO-GO への対応）
+
+- Trigger: `/sdd-ship` が constitution 原則 5（外部 API の応答を Zod で検証する）と plan の原則チェック（C10）への違反で NO-GO。人の判断で「実装を直す」（選択肢 A）を選んだ。
+- Objective: Tavily と youtubei.js の応答を `unknown` として受けて Zod で検証し、検証の失敗を閉じたエラーに写像する。あわせて失敗分類の過剰な一致と `raceWithAbort` の重複を解消する。
+- Success criteria:
+  1. 形式が崩れた Tavily 応答（`results` 欠落、`score` 欠落、http/https 以外の `url`）は `PlatformError("source-unavailable", { provider: "tavily" })` で失敗する。
+  2. 形式が崩れた youtubei 応答（`is_private` の型、`start_ms` の型、`snippet.text` の型）は `TranscriptSourceError("fetch-failed")` で失敗し、`no-captions` や `private` に誤分類されない。
+  3. "transcript" を含むだけのネットワークエラーは `fetch-failed` に分類される。
+  4. 呼び出し元の中断は `TranscriptSourceError` ではなく中断理由のまま伝わる。
+
+#### RED Evidence
+
+- Command: `mise exec -- pnpm exec vitest run src/ports/transcript.test.ts src/ports/web-search.test.ts --coverage.enabled=false`
+- Result: exit 1。16件中8件が期待どおりの assertion で失敗した（Tavily 不正応答3件は `TypeError` または resolve、youtubei 不正応答は `private` / `no-captions` への誤分類または resolve、"Failed to fetch transcript: …" は `no-captions` に誤分類）。中断理由の伝播と `publishedDate` の省略の2件は既存の挙動の特性化テストとして最初から成功し、PROVE で非空虚性を確認した。
+- SCAN: 変更する symbol は `ports/` 内だけで参照され、既存の対象テストは `transcript.test.ts` / `web-search.test.ts`。youtubei のスタブの `snippet` を `{ toString }` から youtubei の `Text` と同じ `{ text }` に改めた（`Text.text` を読む実装に合わせ、スタブを実物の形に近づけた）。
+
+#### GREEN
+
+- `web-search.ts`: `tavilyResponseSchema`（`url` は `z.url({ protocol: /^https?$/ })`、`publishedDate` は `nullish`）で `safeParse` し、失敗は `issues` のパスを details に含めて `source-unavailable`。注入 client の戻り型を `Promise<unknown>` にした。
+- `transcript.ts`: `basicInfoSchema` と `transcriptInfoSchema`（`content` / `body` は youtubei の型どおり `nullish`、`snippet.text` は `optional`）で検証し、失敗は `parseOrFail` が `fetch-failed` を投げる。本番 adapter は手書きの写像をやめ、`innertube.getInfo(videoId)` の `VideoInfo` をそのまま返す（`getTranscript()` は元のインスタンスで呼ぶので `this` を保つ）。`classifyFailure` の `no-captions` 判定を youtubei の定型文 "no transcript" に限定した。
+- `abort.ts`: 共有の `raceWithAbort` を新設し（`./ports` からは公開しない）、tasks.md の Task 10・10.3 の `_Boundary:_` に加えた。
+- Biome の整形違反1件は `mise run lint:fix` で修正した。
+
+#### ❌ Vacuous Test Detected（PROVE 中）
+
+**Error**: 不正な youtubei 応答のケースのうち「`getTranscript()` が `null`」と「segment の `snippet` 欠落」は、検証を無効化しても `TypeError` → `fetch-failed` に分類されて成功し続けた。
+
+**Root Cause**: 検証なしでもプロパティ参照が `TypeError` を投げ、それが `classifyFailure` で `fetch-failed` になるため、その入力では Zod の有無を区別できない。
+
+**Solution**: 検証なしでは例外にならず誤った値が流れる入力（`snippet: { text: 42 }`）に置き換えた。Tavily の破壊も `if (false)`（`parsed.data` が `undefined` になり別の理由で失敗する）から「検証を丸ごと飛ばす」`{ success: true, data: raw }` に改めた。
+
+#### PROVE Evidence
+
+| Test | Break applied | Failure observed |
+|---|---|---|
+| fetch-failed（"Failed to fetch transcript: …"） | `no-captions` 判定を `includes("transcript")` に戻す | expected `fetch-failed`, received `no-captions` |
+| malformed metadata | `parseOrFail` が検証失敗時に値をそのまま返す | expected `fetch-failed`, received `private` |
+| malformed segment timing | 同上 | promise resolved instead of rejecting |
+| malformed segment snippet | 同上 | promise resolved instead of rejecting |
+| caller abort reason | catch 内の `if (signal?.aborted) throw signal.reason` を削除 | expected `{ name: "AbortError" }`, received `TranscriptSourceError` |
+| maps youtubei segments（スタブ変更） | segment の `text` を `""` に固定 | `TranscriptResult` deep equality failure |
+| omits missing/null publishedDate | `publishedDate: result.publishedDate` を常に設定 | `SearchHit[]` deep equality failure |
+| Tavily missing results | `safeParse` を `{ success: true, data: raw }` に置換 | received `TypeError`, expected `PlatformError` |
+| Tavily missing score | 同上 | promise resolved instead of rejecting |
+| Tavily non-http url | `z.url()` から protocol 制限を外す | promise resolved instead of rejecting |
+
+- Restore verification: `cmp` で元ファイルと一致、`src/ports` 21/21 passed。
+
+#### Verification Evidence
+
+- Full gate: `TURBO_FORCE=true mise run gate` → exit 0。Biome 58 files。root `executed=257 passed=257 failed=0 skipped=0`。ai-core `executed=31 passed=31 failed=0 skipped=0`（22件 → 31件、+9: transcript 5→10、web-search 2→6）。
+- Coverage（ai-core lines 81.45% → 94.91%）: `transcript.ts` 67.27% → 93.18%、`web-search.ts` 71.42% → 100%、`abort.ts` 80%（未実行は reject 側の listener 解除）。
+- Typecheck: `mise run typecheck` → 4/4 tasks successful。
+- VDD trigger: 境界外の新規ファイル（`abort.ts`、境界宣言を更新済み）と既存テストのスタブ変更。`sdd-reviewer` で独立レビューを実施（結果は下記）。
+- Learning: 「検証なしでも失敗する」入力は、検証の有無を区別しない。Zod 検証の PROVE では、検証を外したときに誤った値が黙って通る入力を選ぶ。
+
+#### VDD Review（round 1）: REQUEST_CHANGES
+
+- Reviewer: `sdd-reviewer`（`.sdd/reviews/agentic-ai-platform-10.3-10.4.md`）。trigger（境界外の `abort.ts`、スタブ変更）は妥当と判定された。実物の youtubei parser インスタンスで schema が通ることも reviewer が確認した。
+- 指摘: H-1（`@tavily/core` が未知の option を本文へ直列化するため `signal` が `"signal":{}` として送られ、要求も止まらない）、M-1（失敗した `Innertube.create()` の永続キャッシュ）、M-2（`no-captions` の空応答と `private` の分類に test がない）、M-3（`playability_status` で報告される非公開動画を `private` にできない）、L-1〜L-6。
+
+#### Round 1 修正の RED / GREEN / PROVE
+
+- RED: 34件中8件が期待どおりの assertion で失敗した（SDK 例外が raw `Error`、SDK に `{ signal }` が渡る、循環 `info` で `TypeError`、"private member" が `private` に誤分類、年齢制限の LOGIN_REQUIRED が `private` に誤分類、`start_ms: ""` が resolve、playability の非公開が `fetch-failed`、失敗した client が再利用される）。`no-captions` の空応答4件と `info.reason` の非公開1件は既存の挙動の特性化テストとして成功し、PROVE で非空虚性を確認した。
+- GREEN: H-1・M-1・M-2・M-3・L-1・L-2・L-3・L-6 を修正した。L-4（`type` による header 判別）は見送り、L-5（非 http URL の fail-closed）は意図として tasks.md に記録した。plan.md のファイル表に `ports/abort.ts` を追加した。
+
+| Test | Break applied | Failure observed |
+|---|---|---|
+| private（`info.reason`） | `info` の詳細を読まない | expected `private`, received `fetch-failed` |
+| 年齢制限 LOGIN_REQUIRED / private member | 非公開判定を `includes("private") \|\| includes("login_required")` に戻す | 2件とも expected `fetch-failed`, received `private` |
+| 循環 `info` | `JSON.stringify(cause.info)` に戻す | received `TypeError: Converting circular structure`, expected `fetch-failed` |
+| empty segment start | 数字列の regex を外す | promise resolved instead of rejecting |
+| no-captions の空応答4件 | `segments.length === 0` の判定を削除 | 4件とも promise resolved instead of rejecting |
+| playability の非公開 | `playability_status` の判定を削除 | expected `private`, received `fetch-failed` |
+| client の再作成 | 失敗時の cache 解除を削除 | 2回目の呼び出しが reject |
+| SDK 例外の包み | catch で元の例外を再送出 | received `Error`, expected `PlatformError` |
+| 本番 SDK へ signal を渡さない | adapter が options を SDK へ渡す | `sdkSearch` の呼び出し引数の不一致 |
+
+- Restore verification: `cmp` で元ファイルと一致、`src/ports` 34/34 passed。
+- Full gate: `TURBO_FORCE=true mise run gate` → exit 0。Biome 58 files。root `executed=257 passed=257`。ai-core `executed=44 passed=44 failed=0 skipped=0`（31件 → 44件）、lines 96.12%（`transcript.ts` 96%、`web-search.ts` 100%、`abort.ts` 80%）。`mise run typecheck` → 4/4 successful。
+- Learning: 注入 client の契約と本番 SDK の実際の option 処理は一致するとは限らない。SDK の option を通す adapter は、SDK の実装（`__objRest` → body）を読み、本番 adapter 自体を module mock で検証する。
+
+#### VDD Review（round 2）: APPROVE_WITH_NOTES と LOW の解消
+
+- Reviewer は H-1・M-1〜M-3・L-1〜L-3・L-5・L-6 を解消済み、L-4 を記録済みの見送りと判定した。残りの LOW 3件（`end >= start` の refine、"Private video" の文言、`abort.ts` の reject 側の解除）はどれも test の不足だったので、test を加えて解消した。
+
+| Test | Break applied | Failure observed |
+|---|---|---|
+| inverted segment timing | refine を常に true にする | promise resolved instead of rejecting |
+| playability reason "Private video" | 非公開判定を "video is private" だけにする | expected `private`, received `fetch-failed` |
+| Tavily SDK 例外（signal あり） | `raceWithAbort` の reject 側を resolve にする | expected `source-unavailable` の SDK 例外, received 応答形式の `PlatformError` |
+
+- Restore verification: `cmp` で一致、`src/ports` 36/36 passed。
+- Final gate: `TURBO_FORCE=true mise run gate` → exit 0。Biome 58 files、root `executed=257 passed=257`、ai-core `executed=46 passed=46 failed=0 skipped=0`、lines 97.67%（`abort.ts` 100%、`transcript.ts` 96%、`web-search.ts` 100%）。`mise run typecheck` → 4/4 successful。
+- Status: 10.3・10.4 は `[x]` のまま（VERIFY green）。次は `/sdd-ship agentic-ai-platform Task10`。
+
+### 2026-09-28 22:28 Task 10 Validation & Ship
+
+- Verdict: GO（spec drift 1件は人間の判断で plan を実装に合わせて解消）。
+- Spec drift: plan C10 に失敗の契約（`TranscriptSourceError` を `./ports` から公開、Tavily の失敗は `PlatformError("source-unavailable", { provider: "tavily" })`、http/https 以外の URL を含む応答は fail-closed）、本番ファクトリの注入用引数、Tavily SDK の HTTP 要求が中断されない制約の記述がなかった。承認を得て plan.md の C10 Public interface を更新した。
+- Review: `.sdd/reviews/agentic-ai-platform-10.3-10.4.md` round 2 APPROVE_WITH_NOTES。残った LOW 3件（逆転した segment 時刻、"Private video" の文言、`raceWithAbort` の reject 経路）はテスト追加で解消済み。
+- Gate: `mise run gate` → exit 0。ai-core `executed=46 passed=46 failed=0 skipped=0`（`--force` の再実行でも同じ）、`src/ports` lines 97.14% / branches 87.67%。root `executed=257 passed=257`。`tsc --noEmit`（ai-core）→ exit 0。
+- Mechanical fixes: traceability.md（2.15・5.7 の Test/Commit、Gaps）、AGENTS.md（プロジェクト状態に ports を追加）。
+- Commit: `fb60281` feat(ai-core): add clock, HTTP, transcript, and web search ports。
+
+### 2026-09-28 22:35 Task 11 Started
+
+- Objective: `@platform/ai-core/testing` に AI SDK v7 のモックモデル factory、理由付き local-only test helper、fake clock の再公開を追加する。
+- Success criteria:
+  1. text / tool-call / object の各 factory が `doGenerate` と `doStream` の双方で指定値を返す。
+  2. local 不可時は suite / test が `localAvailability.reason` を note として skip する。
+  3. local 可時は suite / test body が通常どおり実行される。
+  4. 公開 subpath は factory、`describeLocal` / `itLocal`、`createFakeClock` を型安全に公開する。
+- SCAN: `src/testing/` の既存実装・テストはなし。ai-core baseline は 6 files、46/46 passed。
+
+### 2026-09-28 22:41 ❌ Task 11 GREEN Attempt Error
+
+- Error: unavailable test が `expected vi.fn() to be called 1 times, but got 2 times` で失敗した。
+- Root cause: suite body と test body に同じ spy を使い、Vitest の `context.skip()` が制御を中断する実挙動を mock が再現していなかった。実装ではなく test double の誤り。
+- Fix: suite / test の spy を分離し、test 側の `skip` stub は sentinel error を投げて callback の中断を再現する。
+- Follow-up: sentinel は同期 throw なのに `rejects` を使っていたため runner へ漏れた。`toThrow` に修正した。
+
+### 2026-09-28 22:42 ❌ Task 11 Typecheck / Lint Error
+
+- Error: `@ai-sdk/provider` は ai-core の直接依存でなく test import を解決できず、`ai` は V4 provider 内部型の一部を公開していなかった。Biome は2ファイルの整形差分を検出した。
+- Root cause: pinned AI SDK の公開 surface を超えて provider 内部型を直接参照していた。
+- Fix: `MockLanguageModelV4["doGenerate"]` / `["doStream"]` の戻り型から finish reason・usage・stream part を導出し、test の収集配列は `unknown[]` にした。整形は project task `mise run lint:fix` を使う。
+
+### 2026-09-28 22:45 Task 11 RED / GREEN / PROVE Evidence
+
+**RED evidence**
+
+- Command: `mise exec -- pnpm --filter @platform/ai-core exec vitest run src/testing/mock-models.test.ts src/testing/local-only.test.ts --coverage.enabled=false`
+- Result: 2 suites failed at import with `Cannot find module './mock-models'` / `Cannot find module './local-only'`; gate reporter reported `executed=0`.
+
+**GREEN evidence**
+
+- Implemented `MockLanguageModelV4` factories with `simulateReadableStream`, local-only registration helpers backed by injected `localAvailability`, the `./testing` barrel, and ai-core global setup registration required to provide the context.
+- Targeted result after fixing the test double: 2 files、5/5 passed。
+
+**PROVE evidence**
+
+| Test | Break applied | Failure observed |
+|---|---|---|
+| configured text | generation text を `"broken"` に固定 | `expected ... to match object`、1 failed |
+| configured tool call | serialized input を `"{}"` に固定 | `expected ... to match object`、1 failed |
+| configured object | object serialization を `"{}"` に固定 | `expected ... to match object`、1 failed |
+| unavailable reason | suite / test の `context.skip(reason)` を削除 | `expected function to throw an error, but it didn't` |
+| local available | `itLocal` が test body を呼ばないよう変更 | `expected "vi.fn()" to be called once, but got 0 times` |
+
+- Restore: `/tmp` の原本と `cmp` 一致。5つの deliberate break はすべて exit 1、復元済み。
+
+### 2026-09-28 22:47 Task 11 Targeted Verification
+
+- Targeted: 2 files、5/5 passed。
+- ai-core regression: 8 files、51/51 passed（baseline 46 → 51）。
+- Typecheck: `mise run typecheck` → 4/4 tasks successful。
+- Status: 11.1・11.2 を `[x]` に更新。
+- VDD trigger: `packages/ai-core/vitest.config.ts` は Task 11 の宣言 boundary 外。ただし `inject("localAvailability")` を実際の ai-core local suite で成立させる prerequisite fix のため、独立 reviewer を実行する。
+
+### 2026-09-28 22:49 ❌ PROVE Script Error
+
+- Error: zsh の readonly parameter `status` へ代入し、RED command 後に script が中断した。
+- Root cause: shell の予約 parameter 名を exit code 変数に使った。テスト自体は barrel から `createFakeClock` を除いた状態で期待どおり import error になった。
+- Fix: 原本を即時復元し、以降は `test_exit` を使う。
+
+### 2026-09-28 22:50 Task 11.2 Barrel RED / GREEN / PROVE
+
+- Coverage gap found during refactor: `createFakeClock` の `./testing` barrel 再公開を直接検証していなかった。
+- RED / PROVE: `index.ts` から export を除いた状態で新規 test を実行し、`TypeError: createFakeClock is not a function`（1 failed / 2 passed）を確認。
+- GREEN: export を復元し、3/3 passed。
+
+### 2026-09-28 22:56 ❌ VDD Remediation Type Error
+
+- Error: Vitest `SuiteFactory` は suite の `TestAPI` 引数を必須とするため、wrapper 内の `factory()` が `Expected 1 arguments, but got 0` になった。
+- Root cause: LOW finding の型修正で実際の Vitest callback 型を採用したが、suite context の転送を実装していなかった。
+- Fix: wrapper が受け取る suite API を `factory(suite)` へ転送する。
+
+### 2026-09-28 22:58 Task 11 VDD Remediation
+
+- Reviewer verdict: `REQUEST_CHANGES`（`.sdd/reviews/agentic-ai-platform-11.md`）。MEDIUM 2件（boundary、実 Vitest 結線テスト）と LOW 1件（callback 型）を修正した。
+- Boundary: Task 11 / 11.2 に `packages/ai-core/vitest.config.ts` を追加し、plan C18 と File Structure の責務へ `global-setup-local` 登録を明記した。
+- Integration RED: config から `globalSetup` を外して公開 `describeLocal` / `itLocal` を使う test を追加したところ、collection が `Cannot read properties of undefined (reading 'available')` で失敗し、gate reporter も executed=0 で失敗した。
+- Integration GREEN: config を復元し、targeted は 7 passed / 2 skipped。skip reason は `Local tests require AI_TEST_RUN_MODE=local.` として2件集計された。
+- Public types: `SuiteFactory` / `TestFunction` / `TestContext` を採用し、suite API と完全な test context を callback へ転送する。integration test は callback の `it` / `expect` を型付きで利用する。
+- Follow-up type error: `SuiteFactory` 引数は `{ it }` object ではなく callable `TestAPI` 自体だった。integration test を `(localIt) => localIt(...)` に修正した。
+
+### 2026-09-28 23:00 Task 11 Final Verification
+
+- Full gate: `mise run gate` → exit 0。Biome 63 files、model-ID 46 files、repository rules 46 / 1 / 2 / 1 files。root `executed=257 passed=257 failed=0 skipped=0`。ai-core `executed=53 passed=53 failed=0 skipped=2`、skip reason `Local tests require AI_TEST_RUN_MODE=local.` 2件、lines 98.01%。
+- Typecheck: `mise run typecheck` → 4/4 tasks successful。
+- VDD round 2: `.sdd/reviews/agentic-ai-platform-11.md` → `APPROVE`、新規 finding なし。
+- Status: Task 11.1 / 11.2 完了。次の未完了大タスクは Task 12。
+
+### 2026-09-29 19:06 Task 11 Validation & Ship
+
+- Verdict: GO。11.1・11.2 は `[x]`、Req 1.13・1.14 は traceability に対応付け済み。境界外だった `packages/ai-core/vitest.config.ts` は VDD 指摘で T-11・T-11.2 の `_Boundary:_` と plan C18 に反映済み（Round 2 APPROVE）。
+- Gate: `mise run gate` → exit 0。Biome 63 files、model-ID 46 files、repository rules 46 / 1 / 2 / 1 files。root `executed=257 passed=257 failed=0 skipped=0`。ai-core `executed=53 passed=53 failed=0 skipped=2`（理由 `Local tests require AI_TEST_RUN_MODE=local.` 2件）、lines 98.01%、`src/testing` lines 100% / branches 83.33%。`mise run typecheck` → 4/4 successful。
+- Mechanical fixes: traceability.md（1.13・1.14 の Test/Commit、Gaps）、AGENTS.md（プロジェクト状態に testing helpers を追加）。
+- Commit: `cbb94bd` feat(ai-core): add mock model factories and local-only test helpers。
+
+### 2026-09-30 20:59 Task 12 Started
+
+- Objective: PlatformConfig の環境変数検証、機能別必須変数、実行モード解決、型付き設定読み込みを TDD で実装する。
+- Scope: Task 12.1〜12.4 の宣言 boundary 内のみ。外部サービス不要の pure unit-test lane のため preflight は省略した。
+- Success criteria:
+  - Task fidelity: `.env.example` と Zod schema の変数名が完全一致し、既定値・数値変換・不正値拒否を自動検証する。
+  - Safety: `mock` 録画、カタログ外モデル ID、不足した秘密変数を起動時に fail-closed で拒否する。
+  - Consistency: Vitest 内は `mock`、通常実行は `local` を既定とし、明示 override だけを反映する。
+  - Maintainability: 機能 ID・必須変数・公開設定型を閉じた型として公開し、`process.env` 読み取りを設定 loader の既定引数1か所に限定する。
+  - Verification: 新規 tests、ai-core regression、`mise run gate`、`mise run typecheck` が成功する。
+- RED approach: 12.1〜12.4 の期待契約を4つの隣接 test file に先に記述し、未実装 module import による失敗を確認する。
+
+### 2026-09-30 21:00 Task 12 RED Evidence
+
+- Command: `AI_TEST_RUN_MODE=mock AI_TEST_SUITE=gate mise exec -- pnpm --filter @platform/ai-core exec vitest run src/config/env-schema.test.ts src/config/feature-requirements.test.ts src/config/run-mode.test.ts src/config/load.test.ts`
+- Result: exit 1。4 suites が `Cannot find module './defaults'` / `'./env-schema'` / `'./run-mode'` で失敗し、実装前の RED を確認した（executed=0 は未実装 import による collection failure）。
+
+### 2026-09-30 21:01 ❌ Targeted GREEN Command Coverage Failure
+
+- Error: 新規 4 files は 21/21 passed したが、targeted Vitest 実行が ai-core 全体の coverage threshold 80% を適用し、未収集の既存 module が 0% となって lines 30.58% で exit 1 になった。
+- Root cause investigation:
+  1. Vitest output は assertion failure 0件、coverage global threshold だけを failure と報告した。
+  2. `packages/ai-core/vitest.config.ts` は `src/**/*.ts` 全体を coverage include に指定し、gate suite では lines 80% を常時強制する。
+  3. Hypothesis: 実装 failure ではなく、ファイル限定 command と global coverage policy の不整合である。
+- Solution: coverage を無効化して同じ targeted tests の assertion を確認し、その後に ai-core 全 suite と project gate で本来の coverage threshold を検証する。設定は変更しない。
+- Learning: ai-core の targeted TDD command には `--coverage.enabled=false` を付け、coverage の証明は全 suite で行う。
+
+### 2026-09-30 21:01 Task 12 GREEN Evidence
+
+- Targeted assertions: coverage disabled で 4 files、21/21 passed。
+- Typecheck: `mise run typecheck` → 4/4 tasks successful。
+- Implementation: defaults、全 `.env.example` key の Zod schema、feature requirements、run mode resolver、`ConfigError` / `loadPlatformConfig`、`./config` barrel を追加した。
+
+### 2026-09-30 21:02 ❌ Biome Formatting Failure
+
+- Error: `mise run lint` が新規 config files 8件の format diff を報告した。lint rule violation や型エラーではなく、手書きした import wrapping と長い assertion の formatter 差分だった。
+- Root cause: 実装を heredoc で作成したため、Biome の行幅100・自動 import layout をまだ適用していなかった。
+- Solution: repository-defined `mise run lint:fix` を1回実行し、変更対象を確認してから `mise run lint` を再実行する。
+
+### 2026-09-30 21:04 ❌ PROVE Mutation Script Needle Error
+
+- Error: 12番目の mutation で、single-quoted shell argument に書いた `\n\t` が改行ではなく literal backslash として Node へ渡り、`needle not found` で script が停止した。
+- Root cause: shell の quoting と JavaScript replacement の文字列表現を混在させた。対象 file は各 mutation 冒頭で原本から復元済みで、実装破損はない。
+- Solution: 改行を含まない property 名の置換（`"web-search"` → `"web-browse"`）に変更し、残りの PROVE を続行する。blind retry はせず、needle を実ファイルで確認した。
+
+### 2026-09-30 21:15 ❌ PROVE Test Path Error
+
+- Error: 21 mutation commands はすべて exit 1 だったが、log を精査すると assertion failure ではなく `No test files found` だったため、PROVE evidence として無効だった。
+- Root cause: `pnpm --filter @platform/ai-core exec` は ai-core directory を cwd にするが、script が repository-root 相対の `packages/ai-core/src/...` を Vitest filter に渡した。
+- Solution: `src/config/*.test.ts` の workspace-relative path に修正し、21 mutations をすべて再実行する。無効な結果は evidence に数えない。
+- Learning: deliberate break の exit code だけでなく、期待した assertion message と executed test count を必ず確認する。
+
+### 2026-09-30 21:15 Task 12 PROVE Evidence
+
+- Method: 各新規 test case に対応する実装を `/tmp` の原本を使って1件ずつ deliberate break し、workspace-relative path で該当 test だけを実行した。21 mutations はすべて `Tests 1 failed` を確認し、各回直後に原本へ復元した。
+- Representative failures:
+  - defaults / conversion: `expected ... to match object`、`expected false to be true`。
+  - invalid values 6 cases: enum・URL・positive integer・integer 制約を個別に緩め、各 case で `expected [Function] to throw an error`。
+  - schema parity: `expected ... to deeply equal ...`（schema key 1件不足）。
+  - feature map: `web-search: expected 0 to be greater than 0`、`TAVILY_API_KEY: expected false to be true`、`expected ... to include 'web-search'`。
+  - run mode: `expected 'local' to be 'mock'`、`expected 'mock' to be 'local'`、invalid mode で `expected [Function] to throw an error`。
+  - loader: default object mismatch、catalog rejection は `expected function to throw an error, but it didn't`、missing list は `expected undefined to be an instance of ConfigError`、mock recording は throw 不在、local recording は `expected false to be true`、`.env.example` parity は key count mismatch。
+- Restore: 全 config files を `/tmp/task12-config-original` から復元後、targeted 4 files は 21/21 passed。
+
+### 2026-09-30 21:15 Task 12 Verification Evidence
+
+- Targeted: config 4 files、21/21 passed。
+- Regression: `mise run test` / full gate の ai-core は 12 files、74 passed / 2 skipped（baseline 53 passed / 2 skipped → config tests +21）。skip reason は既存の `Local tests require AI_TEST_RUN_MODE=local.` 2件。
+- Coverage: ai-core 全体 lines 96.6%。新規 `src/config` lines 92.72%（`env-schema.ts` / `feature-requirements.ts` / `run-mode.ts` / `defaults.ts` は100%、`load.ts` 89.74%）。
+- Full gate: `mise run gate` → exit 0。Biome 73 files、model-ID 56 files、repository rules 56 / 1 / 2 / 1 files。root `executed=257 passed=257 failed=0 skipped=0`、ai-core `executed=74 passed=74 failed=0 skipped=2`。
+- Typecheck: `mise run typecheck` → 4/4 tasks successful。
+- Status: 12.1〜12.4 を `[x]` に更新。VDD risk trigger はなし（変更は task boundary 内、新規依存なし、既存 test 変更なし、PROVE 完備）。
+
+### 2026-09-30 21:40 ❌ Ship Gate NO-GO: Empty Run Mode From `.env.example`
+
+- Error: `/sdd-ship` の検証で、`.env.example` を無編集で使うと `loadPlatformConfig({ AI_RUN_MODE: "" })` と `loadPlatformConfig({ VITEST: "true", AI_TEST_RUN_MODE: "" })` が `ConfigError` ではなく生の `ZodError` を投げることを一時 probe test で確認した（gate 自体は緑）。
+- Root cause investigation:
+  1. `.env.example` は全変数を空値（`AI_RUN_MODE=` など）で配布している。
+  2. `envSchema` は `emptyToUndefined` で空文字を未設定として扱うが、`resolveRunMode` は `?? "local"` / `?? "mock"` だけで空文字を既定値へ落とさなかった。
+  3. `loadPlatformConfig` が `envSchema.safeParse` より前に `resolveRunMode` を呼んでいたため、不正な実行モードも `ConfigError` に包まれなかった（Req 1.9、plan C4 の「`ConfigError` で整形して起動を止める」に反する）。
+- Solution: `resolveRunMode` で空文字を未設定として扱い、`loadPlatformConfig` は schema 検証を先に行ってから実行モードを解決する。
+- Learning: 空値テンプレートを配布する設定では、raw env を読む全経路（schema 以外の resolver を含む）で空文字の扱いを統一し、「テンプレートを無編集で読み込める」ことをテストで固定する。
+
+### 2026-09-30 21:45 Task 12.3〜12.4 Fix RED Evidence
+
+- Tests added: `run-mode.test.ts` › `treats empty run-mode values as unset`、`load.test.ts` › `loads the unedited .env.example template as local defaults`、`reports an invalid run mode as ConfigError`（`.env.example` 読み取りは `envExampleEntries()` に拡張し、既存の変数名比較はそれを再利用）。
+- Command: `AI_TEST_RUN_MODE=mock AI_TEST_SUITE=gate mise exec -- pnpm exec vitest run src/config/run-mode.test.ts src/config/load.test.ts --coverage.enabled=false`
+- Result: exit 1、`Tests 3 failed | 9 passed (12)`。2件は `ZodError`、1件は `expected error to be instance of ConfigError`。
+
+### 2026-09-30 21:47 Task 12.3〜12.4 Fix GREEN / PROVE Evidence
+
+- GREEN: `run-mode.ts` に `presentValue`（空文字 → `undefined`）を追加、`load.ts` で `envSchema.safeParse` → `resolveRunMode` の順に変更。config 4 files、24/24 passed。
+- PROVE（原本を `/tmp` に退避して1件ずつ破壊→該当 test のみ実行→復元）:
+  - M1 `presentValue` を恒等関数化 → `treats empty run-mode values as unset` が `ZodError` で失敗、`loads the unedited .env.example template...` も `ZodError` で失敗（各 `Tests 1 failed`）。
+  - M2 `safeParse` の前に `resolveRunMode(env)` を再挿入 → `reports an invalid run mode as ConfigError` が `expected error to be instance of ConfigError` で失敗。
+  - Restore: `diff` で原本と一致を確認後、config 24/24 passed。
+
+### 2026-09-30 21:50 Task 12.3〜12.4 Fix Verification Evidence
+
+- Full gate: `mise run gate` → exit 0。Biome 73 files、model-ID 56 files、repository rules 56 / 1 / 2 / 1 files。root `executed=257 passed=257 failed=0 skipped=0`。ai-core `executed=77 passed=77 failed=0 skipped=2`（前回 74 → +3、skip は既存の local-only 2件）。
+- Coverage: ai-core lines 97.11%。`src/config` lines 94.73%（`run-mode.ts` 100%、`load.ts` 89.74% → 92.3%）。
+- Typecheck: `mise run typecheck` → 4/4 tasks successful。
+- VDD: risk trigger なし（boundary 内、新規依存なし、変更したテストは未コミットの Task 12 自身のテストへの追加のみ、coverage は上昇、PROVE 完備）。
+
+### 2026-09-30 21:55 Task 12 Validation and Ship
+
+- Validation: GO。12.1〜12.4 は `[x]`、変更は Task 12 の `_Boundary:_`（`packages/ai-core/src/config/` 10 files）内、`_Depends:_` 9 は完了済み。PROVE は初回 21 mutations + 修正 3 mutations で全新規 test をカバー。
+- Spec drift: 空文字を未設定として扱う方針と、スキーマ検証を実行モード解決より先に行う順序が plan C4 に未記述だった。ユーザー承認を得て plan C4 を実装に合わせた。
+- Gate: `mise run gate` → exit 0。Biome 73 files、model-ID 56 files、repository rules 56 / 1 / 2 / 1 files。root `executed=257 passed=257 failed=0 skipped=0`。ai-core `executed=77 passed=77 failed=0 skipped=2`（baseline 53 → +24、理由 `Local tests require AI_TEST_RUN_MODE=local.` 2件）、lines 97.11%、`src/config` lines 94.73%。
+- Mechanical fixes: traceability.md（1.9・2.1・2.5・2.8・2.12・2.13・2.18・6.1・NFR-07 の Test/Commit、Gaps）、AGENTS.md（プロジェクト状態に platform config を追加）。
+- Commit: `5ca6a98` feat(ai-core): add platform config loader with env schema and run modes。
+
+### 2026-09-30 21:35 Task 13 Started
+
+- Objective: `mock` mode の決定論的な Scenario / Cassette runtime、録画・伏せ字、外部サービス fixture、決定論的 embedding を実装し、W2 gate を閉じる。
+- Success criteria: シナリオ→cassette→明示エラーの順序、ネットワーク非フォールバック、秘密情報を残さない録画、同一入力の決定性、fixture のオフライン再生、`typecheck` と W2 の4規則を含む full gate 成功。
+- SCAN baseline: Task 12 ship 時点の `mise run gate` は root 257/257、ai-core 77/77（local-only 2 skipped）で成功済み。既存の影響範囲は `ports/*.test.ts`、`testing/mock-models.test.ts`、`models/catalog.test.ts`。
+
+### 2026-09-30 21:46 Task 13.1〜13.3 RED / GREEN / PROVE Evidence
+
+**RED evidence**:
+
+- `request-key.test.ts`: `Cannot find module './request-key'`。
+- `scenario-model.test.ts`: `Cannot find module './scenario'`。
+- `resolve.test.ts`: `Cannot find module './cassette-store'`。
+
+**GREEN**:
+
+- `AI_TEST_RUN_MODE=mock AI_TEST_SUITE=gate mise exec -- pnpm --filter @platform/ai-core exec vitest run src/mock/request-key.test.ts src/mock/scenario-model.test.ts src/mock/resolve.test.ts --coverage.enabled=false`
+- Result: 3 files / 11 tests passed。
+
+**PROVE evidence**:
+
+- `providerOptions` の除外を破壊 → request normalization test が `expected ... to deeply equal ...` で失敗。
+- scenario text/object を `BROKEN` に固定 → scenario-model 3 tests が `expected 'BROKEN' to be 'Sunny'`、tool-result text、structured JSON の不一致で失敗。
+- scenario match を空に固定 → precedence test が cassette を返して失敗し、ambiguous predicate test も `expected [] to deeply equal [...]` で失敗。
+- missing fixture を generic `Error` に変更 → `expected Error: BROKEN to match object { name: 'MockFixtureMissingError', key: ... }` で失敗。
+- Restore: 各破壊後に原本を復元し、11/11 passed。
+
+### 2026-09-30 21:49 ❌ Error Encountered
+
+**Error**: `response.chunkSize ?? text.length || 1` が Vite/OXC の `Logical expressions and coalesce expressions cannot be mixed` で parse failure。
+
+**Root Cause Investigation**:
+
+1. Official AI SDK docs / installed types で `LanguageModelV4` の stream part と middleware 契約を確認した。
+2. エラー位置は nullish coalescing と logical OR の無括弧混在であり、テストロジックではなく JavaScript grammar の問題だった。
+3. Hypothesis: fallback の優先順位を明示すれば parse できる。
+
+**Solution**: `response.chunkSize ?? (text.length || 1)` として優先順位を固定。
+
+**Result**: scenario / resolve 7 tests passed。
+
+**Learning**: `??` と `||` を併用する fallback は括弧で意図を明示する。
+
+### 2026-09-30 21:51 ❌ Error Encountered
+
+**Error**: PROVE の一時破壊コマンドで zsh の予約済み read-only parameter `status` に代入し、復元処理の前で停止した。
+
+**Root Cause Investigation**:
+
+1. 破壊テスト自体は期待どおり assertion failure を観測した。
+2. zsh は `status` を特殊 read-only parameter として持つ。
+3. Hypothesis: 通常変数名に変え、復元を明示実行すれば安全に戻せる。
+
+**Solution**: `/tmp` の原本から即時復元し、以後は `code=$?` を使用。
+
+**Result**: `cmp` で原本一致を確認し、焦点テストを再度 GREEN にした。
+
+**Learning**: deliberate mutation のシェルでは予約変数を避け、失敗後の復元を独立して検証する。
+
+### 2026-09-30 21:40 Task 13.4〜13.6 RED / GREEN / PROVE Evidence
+
+**RED evidence**:
+
+- 13.4 `recording.test.ts`: `Cannot find module './redactor'`。
+- 13.5 `deterministic-embedding.test.ts`: `Cannot find module './deterministic-embedding'`。
+- 13.6 `fixtures.test.ts`: `Cannot find module './index'`。
+
+**GREEN**:
+
+- 13.4: 1 file / 6 tests passed。
+- 13.5: 1 file / 5 tests passed。
+- 13.6: 1 file / 7 tests passed。
+- Integrated: `... vitest run src/mock --coverage.enabled=false` → 6 files / 29 tests passed。
+
+**PROVE evidence**:
+
+- 13.4: redactor 恒等化、LLM cassette 保存停止、HTTP / transcript / web-search 保存停止の各 mutation で、秘密値不一致または `expected [] to have a length of 1 but got 0` を確認。
+- 13.5: seed 固定、dimensions=2 固定、L2 normalization 除去で、異なる入力の一致、次元数不一致、`expected 4.5965... to be close to 1` を確認。
+- 13.6: HTTP index 空化、字幕 error 変更、missing nearest 改変、recorded HTTP 除外、M1 scenario ID 改変で全7テストの該当 assertion failure を確認。
+- Restore: 全 mutation 復元後、29/29 passed。
+
+### 2026-09-30 21:58 Task 13.7 Verification Evidence
+
+- `mise run typecheck` → 4/4 Turbo tasks successful。non-vacuous counts: root 10 files、ai-core 49、eval-suite 1、web 8。
+- `mise run gate` → exit 0。
+  - Biome: 98 files。
+  - model IDs: 74 files。
+  - repository rules: W1 counts 74/1/2/1 files、W2 rules `no-deprecated-object-api` 53、`guarded-agent-only` 53、`ai-core-no-ui-deps` 47、`no-sensitive-logging` 53 files。
+  - root tests: existing suite green。
+  - ai-core: `executed=106 passed=106 failed=0 skipped=2`（local-only reason付き）。
+  - ai-core line coverage: 94.35%、`src/mock` 92.36%（80% threshold 超過）。
+- Status: 13.1〜13.7 を `[x]` に更新。Task boundary 内、新規依存なし、既存 test の変更なし、coverage drop なし、PROVE 完備のため Task 単位 VDD risk trigger はなし。W2 closing adversarial review は別コンテキストで実行中。
+
+## Task 13 Trial and Error Summary
+
+| Attempt | Approach | Result | Learning |
+|---|---|---|---|
+| 1 | AI SDK の公開 alias `LanguageModelCallOptions` を低レベル provider call 型として使用 | Typecheck failed: `prompt` / `tools` がない | v7 の公開 user-facing alias ではなく `MockLanguageModelV4` の method signature から V4 provider 型を導出する |
+| 2 | 各実装で request key を個別生成 | Integration review で cassette replay の不一致リスク | `recording.ts` も 13.1 の `requestKey()` を再利用して単一規則に統合する |
+| 3 | 焦点テストと型整合を統合 | 29/29 + full gate green | Scenario / recording / fixture の契約を同じ公開型と保存形式でつなぐ |
+
+## Task 13 Learnings
+
+- AI SDK v7 の低レベル V4 型は、`ai` の user-facing alias と一致しない。直接依存を増やさず、導入済み `MockLanguageModelV4` の method signature から型を導出すると exactOptionalPropertyTypes を保てる。
+- request normalization、録画、cassette replay が別々のハッシュ規則を持つと fixture が見つからない。`requestKey()` を唯一の正本にする。
+- 外部 SDK の内部 HTTP 形式ではなく port 入出力を録画すると、youtubei.js / Tavily の交換に依存しない fixture を維持できる。
+
+### 2026-09-30 22:00 W2 Adversarial Review Round 1: REQUEST_CHANGES
+
+- Review: `.sdd/reviews/001-agentic-ai-platform-impl-w2-review-2026-09-30.md`
+- HIGH: cassette store の path traversal、同一キー並行書込みの固定 temp file 競合、伏せ字化 fixture を元入力で replay できない identity 不一致。
+- MEDIUM: 13.4 replay test が実 factory を使わない、LLM cassette JSON の境界未検証、HTTP fixture が URL だけで method/body を区別しない。
+- LOW: stream consumer が途中キャンセルした場合は cassette を保存しない。
+- Verdict を受け、wave closing を停止して修正を実施した。
+
+### 2026-09-30 22:05 Review Fix RED / GREEN / PROVE Evidence
+
+**RED evidence**:
+
+- unsafe key test: `store.put("../escaped", {})` が reject せず `promise resolved undefined`。
+- cassette schema test: version 2 JSON を `get()` が返し `promise resolved { version: 2, ... }`。
+- real replay integration: 録画済み HTTP fixture を元 URL / request で再生すると `MockFixtureMissingError`。
+
+**GREEN**:
+
+- `CassetteStore`: 保存 key を `llm|http|transcripts|web-search/<64hex>` に限定し、UUID 付き temp file で並行書込みを分離。Cassette v1 を Zod で検証し、filename key と payload key の一致も確認。
+- Port fixtures: 秘密値を保存しない requestKey を追加。HTTP identity は sensitive query/header 値を除外し、method・非機密 header digest・body digest を含める。録画と replay は同じ identity helper を共有。
+- Integration test: 録画 → filesystem store → `loadFixtureSet` → 実 `createFixture*` factory → 元入力 replay を通し、同じ URL でも POST body が異なれば `MockFixtureMissingError` にする。
+- Integrated mock suite: 6 files / 32 tests passed。
+
+**PROVE evidence**:
+
+- storage key allowlist を除去 → `promise resolved undefined instead of rejecting`。
+- UUID temp suffix を固定 → concurrent test が `expected false to be true`。
+- Zod parse を unchecked cast に変更 → invalid version test が `promise resolved { version: 2, ... }`。
+- 録画 fixture の requestKey を除去 → real replay test が `MockFixtureMissingError`。
+- HTTP body digest を除去 → Osaka body が Tokyo fixture を誤再生し、`promise resolved ... instead of rejecting`。
+- Restore: 全 mutation 復元後、32/32 passed。
+
+### 2026-09-30 22:09 Review Fix Verification
+
+- `mise run gate` → exit 0。
+- TypeScript counts: root 10、ai-core 49、eval-suite 1、web 8 files。
+- ai-core: `executed=109 passed=109 failed=0 skipped=2`。
+- Line coverage: ai-core 94.00%、`src/mock` 92.10%。
+- Round 2 は prior review と修正を渡した fresh reviewer で実行中。
+
+### 2026-09-30 22:12 W2 Adversarial Review Round 2: REQUEST_CHANGES
+
+- Review: `.sdd/reviews/001-agentic-ai-platform-impl-w2-review-2026-09-30-r2.md`
+- Round 1 の HIGH 3件と HTTP identity / real factory replay は解消済み。
+- Remaining MEDIUM: stream part schema が `type` だけを検査し、`{ type: "text-delta" }` を受理する。
+- Remaining LOW: stream cancellation 時に保存しない契約の明文化と恒久テストがない。
+
+### 2026-09-30 22:13 Round 2 Fix Evidence
+
+- RED: version 1 cassette に `parts: [{ type: "text-delta" }]` を保存すると、`get()` が reject せず malformed cassette を返した。
+- GREEN: stream parts を discriminated Zod schema に変更。text / reasoning / tool-input delta の `id`・`delta`、tool calls/results、files、sources、finish usage/reason 等の必須形を検証する。response metadata の ISO timestamp は load 時に `Date` へ復元する。
+- Cancellation contract: `recordingMiddleware` は completed stream のみ録画し、cancelled stream は partial cassette を作らないと JSDoc に明記。reader cancel 後に writes が空である恒久テストを追加。
+- PROVE:
+  - stream schema を `{ type: string }` だけへ退行 → malformed text-delta test が `promise resolved ... instead of rejecting`。
+  - transform ごとに partial write するよう破壊 → cancellation test が `expected [write] to deeply equal []`。
+- Restore: 全破壊を復元し、焦点テスト GREEN。
+
+### 2026-09-30 22:14 Final Verification After Round 2 Fix
+
+- `mise run gate` → exit 0。
+- ai-core: `executed=110 passed=110 failed=0 skipped=2`。
+- line coverage: ai-core 94.05%、`src/mock` 92.21%。
+- Fresh third-pass reviewer へ r1/r2 と修正証拠を渡して再確認中。
+
+### 2026-09-30 22:15 W2 Adversarial Review Round 3: APPROVE
+
+- Review: `.sdd/reviews/001-agentic-ai-platform-impl-w2-review-2026-09-30-r3.md`
+- r2 の残り2点（stream part 必須フィールド検証、cancelled stream の partial cassette 非保存契約）は解消済み。
+- Focused review tests: 14 passed。`mise run gate`: 110 passed / 2 skipped、line coverage 94.05%。
+- Verdict: APPROVE。W2 は実装・gate・敵対的レビューの完了条件を満たし、tasks archive / W3 promotion のコミット待ち。
+
+### 2026-09-30 22:40 ❌ Ship Gate NO-GO: Spec Drift in Mock Runtime Contracts
+
+- `/sdd-ship agentic-ai-platform Task13` の1回目: gate は成功（ai-core 110 passed / 2 skipped）したが、W2 敵対的レビューの修正で加わった契約が plan C7 にないため NO-GO とした。
+- Drift: 外部サービス fixture の `requestKey`・HTTP の `request`（method・ヘッダー・body のダイジェスト）による同一性、`CassetteStore` の保存キー規則と v1 の Zod 検証、`recordingMiddleware` の第3引数 `options`、`./mock` の追加の公開 API。
+- Boundary: `fixtures/cassettes/{llm,http,transcripts,web-search}/.gitkeep` が T-13.6 の `_Boundary:_`（`fixtures/cassettes/.gitkeep`）の外。
+- Resolution: 承認を得て plan C7 の Public interface・Data Model・File Structure を実装に合わせ、T-13・T-13.6 の `_Boundary:_` を `fixtures/cassettes/**/.gitkeep` に広げた。
+
+### 2026-09-30 22:55 Task 13 Validation and Ship
+
+- Validation: GO。13.1〜13.7 は `[x]`、依存 6〜12 完了、RED / GREEN / PROVE 完備、新規テストに false-green パターンなし、要件 1.4・1.15・2.4・2.13・2.14・2.15・2.16・NFR-02・NFR-03 を追跡可能。
+- Gate: `mise run gate` → exit 0。Biome 98 files、model-ID 74 files、repository rules 74 / 1 / 2 / 1 / 53 / 53 / 47 / 53 files、TypeScript root 10 / ai-core 49 / eval-suite 1 / web 8 files。root `executed=257 passed=257 failed=0 skipped=0`。ai-core `executed=110 passed=110 failed=0 skipped=2`（baseline 77 → +33、`src/mock` 6 files）、lines 94.05%、`src/mock` lines 92.21%。
+- Mechanical fixes: traceability.md（1.4・1.15・2.4・2.13・2.14・2.15・2.16・NFR-02・NFR-03 の Test/Commit、Gaps）、tasks.md（Implementation Notes の余分な空行）、AGENTS.md（プロジェクト状態に mock runtime、gate の説明を W2 構成に更新）、`.sdd/steering/structure.md`（fixture の配置に `web-search/`）。
+- Commits: `db707f9` feat(ai-core): add deterministic mock runtime with scenarios, cassettes, and recording、`f1713d3` chore(platform): wire W2 typecheck stage and repository rules into gate。
+
+### 2026-10-04 ❌ W2 Validation NO-GO（`/sdd-validate-impl agentic-ai-platform w2`）
+
+- gate は exit 0、境界違反なし、要件の追跡不能 0 件。ただし非空虚性の監査（`.sdd/reviews/001-agentic-ai-platform-impl-w2-vacuous-audit-2026-10-04.md`）と要件トレース（`.sdd/reviews/001-agentic-ai-platform-impl-w2-traceability-2026-10-04.md`）で次を検出した。
+  - CRITICAL: `local-only.test.ts` の公開統合テスト2件が `expect(true).toBe(true)` で、どのレーンでも実行されない（gate では skip、`test:local` は `*.local.test.ts` だけを収集）。
+  - CRITICAL: `recording.test.ts` の Web 検索の再生がテスト内の自作 replay で、`fixture.result` を自分自身と比べていた（`result: []` の退行でも green）。
+  - CRITICAL（PROVE の欠落）: `request-key.test.ts` の `changes when %s changes` 3件と、`check-web-theme.test.mjs` の text 4.5:1 の16件。
+  - HIGH: plan C7 が求める「同梱 fixture の曖昧な述語の検査」がない（D3）。
+  - WARNING: plan の `createScenarioModel` のシグネチャの記述のずれ（D1）、`PlatformError` を公開するサブパスが未決定（D11）。
+
+### 2026-10-04 W2 Validation Remediation
+
+**修正内容**
+
+- `local-only.test.ts`: 公開統合テストの本体は、実行したことを `executedLocalBodies` に記録するだけにした。ファイル末尾のテストが、注入された `localAvailability` と記録を照合する（使えないときは `[]`、使えるときは両方）。既定の skip 理由（`reason: null`）のテストも加えた。
+- `recording.test.ts`: Web 検索の録画を、実際の `createFixtureWebSearch([fixture])` で元の query（`"query session-secret"`）から再生する。伏せ字化した後の hits を明示した値（`token=%5BREDACTED%5D`、`secret [REDACTED]`）と比べる。
+- `resolve.test.ts`: 同梱の `M1_2_SCENARIOS`・`M1_3_SCENARIOS` について、各ターンの述語だけを満たす最小の要求が、そのターン1つにだけ一致することを検査する（件数が0でないことの assert 付き）。述語は部分文字列の AND なので、どの2つのターンも両方の文字列を含む入力で同時に一致しうる。このため「曖昧さが一切ない」ことは検査として成り立たず、検査の基準を plan C7 に明記した。同梱シナリオは変えていない。
+- 文書: plan C7 の `createScenarioModel` のシグネチャ（`purpose` は必須、戻り値は `MockLanguageModelV4`、`modelId` は `mock:<purpose>`）と曖昧な述語の検査の基準を書き直した（D1・D3）。D11 はユーザーの決定により、`./errors` のサブパスを新設する（`src/errors.ts` を直接指す）。plan の依存の方向・File Structure、tasks.md の共有ファイルの編集者の規約、tasks-w4.md の T-21・T-21.1（本文と `_Boundary:_` に `packages/ai-core/package.json` を追加）、traceability.md に反映した。export 自体は T-21.1 で加える。
+
+**RED evidence（修正前のテストが退行を見逃すこと）**
+
+- HEAD の `recording.test.ts` で、`recording.ts` の Web 検索録画を `result: []` に壊すと、`-t "web-search fixtures"` → `Tests 1 passed | 7 skipped`（退行を検出しない）。
+- HEAD の `local-only.test.ts` で、`local-only.ts` の `beforeEach` の adapter を `() => {}` に壊すと、公開統合テストの本体（`expect(true)`）が実行されるだけで green のまま（監査 M-1 の再現）。
+- 同梱シナリオの曖昧さを検査するテストは、修正前は存在しなかった。
+
+**PROVE evidence**（壊す → 失敗のメッセージ → 復元して `cmp` で一致を確認）
+
+- `recording.ts`
+  - P1: Web 検索録画の `result: redactor.redact(result)` を `result: []` にした → `records web-search fixtures ...` が `AssertionError: expected [] to deeply equal [ { title: 'Result', …(3) } ]`。
+  - P2: Web 検索録画の `requestKey` を除いた → 同じテストが `MockFixtureMissingError: モック応答が見つかりませんでした。`。
+  - P3: hits の伏せ字化をやめた（`result,`）→ `expected '{"query":"query [REDACTED]","requestK…' not to contain 'sk-live-secret'`。
+  - 復元後: 8/8 passed。
+- `local-only.ts`
+  - P1: `beforeEach` の adapter を `() => {}` にした → `local-only public integration outcome > runs local bodies only when local models are available` が `AssertionError: expected [ 'describeLocal' ] to deeply equal []`。
+  - P2: `itLocal` の `context.skip` を除いた → 3件が失敗。`expected function to throw an error, but it didn't` と、outcome テストの失敗を含む。
+  - P3: 既定の理由の文言を変えた → `falls back to a default skip reason when none is provided` が `expected "vi.fn()" to be called with arguments: [ 'Local model is unavailable.' ]`。
+  - 復元後: 6 passed | 2 skipped。
+- `request-key.ts`
+  - P1: ハッシュ対象を定数にした → `changes when prompt/tool name/purpose changes` の3件が `expected '96f6549c…' not to be '96f6549c…' // Object.is equality`。
+  - P2: `purpose` を正規化から除いた → `changes when purpose changes` だけが失敗。
+  - P3: `tools` を `OMITTED_KEYS` に加えた → `changes when tool name changes` だけが失敗。
+  - P4: `prompt` を `OMITTED_KEYS` に加えた → `changes when prompt changes` だけが失敗。
+  - 復元後: 4/4 passed。
+- `apps/web/app/globals.css`（`check-web-theme.test.mjs` の text 4.5:1）
+  - P1: light の `--muted-foreground` を `oklch(0.65 …)` にした → `light theme contrast > keeps muted / muted-foreground ...` が `expected 2.7135043199818947 to be greater than or equal to 4.5`。
+  - P2: dark の `--foreground` を `oklch(0.45 …)` にした → `dark theme contrast > keeps background / foreground ...` が `expected 2.6089610992274 ...`。
+  - P3: dark の `--primary-foreground` を `oklch(0.6 …)` にした → `keeps primary / primary-foreground ...` が `expected 2.26637544355093 ...`。
+  - 復元後: 23/23 passed。
+- `fixtures/scenarios`（`resolve.test.ts` の最小の要求の検査）
+  - P1: m1-3 の `fixture:summary-full` を接頭辞の `fixture:summary` にした → `keeps each M1_3_SCENARIOS turn's minimal request unambiguous` が `expected [ { …(2) }, { …(2) } ] to deeply equal [ { …(2) } ]`。
+  - P2: m1-2 の天気の2ターン目の述語を `{ purpose: "chat" }` に広げた → `keeps each M1_2_SCENARIOS ...` が `expected [ …(2) ] to deeply equal [ { scenarioId: 'm1-2/chat', …(1) } ]`。
+  - 復元後: 8/8 passed、`git diff fixtures` は空。
+
+**Verification**
+
+- `mise run gate` → exit 0。
+  - Biome 98 files、model-ID 74 files。
+  - repository rules: 74 / 1 / 2 / 1 / 53 / 53 / 47 / 53 files。
+  - TypeScript: root 10、ai-core 49、eval-suite 1、web 8 files。
+  - root: `executed=257 passed=257 failed=0 skipped=0`。
+  - ai-core: `executed=114 passed=114 failed=0 skipped=2`（110 → +4）。
+- 新しいテストを verbose の出力で確認した。
+  - `falls back to a default skip reason when none is provided`
+  - `local-only public integration outcome > runs local bodies only when local models are available`
+  - `keeps each M1_2_SCENARIOS turn's minimal request unambiguous`
+  - `keeps each M1_3_SCENARIOS turn's minimal request unambiguous`
+  - 書き換えた `records web-search fixtures that replay to the same result without secrets`
+- coverage: ai-core lines 94.05%（branches 77.95 → 78.47%）、`src/testing` は branches も 100%、`src/mock` lines 92.21%。
+
+### 2026-10-04 ✅ W2 Re-validation GO（`/sdd-validate-impl agentic-ai-platform w2`）
+
+- 対象: W2 の大タスク 6〜13（サブタスク 32件はすべて `[x]`）と、上記 Remediation の修正。
+- `mise run gate` → exit 0。root `executed=257 passed=257 failed=0 skipped=0`。ai-core `executed=114 passed=114 failed=0 skipped=2`、lines 94.05%、branches 78.47%。
+- PROVE を独立に再現した（壊す → 失敗 → 復元して `cmp` で一致を確認）。
+  - `recording.ts:304` の Web 検索録画を `result: []` にした → `records web-search fixtures ...` と `replays recorded port fixtures ...` の2件が `AssertionError: expected [] to deeply equal ...` で失敗。
+  - `local-only.ts:56` の `beforeEach` adapter を `() => {}` にした → `local-only public integration outcome > runs local bodies only when local models are available` が `expected [ 'describeLocal' ] to deeply equal []` で失敗。
+- 境界: 修正した3つのテストファイルは T-11.2・T-13.3・T-13.4 の `_Boundary:_` 内。T-21・T-21.1 の `_Boundary:_` への `packages/ai-core/package.json` の追加は、未着手のタスクの計画の変更である。
+- 監査の未対応項目（L-1〜L-8、D2、D4〜D10）は LOW / Info で、GO を妨げない。D9 は T-14.1 / T-14.3 で扱う。
+- Ship: テストの修正は `bdc1584` test(ai-core): harden W2 local-only, recording, and scenario ambiguity tests。traceability.md の件数（`local-only.test.ts` 6件、`resolve.test.ts` 8件）、Commit 列と Gaps を更新した。
