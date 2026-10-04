@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, inject, it, vi } from "vitest";
 import aiCoreVitestConfig from "../../vitest.config";
 import { createFakeClock, describeLocal, itLocal } from "./index";
 import { createLocalTestApi } from "./local-only";
@@ -16,18 +16,19 @@ describe("testing exports", () => {
 	});
 });
 
+// Bodies record that they ran; the suite at the end of this file checks the record
+// against the injected availability, so a skip regression fails in every run mode.
+const executedLocalBodies: string[] = [];
+
 describeLocal("describeLocal public integration", (localIt) => {
-	localIt("runs its body when local models are available", ({ expect: localExpect }) => {
-		localExpect(true).toBe(true);
+	localIt("runs its body when local models are available", () => {
+		executedLocalBodies.push("describeLocal");
 	});
 });
 
-itLocal(
-	"itLocal public integration runs when local models are available",
-	({ expect: localExpect }) => {
-		localExpect(true).toBe(true);
-	},
-);
+itLocal("itLocal public integration runs when local models are available", () => {
+	executedLocalBodies.push("itLocal");
+});
 
 describe("createLocalTestApi", () => {
 	it("skips local suites and tests with the unavailable reason", async () => {
@@ -65,6 +66,27 @@ describe("createLocalTestApi", () => {
 		expect(testBody).not.toHaveBeenCalled();
 	});
 
+	it("falls back to a default skip reason when none is provided", () => {
+		let registeredTest: ((context: { skip(reason: string): void }) => unknown) | undefined;
+		const api = createLocalTestApi(
+			{ available: false, reason: null },
+			{
+				describe: vi.fn(),
+				it: (_name, test) => {
+					registeredTest = test as typeof registeredTest;
+				},
+				beforeEach: vi.fn(),
+			},
+		);
+		const skip = vi.fn();
+
+		api.itLocal("local test", vi.fn());
+		expect(registeredTest).toBeTypeOf("function");
+		registeredTest?.({ skip });
+
+		expect(skip).toHaveBeenCalledWith("Local model is unavailable.");
+	});
+
 	it("runs local suites and tests when local models are available", async () => {
 		const suiteBody = vi.fn();
 		const testBody = vi.fn();
@@ -83,5 +105,14 @@ describe("createLocalTestApi", () => {
 
 		expect(suiteBody).toHaveBeenCalledOnce();
 		expect(testBody).toHaveBeenCalledOnce();
+	});
+});
+
+// Must stay after the public integration tests: Vitest runs a file's tests in definition order.
+describe("local-only public integration outcome", () => {
+	it("runs local bodies only when local models are available", () => {
+		const { available } = inject("localAvailability");
+
+		expect(executedLocalBodies).toEqual(available ? ["describeLocal", "itLocal"] : []);
 	});
 });

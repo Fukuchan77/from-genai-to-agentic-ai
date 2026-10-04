@@ -2,6 +2,8 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { M1_2_SCENARIOS } from "../../fixtures/scenarios/m1-2";
+import { M1_3_SCENARIOS } from "../../fixtures/scenarios/m1-3";
 import { createCassetteStore } from "./cassette-store";
 import type { LanguageModelV4CallOptions } from "./request-key";
 import { requestKey } from "./request-key";
@@ -10,7 +12,7 @@ import {
 	MockFixtureMissingError,
 	resolveMockResponse,
 } from "./resolve";
-import { defineScenario } from "./scenario";
+import { defineScenario, type ScenarioDefinition, type ScenarioMatch } from "./scenario";
 
 const directories: string[] = [];
 afterEach(async () =>
@@ -20,6 +22,36 @@ afterEach(async () =>
 function params(text = "hello"): LanguageModelV4CallOptions {
 	return { prompt: [{ role: "user", content: [{ type: "text", text }] }] };
 }
+
+/** Builds the smallest request whose derived context satisfies `match`. */
+function minimalWitness(match: ScenarioMatch): LanguageModelV4CallOptions {
+	const steps = match.stepIndex ?? 0;
+	const prompt: LanguageModelV4CallOptions["prompt"] = [
+		{ role: "user", content: [{ type: "text", text: match.lastUserTextIncludes ?? "" }] },
+	];
+	for (let step = 0; step < steps; step += 1) {
+		const toolCallId = `witness-${step}`;
+		const toolName = match.toolResultFor ?? "witness";
+		prompt.push(
+			{
+				role: "assistant",
+				content: [{ type: "tool-call", toolCallId, toolName, input: {} }],
+			},
+			{
+				role: "tool",
+				content: [
+					{ type: "tool-result", toolCallId, toolName, output: { type: "json", value: null } },
+				],
+			},
+		);
+	}
+	return { prompt };
+}
+
+const BUNDLED_SCENARIO_SETS = [
+	["M1_2_SCENARIOS", M1_2_SCENARIOS],
+	["M1_3_SCENARIOS", M1_3_SCENARIOS],
+] as const satisfies readonly (readonly [string, readonly ScenarioDefinition[]])[];
 
 describe("resolveMockResponse", () => {
 	it("prefers the first matching scenario over a cassette", async () => {
@@ -104,6 +136,22 @@ describe("resolveMockResponse", () => {
 			{ scenarioId: "also-broad", turnIndex: 0 },
 		]);
 	});
+
+	it.each(BUNDLED_SCENARIO_SETS)(
+		"keeps each %s turn's minimal request unambiguous",
+		(_name, scenarios) => {
+			const turns = scenarios.flatMap((scenario) =>
+				scenario.turns.map((turn, turnIndex) => ({ scenarioId: scenario.id, turnIndex, turn })),
+			);
+			expect(turns.length).toBeGreaterThan(0);
+			for (const { scenarioId, turnIndex, turn } of turns) {
+				const purpose = turn.match.purpose ?? "chat";
+				expect(
+					findAmbiguousScenarioMatches(minimalWitness(turn.match), purpose, scenarios),
+				).toEqual([{ scenarioId, turnIndex }]);
+			}
+		},
+	);
 
 	it("exposes only keys and scenario ids in missing-fixture diagnostics", () => {
 		const error = new MockFixtureMissingError("abc" as ReturnType<typeof requestKey>, [

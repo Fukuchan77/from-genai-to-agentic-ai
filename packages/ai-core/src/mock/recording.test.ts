@@ -299,16 +299,18 @@ describe("recording port wrappers", () => {
 		expect(await search.search("query session-secret")).toEqual(hits);
 		expect(writes).toHaveLength(1);
 		const fixture = writes[0]?.value as WebSearchFixture;
-		const replay: WebSearchProvider = {
-			async search(query) {
-				if (fixture.query !== query || !Array.isArray(fixture.result)) throw new Error("missing");
-				return fixture.result;
-			},
-		};
 		expect(writes[0]?.key).toMatch(/^web-search\/[a-f0-9]{64}$/u);
 		expect(JSON.stringify(fixture)).not.toContain("sk-live-secret");
 		expect(JSON.stringify(fixture)).not.toContain("session-secret");
-		expect(await replay.search("query [REDACTED]")).toEqual(fixture.result);
+		const replay = createFixtureWebSearch([fixture]);
+		expect(await replay.search("query session-secret")).toEqual([
+			{
+				title: "Result",
+				url: "https://example.test/result?token=%5BREDACTED%5D",
+				snippet: "secret [REDACTED]",
+				score: 0.9,
+			},
+		]);
 	});
 
 	it("replays recorded port fixtures with the original inputs and distinguishes HTTP bodies", async () => {
