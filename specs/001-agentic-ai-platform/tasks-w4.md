@@ -13,13 +13,13 @@ W4 は gate の構成を変えない（`apps/web` のテストは 21.1 で加え
 
 LLM を呼ぶ前に、リクエストを安い順に検査して拒否する。`CHAT_RATE_LIMIT_*` は 1.5 の `.env.example` に含まれる。
 
-_Boundary:_ `apps/web/package.json`, `apps/web/lib/server/errors.ts`, `apps/web/lib/server/errors.test.ts`, `apps/web/lib/server/guard.ts`, `apps/web/lib/server/guard.test.ts`
+_Boundary:_ `apps/web/package.json`, `packages/ai-core/package.json`, `apps/web/lib/server/errors.ts`, `apps/web/lib/server/errors.test.ts`, `apps/web/lib/server/guard.ts`, `apps/web/lib/server/guard.test.ts`
 _Depends:_ 8, 10
 _Requirements:_ 1.10, 3.11
 _Traces:_ REQ-001, REQ-003, C14
 
-- [ ] 21.1 `lib/server/errors.ts`: `PlatformError` から HTTP エラーレスポンス（`{ error: { code, message } }`）とストリームエラーへの変換 + `errors.test.ts`（`code` ごとのステータス、スタックや `details` の秘密値を応答に含めない）。`apps/web/package.json` に `test`・`test:coverage`（`vitest run --coverage.enabled --coverage.reporter=html --coverage.thresholds.lines=0`。閾値の強制は gate の `test` 段。plan C18）スクリプトを加える（apps/web の最初のテスト）
-  _Boundary:_ `apps/web/lib/server/errors.ts`, `apps/web/lib/server/errors.test.ts`, `apps/web/package.json`
+- [ ] 21.1 `lib/server/errors.ts`: `PlatformError` から HTTP エラーレスポンス（`{ error: { code, message } }`）とストリームエラーへの変換 + `errors.test.ts`（`code` ごとのステータス、スタックや `details` の秘密値を応答に含めない）。`apps/web/package.json` に `test`・`test:coverage`（`vitest run --coverage.enabled --coverage.reporter=html --coverage.thresholds.lines=0`。閾値の強制は gate の `test` 段。plan C18）スクリプトを加える（apps/web の最初のテスト）。`PlatformError`・`PlatformErrorCode` は、`packages/ai-core/package.json` の `exports` に加える `"./errors": "./src/errors.ts"` から import する（plan「依存の方向」。2026-10-04 に決定）
+  _Boundary:_ `apps/web/lib/server/errors.ts`, `apps/web/lib/server/errors.test.ts`, `apps/web/package.json`, `packages/ai-core/package.json`
   _Depends:_ 8
   _Requirements:_ 1.10, 3.11
   _Traces:_ REQ-001, REQ-003, C14

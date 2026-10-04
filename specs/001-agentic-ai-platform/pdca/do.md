@@ -3013,3 +3013,82 @@ GREEN 後、7件すべての新規テストについて独立した deliberate b
 - Gate: `mise run gate` → exit 0。Biome 98 files、model-ID 74 files、repository rules 74 / 1 / 2 / 1 / 53 / 53 / 47 / 53 files、TypeScript root 10 / ai-core 49 / eval-suite 1 / web 8 files。root `executed=257 passed=257 failed=0 skipped=0`。ai-core `executed=110 passed=110 failed=0 skipped=2`（baseline 77 → +33、`src/mock` 6 files）、lines 94.05%、`src/mock` lines 92.21%。
 - Mechanical fixes: traceability.md（1.4・1.15・2.4・2.13・2.14・2.15・2.16・NFR-02・NFR-03 の Test/Commit、Gaps）、tasks.md（Implementation Notes の余分な空行）、AGENTS.md（プロジェクト状態に mock runtime、gate の説明を W2 構成に更新）、`.sdd/steering/structure.md`（fixture の配置に `web-search/`）。
 - Commits: `db707f9` feat(ai-core): add deterministic mock runtime with scenarios, cassettes, and recording、`f1713d3` chore(platform): wire W2 typecheck stage and repository rules into gate。
+
+### 2026-10-04 ❌ W2 Validation NO-GO（`/sdd-validate-impl agentic-ai-platform w2`）
+
+- gate は exit 0、境界違反なし、要件の追跡不能 0 件。ただし非空虚性の監査（`.sdd/reviews/001-agentic-ai-platform-impl-w2-vacuous-audit-2026-10-04.md`）と要件トレース（`.sdd/reviews/001-agentic-ai-platform-impl-w2-traceability-2026-10-04.md`）で次を検出した。
+  - CRITICAL: `local-only.test.ts` の公開統合テスト2件が `expect(true).toBe(true)` で、どのレーンでも実行されない（gate では skip、`test:local` は `*.local.test.ts` だけを収集）。
+  - CRITICAL: `recording.test.ts` の Web 検索の再生がテスト内の自作 replay で、`fixture.result` を自分自身と比べていた（`result: []` の退行でも green）。
+  - CRITICAL（PROVE の欠落）: `request-key.test.ts` の `changes when %s changes` 3件と、`check-web-theme.test.mjs` の text 4.5:1 の16件。
+  - HIGH: plan C7 が求める「同梱 fixture の曖昧な述語の検査」がない（D3）。
+  - WARNING: plan の `createScenarioModel` のシグネチャの記述のずれ（D1）、`PlatformError` を公開するサブパスが未決定（D11）。
+
+### 2026-10-04 W2 Validation Remediation
+
+**修正内容**
+
+- `local-only.test.ts`: 公開統合テストの本体は、実行したことを `executedLocalBodies` に記録するだけにした。ファイル末尾のテストが、注入された `localAvailability` と記録を照合する（使えないときは `[]`、使えるときは両方）。既定の skip 理由（`reason: null`）のテストも加えた。
+- `recording.test.ts`: Web 検索の録画を、実際の `createFixtureWebSearch([fixture])` で元の query（`"query session-secret"`）から再生する。伏せ字化した後の hits を明示した値（`token=%5BREDACTED%5D`、`secret [REDACTED]`）と比べる。
+- `resolve.test.ts`: 同梱の `M1_2_SCENARIOS`・`M1_3_SCENARIOS` について、各ターンの述語だけを満たす最小の要求が、そのターン1つにだけ一致することを検査する（件数が0でないことの assert 付き）。述語は部分文字列の AND なので、どの2つのターンも両方の文字列を含む入力で同時に一致しうる。このため「曖昧さが一切ない」ことは検査として成り立たず、検査の基準を plan C7 に明記した。同梱シナリオは変えていない。
+- 文書: plan C7 の `createScenarioModel` のシグネチャ（`purpose` は必須、戻り値は `MockLanguageModelV4`、`modelId` は `mock:<purpose>`）と曖昧な述語の検査の基準を書き直した（D1・D3）。D11 はユーザーの決定により、`./errors` のサブパスを新設する（`src/errors.ts` を直接指す）。plan の依存の方向・File Structure、tasks.md の共有ファイルの編集者の規約、tasks-w4.md の T-21・T-21.1（本文と `_Boundary:_` に `packages/ai-core/package.json` を追加）、traceability.md に反映した。export 自体は T-21.1 で加える。
+
+**RED evidence（修正前のテストが退行を見逃すこと）**
+
+- HEAD の `recording.test.ts` で、`recording.ts` の Web 検索録画を `result: []` に壊すと、`-t "web-search fixtures"` → `Tests 1 passed | 7 skipped`（退行を検出しない）。
+- HEAD の `local-only.test.ts` で、`local-only.ts` の `beforeEach` の adapter を `() => {}` に壊すと、公開統合テストの本体（`expect(true)`）が実行されるだけで green のまま（監査 M-1 の再現）。
+- 同梱シナリオの曖昧さを検査するテストは、修正前は存在しなかった。
+
+**PROVE evidence**（壊す → 失敗のメッセージ → 復元して `cmp` で一致を確認）
+
+- `recording.ts`
+  - P1: Web 検索録画の `result: redactor.redact(result)` を `result: []` にした → `records web-search fixtures ...` が `AssertionError: expected [] to deeply equal [ { title: 'Result', …(3) } ]`。
+  - P2: Web 検索録画の `requestKey` を除いた → 同じテストが `MockFixtureMissingError: モック応答が見つかりませんでした。`。
+  - P3: hits の伏せ字化をやめた（`result,`）→ `expected '{"query":"query [REDACTED]","requestK…' not to contain 'sk-live-secret'`。
+  - 復元後: 8/8 passed。
+- `local-only.ts`
+  - P1: `beforeEach` の adapter を `() => {}` にした → `local-only public integration outcome > runs local bodies only when local models are available` が `AssertionError: expected [ 'describeLocal' ] to deeply equal []`。
+  - P2: `itLocal` の `context.skip` を除いた → 3件が失敗。`expected function to throw an error, but it didn't` と、outcome テストの失敗を含む。
+  - P3: 既定の理由の文言を変えた → `falls back to a default skip reason when none is provided` が `expected "vi.fn()" to be called with arguments: [ 'Local model is unavailable.' ]`。
+  - 復元後: 6 passed | 2 skipped。
+- `request-key.ts`
+  - P1: ハッシュ対象を定数にした → `changes when prompt/tool name/purpose changes` の3件が `expected '96f6549c…' not to be '96f6549c…' // Object.is equality`。
+  - P2: `purpose` を正規化から除いた → `changes when purpose changes` だけが失敗。
+  - P3: `tools` を `OMITTED_KEYS` に加えた → `changes when tool name changes` だけが失敗。
+  - P4: `prompt` を `OMITTED_KEYS` に加えた → `changes when prompt changes` だけが失敗。
+  - 復元後: 4/4 passed。
+- `apps/web/app/globals.css`（`check-web-theme.test.mjs` の text 4.5:1）
+  - P1: light の `--muted-foreground` を `oklch(0.65 …)` にした → `light theme contrast > keeps muted / muted-foreground ...` が `expected 2.7135043199818947 to be greater than or equal to 4.5`。
+  - P2: dark の `--foreground` を `oklch(0.45 …)` にした → `dark theme contrast > keeps background / foreground ...` が `expected 2.6089610992274 ...`。
+  - P3: dark の `--primary-foreground` を `oklch(0.6 …)` にした → `keeps primary / primary-foreground ...` が `expected 2.26637544355093 ...`。
+  - 復元後: 23/23 passed。
+- `fixtures/scenarios`（`resolve.test.ts` の最小の要求の検査）
+  - P1: m1-3 の `fixture:summary-full` を接頭辞の `fixture:summary` にした → `keeps each M1_3_SCENARIOS turn's minimal request unambiguous` が `expected [ { …(2) }, { …(2) } ] to deeply equal [ { …(2) } ]`。
+  - P2: m1-2 の天気の2ターン目の述語を `{ purpose: "chat" }` に広げた → `keeps each M1_2_SCENARIOS ...` が `expected [ …(2) ] to deeply equal [ { scenarioId: 'm1-2/chat', …(1) } ]`。
+  - 復元後: 8/8 passed、`git diff fixtures` は空。
+
+**Verification**
+
+- `mise run gate` → exit 0。
+  - Biome 98 files、model-ID 74 files。
+  - repository rules: 74 / 1 / 2 / 1 / 53 / 53 / 47 / 53 files。
+  - TypeScript: root 10、ai-core 49、eval-suite 1、web 8 files。
+  - root: `executed=257 passed=257 failed=0 skipped=0`。
+  - ai-core: `executed=114 passed=114 failed=0 skipped=2`（110 → +4）。
+- 新しいテストを verbose の出力で確認した。
+  - `falls back to a default skip reason when none is provided`
+  - `local-only public integration outcome > runs local bodies only when local models are available`
+  - `keeps each M1_2_SCENARIOS turn's minimal request unambiguous`
+  - `keeps each M1_3_SCENARIOS turn's minimal request unambiguous`
+  - 書き換えた `records web-search fixtures that replay to the same result without secrets`
+- coverage: ai-core lines 94.05%（branches 77.95 → 78.47%）、`src/testing` は branches も 100%、`src/mock` lines 92.21%。
+
+### 2026-10-04 ✅ W2 Re-validation GO（`/sdd-validate-impl agentic-ai-platform w2`）
+
+- 対象: W2 の大タスク 6〜13（サブタスク 32件はすべて `[x]`）と、上記 Remediation の修正。
+- `mise run gate` → exit 0。root `executed=257 passed=257 failed=0 skipped=0`。ai-core `executed=114 passed=114 failed=0 skipped=2`、lines 94.05%、branches 78.47%。
+- PROVE を独立に再現した（壊す → 失敗 → 復元して `cmp` で一致を確認）。
+  - `recording.ts:304` の Web 検索録画を `result: []` にした → `records web-search fixtures ...` と `replays recorded port fixtures ...` の2件が `AssertionError: expected [] to deeply equal ...` で失敗。
+  - `local-only.ts:56` の `beforeEach` adapter を `() => {}` にした → `local-only public integration outcome > runs local bodies only when local models are available` が `expected [ 'describeLocal' ] to deeply equal []` で失敗。
+- 境界: 修正した3つのテストファイルは T-11.2・T-13.3・T-13.4 の `_Boundary:_` 内。T-21・T-21.1 の `_Boundary:_` への `packages/ai-core/package.json` の追加は、未着手のタスクの計画の変更である。
+- 監査の未対応項目（L-1〜L-8、D2、D4〜D10）は LOW / Info で、GO を妨げない。D9 は T-14.1 / T-14.3 で扱う。
+- Ship: テストの修正は `bdc1584` test(ai-core): harden W2 local-only, recording, and scenario ambiguity tests。traceability.md の件数（`local-only.test.ts` 6件、`resolve.test.ts` 8件）、Commit 列と Gaps を更新した。
