@@ -3,15 +3,13 @@
   "language": "ja",
   "phase": "requirements-generated",
   "milestone": "M4",
-  "depends_on": [
-    "001-agentic-ai-platform"
-  ],
+  "depends_on": ["001-agentic-ai-platform", "005-hub-alignment"],
   "created_at": "2026-09-27T00:27:52Z",
-  "updated_at": "2026-09-27T01:06:18Z",
+  "updated_at": "2026-10-04T00:00:00Z",
   "approvals": {
     "requirements": {
       "generated": true,
-      "approved": false
+      "approved": true
     },
     "design": {
       "generated": false,

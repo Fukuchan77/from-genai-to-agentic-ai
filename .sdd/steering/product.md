@@ -40,6 +40,7 @@ Anthropic / IBM の Agentic AI の知見を、Next.js + Vercel AI SDK v7 + Zod +
 | M2 | `002-rag-and-workflows` | TS ネイティブ RAG（pgvector + Drizzle）、Advanced RAG（HyDE / Multi-Query / RRF / Rerank）、5大ワークフローパターン、デザインパターン |
 | M3 | `003-domain-agents` | ACI / MCP、ヘルプデスク、データ分析（E2B）、論文リサーチ、要件定義書生成、マーケティング |
 | M4 | `004-harness-evals-safety` | コンテキストエンジニアリング、長時間実行ハーネス、Agent Evals、安全設計、総合演習 |
+| 横断 | `005-hub-alignment` | 統合ハブ `vaz-agentic-ai-next` との役割分担: 002〜004 の本番実装との境界、解説からハブの手法ページへのリンク検査、承認ダイアログの UI 部品とテーマトークンの共有（002 の要件承認より前に承認） |
 
 各モジュールは次の3点を揃えて完成とする。
 

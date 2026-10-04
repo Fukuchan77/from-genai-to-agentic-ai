@@ -12,6 +12,9 @@ LLM アプリ開発を Python / LangChain で学んだ（あるいは学ぼう�
 | [`002-rag-and-workflows`](../002-rag-and-workflows/spec.md) | M2 | 2-1〜2-4 | M1 の実装完了後 |
 | [`003-domain-agents`](../003-domain-agents/spec.md) | M3 | 3-1〜3-6 | M2 の実装完了後 |
 | [`004-harness-evals-safety`](../004-harness-evals-safety/spec.md) | M4 | 4-1〜4-5 | M3 の実装完了後 |
+| [`005-hub-alignment`](../005-hub-alignment/spec.md) | 横断（M1〜M4） | 全モジュールの解説、002〜004 の境界、M4 の承認ダイアログ | 002 の要件承認より前 |
+
+`005-hub-alignment` はマイルストーンではなく、統合ハブ `vaz-agentic-ai-next` との役割分担（2026-10-03）を後続 spec と品質ゲートに落とし込む横断 spec である（Clarifications Session 2026-10-04）。本 spec の要件は変えない。
 
 本文中の `00N Req X.Y` は、spec `00N` の要件 X.Y を指す。spec 番号のない `Req X.Y` は本 spec の要件を指す。
 
@@ -69,6 +72,12 @@ Python / LangChain / LangGraph ベースの3冊の教材（AIアプリ開発入�
 
 - Q: 設計ドラフト（`specs/drafts/`）の扱いは？ → A: spec と plan の決定に合わせて確定版 [`specs/curriculum/`](../curriculum/README.md) に清書し、ドラフトはリポジトリから削除した（リポジトリ外に保管）。確定版と spec が食い違う場合は spec を正とする
 - Q: ドラフトを削除した後の Req 7.4（ドラフトとの差分の明記）は？ → A: 差分の基準を、確定版の差分記録（`specs/curriculum/changes-from-drafts.md`）と実装時の実測に移す。ドラフトのモデル ID を解説に書く例外は廃止し、採用したモデルはカタログへの参照で示す（constitution 1.0.2）
+
+### Session 2026-10-04
+
+- Q: 統合ハブ `vaz-agentic-ai-next` との役割分担（2026-10-03。ルートの `README.md`「関連リポジトリとの役割分担」）を spec にどう反映するか？ → A: 横断 spec [`005-hub-alignment`](../005-hub-alignment/spec.md) で定める。本 spec の要件（受け入れ基準）は変えず、概要・用語集・関連リポジトリ・対象外の記述を 005 に合わせる。002〜004 には、要件承認の前に「本番実装との境界」節を設ける（005 Req 1）
+- Q: 005 の要件のうち、M1 の成果物に及ぶものは？ → A: Phase 1 の解説（1-0〜1-3）の「本番ではどう作るか」節とそのリンク検査（005 Req 2）、`apps/web` のテーマトークンの文書化（005 Req 3.3、3.4）。M1 の実装タスク（`tasks-w5.md` の大タスク 28）への組み込みは、005 の要件承認後に plan と tasks を改訂して行う。005 が未承認の間は、本 spec の plan とタスク定義を変えず、`tasks-w5.md` の大タスク 28 に注記だけを置く
+- Q: 認証・RBAC、承認待ちの永続化と再開、ジョブの耐久実行、本番の監査ログ保管は？ → A: 本リポジトリの対象外のまま（[Out of Scope / Future Work](#out-of-scope--future-work)）。これらは統合ハブが持ち、解説からハブの実装を参照する（005 Req 1.3）
 
 ## Scope
 
@@ -196,7 +205,7 @@ Python / LangChain / LangGraph ベースの3冊の教材（AIアプリ開発入�
 
 | Term | Definition |
 |------|------------|
-| プラットフォーム | spec 001〜004 が定義するリファレンス実装一式（Web アプリ、エージェント基盤ライブラリ、評価スイート、解説ドキュメント）。EARS の主語として用いる |
+| プラットフォーム | spec 001〜005 が定義するリファレンス実装一式（Web アプリ、エージェント基盤ライブラリ、評価スイート、解説ドキュメント）。EARS の主語として用いる |
 | 学習者 | プラットフォームをローカルで動かしてカリキュラムを進める唯一の利用者 |
 | モジュール | カリキュラムの学習単位（1-0〜4-5 の19個）。各モジュールはハンズオン（1-0 は観察・確認課題）と解説を1つずつ持つ |
 | 実行モード | LLM 呼び出し先の切替層。`mock`（決定論的モック）/ `local`（Ollama）/ `live`（商用 API）の3種 |
@@ -216,6 +225,8 @@ Python / LangChain / LangGraph ベースの3冊の教材（AIアプリ開発入�
 | 停止理由 | エージェントループが停止した理由を表す、閉じた語彙の値（Req 6） |
 | Generative UI | ツール呼び出しや構造化出力の結果を、テキストではなく型付きの UI コンポーネント（カード、チャート、フォーム等）として描画する方式 |
 | ペルソナ | エージェントや LLM 呼び出しに与える役割・視点の定義。システムプロンプトのテンプレートとして管理する |
+| 統合ハブ | 本番の実装と判断を持つ別リポジトリ `vaz-agentic-ai-next`。`docs/guide/` に 8 手法（PE / CE / LE / HE / AE / AO / MCP / EV）別の本番エンジニアリング・リファレンスを持つ（005） |
+| 本番実装との境界 | 教材のリファレンス実装が本番の機能を簡略化している点と、その理由、対応する統合ハブの実装または文書の対応（005 Req 1）。002〜004 の各 spec に節として置く |
 
 ## Requirements
 
@@ -407,11 +418,14 @@ Python / LangChain / LangGraph ベースの3冊の教材（AIアプリ開発入�
 
 | リポジトリ | 位置づけ | 参照する場面 |
 |---|---|---|
-| `Fukuchan77/next-agentic-stack` | Next.js 16.4 canary / TypeScript 7.1 先行版 / AI SDK v7 / Vitest 5 の単一アプリテンプレート。先行版の完全一致固定、`ToolLoopAgent`、`MockLanguageModelV4` のモック、`page.route` による E2E、入力上限とレート制限の実装例 | M1 の基盤（Req 1〜3、5）の設計 |
-| `Fukuchan77/vaz-agentic-ai-next` | AI SDK v7 の本番指向モノレポ。承認フローの防御（HMAC 署名、1回限りの消費、厳格なスキーマ）、ループ予算と停止理由、ネットワーク遮断テスト、モデル ID の単一ソース、評価の PR ゲート、OWASP 対応表 | 001 Req 2、6、004 Req 3、4 の設計 |
+| `Fukuchan77/next-agentic-stack` | TypeScript のベータ検証レーン（2026-10-03 の役割分担）。Next.js 16.4 canary / TypeScript 7.1 先行版 / AI SDK v7 / Vitest 5 の単一アプリテンプレート。先行版の完全一致固定、`ToolLoopAgent`、`MockLanguageModelV4` のモック、`page.route` による E2E、入力上限とレート制限の実装例 | M1 の基盤（Req 1〜3、5）の設計 |
+| `Fukuchan77/vaz-agentic-ai-next` | 統合ハブ（本番の実装と判断。2026-10-03 の役割分担）。AI SDK v7 の本番指向モノレポ。`docs/guide/` の 8 手法別リファレンス。承認フローの防御（HMAC 署名、1回限りの消費、厳格なスキーマ）、ループ予算と停止理由、ネットワーク遮断テスト、モデル ID の単一ソース、評価の PR ゲート、OWASP 対応表 | 001 Req 2、6、004 Req 3、4 の設計。005 の全要件（後続 spec の本番実装との境界、解説から手法ページへのリンク、承認ダイアログの UI 部品とテーマトークンの共有） |
+| `Fukuchan77/pydantic-ai-sandbox` | Python のベータ検証レーン（2026-10-03 の役割分担） | 元教材（Python）との対比で、次の版の変更を確かめる場面 |
 | `i-am-bee/beeai-framework` | TypeScript / Python の Agent フレームワーク。`RequirementAgent` による宣言的なツール制約、メモリ種別、キャッシュ、エラー分類、ネイティブの watsonx.ai 対応 | 解説での対比教材（003 Req 2、004 Req 1、4） |
 
 ## Out of Scope / Future Work
+
+本節の項目のうち、本番の機能（認証・RBAC、承認待ちの永続化と再開、ジョブの耐久実行、本番の監査ログ保管）は統合ハブが実装を持ち、解説からハブを参照して扱う（005 Req 1.3）。
 
 - 認証・認可、マルチテナント、ロールベースのアクセス制御
 - 本番環境へのデプロイ手順と本番運用（任意の付録扱い。必須要件にしない）
@@ -438,4 +452,4 @@ Python / LangChain / LangGraph ベースの3冊の教材（AIアプリ開発入�
 
 ---
 
-_Initialized: 2026-09-26T13:07:34Z_ / _Requirements generated: 2026-09-26_ / _Requirements updated: 2026-09-26（Session 2026-09-26 (2) の決定を反映）、2026-09-27（Session 2026-09-27 の決定を反映し、spec 002〜004 を分割。Session 2026-09-27 (2) で持ち越し項目を反映。Session 2026-09-27 (3) でドラフトの削除と Req 7.4 の改訂を反映）_
+_Initialized: 2026-09-26T13:07:34Z_ / _Requirements generated: 2026-09-26_ / _Requirements updated: 2026-09-26（Session 2026-09-26 (2) の決定を反映）、2026-09-27（Session 2026-09-27 の決定を反映し、spec 002〜004 を分割。Session 2026-09-27 (2) で持ち越し項目を反映。Session 2026-09-27 (3) でドラフトの削除と Req 7.4 の改訂を反映）、2026-10-04（Session 2026-10-04 で spec 005 との整合を反映。受け入れ基準は変更なし）_
