@@ -6,7 +6,14 @@ import type { Clock } from "../ports/clock";
 import { createFakeClock } from "../ports/clock";
 import { defineAciTool } from "./define-tool";
 import { buildToolSet, toolAvailabilityFromConfig } from "./tool-set";
-import type { AciTool, GuardedToolSet, ToolOutcome, ToolRisk, ToolRuntime } from "./types";
+import type {
+	AciTool,
+	AnyAciTool,
+	GuardedToolSet,
+	ToolOutcome,
+	ToolRisk,
+	ToolRuntime,
+} from "./types";
 
 const inputSchema = z.object({});
 
@@ -180,6 +187,47 @@ describe("buildToolSet", () => {
 		expect(() => buildToolSet([], {}, { clock: createFakeClock(), toolTimeoutMs: 0 })).toThrow(
 			ConfigError,
 		);
+	});
+});
+
+describe("buildToolSet: only defineAciTool output", () => {
+	const runtime: ToolRuntime = { clock: createFakeClock(), toolTimeoutMs: 1_000 };
+
+	function forgedTool() {
+		return {
+			name: "forged",
+			description: "Skips defineAciTool.",
+			risk: "read-only" as const,
+			timeoutMs: undefined,
+			requiredFeature: undefined,
+			toTool: () => tool({ description: "raw", inputSchema, execute: async () => "raw" }),
+		};
+	}
+
+	it("rejects a hand-built tool object with ConfigError", () => {
+		const forged = forgedTool() as unknown as AnyAciTool;
+
+		expect(() => buildToolSet([forged], {}, runtime)).toThrow(ConfigError);
+		expect(() => buildToolSet([forged], {}, runtime)).toThrow(/defineAciTool/u);
+	});
+
+	it("rejects a copy of a defined tool, which loses the defineAciTool registration", () => {
+		const copy: AnyAciTool = { ...searchTool, requiredFeature: undefined };
+
+		expect(() => buildToolSet([copy], {}, runtime)).toThrow(ConfigError);
+	});
+
+	it("rejects a hand-built object even when its feature is unavailable", () => {
+		const forged = { ...forgedTool(), requiredFeature: "web-search" } as unknown as AnyAciTool;
+
+		expect(() => buildToolSet([forged], {}, runtime)).toThrow(ConfigError);
+	});
+
+	it("makes a hand-built object a type error where an AnyAciTool is required", () => {
+		// @ts-expect-error a hand-built object lacks the brand that only defineAciTool adds
+		const typed: AnyAciTool = forgedTool();
+		expectTypeOf(searchTool).toExtend<AnyAciTool>();
+		expect(typed.name).toBe("forged");
 	});
 });
 

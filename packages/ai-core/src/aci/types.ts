@@ -48,7 +48,14 @@ export interface AciToolDefinition<INPUT, OUTPUT> {
 	execute(input: INPUT, context: AciToolContext): Promise<OUTPUT> | OUTPUT;
 }
 
+declare const aciToolBrand: unique symbol;
+
 interface AciToolMetadata {
+	/**
+	 * Type-level mark that only `defineAciTool` adds, so a hand-built object is a type error where an
+	 * `AciTool` is required. `buildToolSet` also checks the origin at run time (W3 review L12).
+	 */
+	readonly [aciToolBrand]: true;
 	readonly name: string;
 	readonly description: string;
 	readonly risk: ToolRisk;

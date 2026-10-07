@@ -12,6 +12,18 @@ import {
 } from "./types";
 
 const TOOL_NAME = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/u;
+
+/** Every object `defineAciTool` returned. Module-private, so nothing else can register a tool. */
+const definedTools = new WeakSet<object>();
+
+/**
+ * True only for an object returned by `defineAciTool`; copies and hand-built look-alikes are
+ * false. `buildToolSet` uses it so the name check, timeout and `ToolOutcome` conversion cannot be
+ * bypassed.
+ */
+export function isDefinedAciTool(value: unknown): boolean {
+	return typeof value === "object" && value !== null && definedTools.has(value);
+}
 const TIMEOUT_NEXT_ACTION = "入力を小さくして再試行するか、ツールを使わずに回答してください。";
 const FAILURE_NEXT_ACTION = "入力を見直して再試行するか、ツールを使わずに回答してください。";
 
@@ -139,7 +151,7 @@ export const defineAciTool = <INPUT, OUTPUT>(
 	definition: AciToolDefinition<INPUT, OUTPUT>,
 ): AciTool<INPUT, OUTPUT> => {
 	assertValidDefinition(definition);
-	return Object.freeze({
+	const aciTool = Object.freeze({
 		name: definition.name,
 		description: definition.description,
 		risk: definition.risk,
@@ -156,4 +168,7 @@ export const defineAciTool = <INPUT, OUTPUT>(
 			});
 		},
 	});
+	definedTools.add(aciTool);
+	// The brand is type-only; `definedTools` is the run-time proof of origin.
+	return aciTool as typeof aciTool & AciTool<INPUT, OUTPUT>;
 };

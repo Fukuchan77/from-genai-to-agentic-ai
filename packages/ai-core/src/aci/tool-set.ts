@@ -1,7 +1,7 @@
 import type { Tool, ToolSet } from "ai";
 import { FEATURE_REQUIREMENTS } from "../config/feature-requirements";
 import { ConfigError, type PlatformConfig } from "../config/load";
-import { assertValidToolRuntime } from "./define-tool";
+import { assertValidToolRuntime, isDefinedAciTool } from "./define-tool";
 import type {
 	AnyAciTool,
 	BuiltToolSet,
@@ -16,6 +16,11 @@ const DISABLED_REASON = "必要な設定が未設定のため、このツール�
 function assertRegistrable(tools: readonly AnyAciTool[]): void {
 	const names = new Set<string>();
 	for (const aciTool of tools) {
+		if (!isDefinedAciTool(aciTool)) {
+			throw new ConfigError(
+				`ツール「${String(aciTool.name)}」は defineAciTool で定義されていません。ツールは defineAciTool で定義してください。`,
+			);
+		}
 		// Until the approval gate (004 Req 4) exists, only read-only tools may reach an agent.
 		if (aciTool.risk !== "read-only") {
 			throw new ConfigError(
