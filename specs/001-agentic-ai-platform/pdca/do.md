@@ -3178,3 +3178,72 @@ GREEN 後、7件すべての新規テストについて独立した deliberate b
 - Spec drift: plan C9 は `buildToolSet(tools: readonly AciTool[], …)` で、`ToolAvailability` を定義していなかった。AI SDK v7 の `Tool` の不変性による `AnyAciTool`、`GuardedToolSet<TOOLS>` と実行時の凍結、`requiredFeature` と `toolAvailabilityFromConfig`、中断・エラーのツール結果化の規則、`ConfigError` の対象、ツール名と天気の `{ city }` 入力・9都市の表・URL の組み立て、追加の公開 API を plan C9 と Error Handling に記録した。
 - Risks: Web 検索ツールはキーがなくても `WebSearchProvider` を要する（T-20.1）。`mock` で Web 検索を有効とみなすかは Route の判断（T-23.1）。`rates.json` の import attributes は Next/Turbopack で未確認。
 - Mechanical fixes: tasks.md（15.1〜15.5 を `[x]`、Implementation Notes、進捗）、traceability.md（5.2・5.3・5.4・5.7・5.8・6.4 の Test/Commit、Gaps）。
+
+### 2026-10-07 Task 16.1〜16.2 RED / GREEN / PROVE Evidence
+
+- Objective: run に束縛した3種の停止条件と、閉じた語彙の停止理由の純粋関数。
+
+**RED evidence**:
+
+- 16.1: `pnpm exec vitest run src/agents` → `Cannot find module './stop-conditions'`。
+- 16.2: `Cannot find module './stop-reason'`。
+
+**GREEN**:
+
+- 16.1 `stop-conditions.test.ts` 18/18、16.2 `stop-reason.test.ts` 14/14。`tsc --noEmit` と biome は clean。
+
+**PROVE evidence**（`scratchpad/prove.py` が stub を当て、テストを実行し、復元する）:
+
+| Stub | 失敗したテスト |
+|---|---|
+| P1 `isStepCount(maxSteps - 1)` | stepLimit の「1つ手前」「ちょうど上限」、統合の「ちょうど maxSteps で止まる」ほか2件 |
+| P2 tokenBudget の `>=` を `>` | 「予算ちょうどで成立する」 |
+| P3 最後のステップだけを合計 | 「全ステップを合計して予算ちょうどで成立する」と統合の token-budget |
+| P4 入力トークンを無視 | P3 と同じテストと記録のテスト |
+| P5 deadline の `>=` を `>` | 「期限ちょうどで成立し timeout を記録する」と開始時刻を明示するテスト |
+| P6 `createRunStopConditions` が `startedAt` を無視 | 「開始時刻が上限より古い run で timeout が成立する」 |
+| P7 モジュール単位で共有する記録 | 「3条件を run ごとの新しい記録に束縛する」と統合の2件 |
+| P8 timeout を記録しない | timeout の2件 |
+| P9 `fired()` を凍結しない | スナップショットのテスト |
+| P10 正の整数の検証なし | 「rejects…」の3件 |
+| Q1 abort より先に error を検査 | abort の優先順位の2件 |
+| Q2 timeout の中断を `aborted` にする | 3件 |
+| Q3 成立した条件の優先順位を逆に | 「ranks fired conditions…」 |
+| Q4 error より先に成立した条件を検査 | 「puts an error above every fired stop condition」 |
+| Q5 記録を入力として受け取らない | 「accepts the run's stop-condition record directly」 |
+| Q6 語彙から `aborted` を除く | 2件 |
+
+**Verification**（ワーカーの最終 `mise run gate`、exit 0）: root `executed=257 passed=257`、ai-core `Tests 146 passed | 2 skipped (148)`、`executed=146 passed=146`、All files lines 94.37%、`src/agents` 100%（全指標）。統合コミット: 16.1 `0fb44ee`、16.2 `265f6ec`。
+
+### 2026-10-07 Task 16.3〜16.4 RED / GREEN / PROVE Evidence
+
+- Objective: `createGuardedAgent`（1回の実行に束縛、`GuardedToolSet` だけを受け付ける、ツール数とループ上限の検証、`abortSignal` の合成、サマリの1回だけの確定、`RunObserver`）と `./agents` の公開 API。基点は 14.1〜14.5、15.1〜15.5、16.1〜16.2、17.1〜17.2 を含む `e5dd66b`。
+
+**RED evidence**:
+
+- 16.3: `pnpm exec vitest run src/agents/guarded-agent.test.ts` → `Cannot find module ./guarded-agent`。
+- 16.4: 公開サブパスを import する一時の probe → `Cannot find package '@platform/ai-core/agents'`。
+
+**First GREEN の失敗**: 22/23。「`finish` の run メタデータ」が `undefined` だった。v7 では UI ストリームの `finish` が `streamText` の `onEnd` より先に届くため、plan C8 の「`finish` は `onEnd` より後」という前提が成り立たない。`messageMetadata` の `finish` でもサマリを確定するよう修正し、23/23 になった（下記 plan C8・ADR-6 の改訂の根拠）。
+
+**PROVE evidence**（`scratchpad/prove16.py` で14種の stub。各々復元済み）:
+
+- 合成シグナルからタイムアウトを除く → 応答しない LLM のテストが 5000 ms でタイムアウト。
+- 中断の理由を常に "caller" → `expected { stopReason: 'aborted' } to match { stopReason: 'timeout' }`。
+- ツール数の上限を 21 → `expected function to throw`。
+- 最初の確定だけを採用する guard を除去 → `expected 'aborted' to be 'completed'` と observer の呼び出し回数 2。
+- ほか（`toolsCalled` の除去、メタデータの除去、observer を呼ばない、observer の try/catch の除去、生成前の中断の検査の除去、上限の検証の弱化、非 Error の name、遅い開始時刻、`cacheRead` を合計しない、生のエラー文を返す）も、それぞれ対応するテストが失敗した。
+- 型: `tools` を素の `TOOLS` にすると `tsc` が `TS2578 Unused '@ts-expect-error' directive`。
+- 16.4: index から `createGuardedAgent` を除くと probe が `expected [ …(8) ] to deeply equal [ …(9) ]`。probe はコミット前に削除した（境界に index のテストがないため）。
+
+**Verification**（ワーカーの最終 `mise run gate`、exit 0）:
+
+- `guarded-agent-only: scanned 88 FILES`、違反なし。root `executed=257 passed=257`。ai-core `Tests 341 passed | 4 skipped (345)`、`executed=341 passed=341 failed=0 skipped=4`。All files lines 97.01%、`src/agents` 100%、`guarded-agent.ts` lines 100% / branches 88.09%。
+- エラーのテストは stderr にスタックを出す（`streamText` の既定のエラー出力。下記 Risks）。
+- 統合コミット: 16.3 `2140b87`、16.4 `18990d7`。
+
+### 2026-10-07 Task 16 Validation and Ship
+
+- Spec drift: plan C8 の停止条件の引数（`stepLimit(n)`・`tokenBudget(n)`・`deadline(clock, ms)`）、`StopReasonInput` の形、サマリの確定経路（ステップ3・5）と ADR-6 の「`onEnd` または `onError` の先に呼ばれた方」が、AI SDK v7 の実際の順序・通知と食い違っていた。plan C8（`createRunStopConditions`、`StopReasonInput`、確定経路の7項目、`messageMetadata`・`onError`・`startedAt`、`MAX_AGENT_TOOLS`、公開 API）、Data Model（`AgentRunSummary.error` のキーは常にあり、`message` は 200 文字で切る）、research.md ADR-6 を改訂した。
+- Risks: `guarded.agent.generate()` / `.stream()` を直接呼んでエラーになると `done` が解決しない（M1 の Route は `createAgentUIStreamResponse` を使う）。`streamText` の既定の `onError` は生のエラーを `console.error` に出し、`ToolLoopAgentSettings` から変えられない（T-23.1 で `no-sensitive-logging` との整合を確認）。observer の例外は記録せずに握りつぶす。
+- Mechanical fixes: tasks.md（16.1〜16.4 を `[x]`、Implementation Notes、進捗）、traceability.md（5.1・5.6・6.1・6.2・6.3・6.5 の Test/Commit、Gaps）。

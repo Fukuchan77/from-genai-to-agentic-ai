@@ -81,7 +81,7 @@
 |---|---|---|---|
 | W1 基盤 | 1 ツールチェーン、2 CI、3 ローカル依存サービス、4 テスト基盤、5 リポジトリ規約検査 | 完了（2026-09-27。敵対的レビュー2ラウンド） | [tasks-comp-w1.md](tasks-comp-w1.md) |
 | W2 ai-core の土台 | 6 ai-core scaffold、7 eval-suite scaffold、8 apps/web scaffold、9 ModelCatalog、10 Ports、11 testing ヘルパ、12 PlatformConfig、13 MockRuntime | 完了（2026-09-30。敵対的レビュー3ラウンド、2026-10-04 の検証で追加の修正） | [tasks-comp-w2.md](tasks-comp-w2.md) |
-| W3 ai-core の機能 | 14 ModelGateway、15 AciToolkit、16 GuardedAgent、17 ChatCore、18 SummaryPipeline、19 評価スイート | 着手（現在の波。14〜15 完了） | 本ファイル |
+| W3 ai-core の機能 | 14 ModelGateway、15 AciToolkit、16 GuardedAgent、17 ChatCore、18 SummaryPipeline、19 評価スイート | 着手（現在の波。14〜16 完了） | 本ファイル |
 | W4 apps/web | 21 RequestGuard、20 AppShell、22 ChatFeature、23 ToolAgentFeature、24 SummaryFeature | 未着手 | [tasks-w4.md](tasks-w4.md) |
 | W5 E2E・解説・最終統合 | 25 E2E 生成・検査スクリプト、26 E2E 基盤、27 E2E シナリオ、28 解説ドキュメント、29 最終統合と NFR 検証 | 未着手 | [tasks-w5.md](tasks-w5.md) |
 
@@ -225,22 +225,22 @@ _Depends:_ 11, 12, 13（16.3 は 15.2 にも依存する）
 _Requirements:_ 5.1, 5.6, 6.1, 6.2, 6.3, 6.5
 _Traces:_ REQ-005, REQ-006, C8
 
-- [ ] 16.1 (P) `agents/stop-conditions.ts`: `stepLimit`（`isStepCount` ラッパ）・`tokenBudget`・`deadline`（Clock 経過）+ テスト（境界値: ちょうど上限、上限の1つ手前）
+- [x] 16.1 (P) `agents/stop-conditions.ts`: `stepLimit`（`isStepCount` ラッパ）・`tokenBudget`・`deadline`（Clock 経過）+ テスト（境界値: ちょうど上限、上限の1つ手前）
   _Boundary:_ `packages/ai-core/src/agents/stop-conditions.ts`, `packages/ai-core/src/agents/stop-conditions.test.ts`
   _Depends:_ 11
   _Requirements:_ 6.1
   _Traces:_ REQ-006, C8
-- [ ] 16.2 `agents/stop-reason.ts`: `deriveStopReason`（優先順位: `aborted`→`error`→成立した停止条件→`completed`）+ テスト（6種の網羅）
+- [x] 16.2 `agents/stop-reason.ts`: `deriveStopReason`（優先順位: `aborted`→`error`→成立した停止条件→`completed`）+ テスト（6種の網羅）
   _Boundary:_ `packages/ai-core/src/agents/stop-reason.ts`, `packages/ai-core/src/agents/stop-reason.test.ts`
   _Depends:_ 16.1
   _Requirements:_ 6.2
   _Traces:_ REQ-006, C8
-- [ ] 16.3 `agents/guarded-agent.ts`・`guarded-agent.test.ts`: `createGuardedAgent`（1回の実行に束縛、`tools` は 15.2 の `GuardedToolSet` だけを受け付ける、ツール数20超で `ConfigError`、`abortSignal = AbortSignal.any([signal, timeoutSignal])` の合成、`onStepEnd`/`onEnd`/`onError` によるサマリの1回だけの確定、`RunObserver.onRunEnd`）。テストはシナリオモデル（13）で、ツール呼び出しの反復、知識のみの回答（ツールを呼ばず `toolsCalled` が空）、並行する2実行の状態分離、ツール数21件での生成拒否、生の `ToolSet` を `tools` に渡すと型エラーになること（`@ts-expect-error`）、応答しないLLM呼び出しの `timeout` 化、学習者の停止による `aborted`、サマリ確定が1回だけであることを検証する
+- [x] 16.3 `agents/guarded-agent.ts`・`guarded-agent.test.ts`: `createGuardedAgent`（1回の実行に束縛、`tools` は 15.2 の `GuardedToolSet` だけを受け付ける、ツール数20超で `ConfigError`、`abortSignal = AbortSignal.any([signal, timeoutSignal])` の合成、`onStepEnd`/`onEnd`/`onError` によるサマリの1回だけの確定、`RunObserver.onRunEnd`）。テストはシナリオモデル（13）で、ツール呼び出しの反復、知識のみの回答（ツールを呼ばず `toolsCalled` が空）、並行する2実行の状態分離、ツール数21件での生成拒否、生の `ToolSet` を `tools` に渡すと型エラーになること（`@ts-expect-error`）、応答しないLLM呼び出しの `timeout` 化、学習者の停止による `aborted`、サマリ確定が1回だけであることを検証する
   _Boundary:_ `packages/ai-core/src/agents/guarded-agent.ts`, `packages/ai-core/src/agents/guarded-agent.test.ts`
   _Depends:_ 16.2, 15.2, 12, 13
   _Requirements:_ 5.1, 5.6, 6.1, 6.2, 6.3, 6.5
   _Traces:_ REQ-005, REQ-006, C8
-- [ ] 16.4 `agents/index.ts`: `./agents` の公開API
+- [x] 16.4 `agents/index.ts`: `./agents` の公開API
   _Boundary:_ `packages/ai-core/src/agents/index.ts`
   _Depends:_ 16.3
   _Requirements:_ 5.1
@@ -248,6 +248,10 @@ _Traces:_ REQ-005, REQ-006, C8
   _Verify:_ 17.3・19.1・23.1 のテストが公開サブパス `@platform/ai-core/agents` から import して通る
 
 ### Implementation Notes
+
+- AI SDK v7 の `isStopConditionMet` は `Promise.all` で全停止条件を同時に評価する。そのため同じステップで複数の条件が成立しうるし、`stepLimit` を `isStepCount`（戻り値の型が `PromiseLike | boolean`）に委譲して async にしたことで、記録の「成立した順」がマイクロタスクの順に左右された。そこで `fired()` は成立順ではなく `STOP_CONDITION_NAMES` の固定順で返し、停止理由は `deriveStopReason` の固定優先順位（timeout → token-budget → step-limit）だけで決める。`ToolLoopAgentSettings.stopWhen` は readonly 配列を受け付けないため、`createRunStopConditions` は実行ごとに新しい mutable 配列を返し、条件の引数型は `{ usage }` だけの構造型にした（`any` なしでどの `TOOLS` の `StopCondition` にも代入できる。`expectTypeOf` で固定）。呼び出し元の中断と実行時間上限の中断は 16.3 が `AbortSignal.reason` で判定して `StopReasonInput.abort: "caller" | "timeout"` として渡し、`deriveStopReason` は純粋関数のままにした（どちらの中断も error より上）。
+- v7 の `createAgentUIStream(Response)` では、UI ストリームの `finish` が `streamText` の `onEnd` より先に届くことがある（`onEnd` はイベント処理の flush で呼ばれる）。そのため `messageMetadata` の `finish` でもサマリを確定する。`finish` の時点で全ステップの `onStepEnd` と停止条件の評価は済んでいるので、`onEnd` で確定した場合と同じ値になる。確定は最初の1回だけ採用する。
+- v7 では中断が `onError` に来ない。`streamText` は中断を `abort` パートに変換し、`onAbort` も出すが、`ToolLoopAgentSettings` に `onAbort` / `onError` はない。そこで合成した `abortSignal` の `abort` イベントでサマリを確定する（タイムアウトか呼び出し元かは `reason` の一致で判定）。生成時に既に中断済みの場合は、その場で `aborted` として確定する。`onError` は中断済みなら中断理由、そうでなければ `error` として確定し、学習者向けの固定文言を返す（生のエラー文はストリームに出さない）。`abortSignal` は settings ではなく呼び出しごとの引数なので、route は `guarded.abortSignal` を `createAgentUIStreamResponse` に渡す。`ToolsContextSettings<TOOLS>` は generic な TOOLS では解決できないため、settings は `as unknown as ToolLoopAgentSettings<never, TOOLS>` で渡す。
 
 ---
 

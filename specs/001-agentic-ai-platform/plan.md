@@ -187,17 +187,21 @@ flowchart LR
 - **Responsibility**: 3種の停止条件と停止理由を必ず持つ `ToolLoopAgent` を生成し、実行サマリを返す。
 - **Public interface**:
   - `createGuardedAgent<TOOLS extends ToolSet>(options: GuardedAgentOptions<TOOLS>): GuardedAgent<TOOLS>`。`GuardedAgentOptions` は `model`、`instructions`、`tools: GuardedToolSet<TOOLS>`（C9 の `buildToolSet` の戻り値だけを受け付ける。AI SDK の `tool()` で作った生の `ToolSet` を渡すと型エラーになる。リスク区分の検査を通らないツールをエージェントに登録させないため。constitution 原則 6、2026-09-27、3回目の `/sdd-analyze` M-3）、`limits: LoopLimits`、`clock: Clock`、`signal: AbortSignal`（呼び出し元の中断。Route Handler では `request.signal`）、`observers?: readonly RunObserver[]` を持つ。
-  - **1回の実行につき1回生成する**（ADR-6）。`GuardedAgent` は1回の実行（run）に束縛されたオブジェクトで、`agent: ToolLoopAgent<never, TOOLS>`（`createAgentUIStreamResponse` に渡す）、`abortSignal: AbortSignal`（下記の合成済みシグナル。`createAgentUIStreamResponse` の `abortSignal` に渡す）、`summary(): AgentRunSummary`（実行終了後に確定した値を返す。終了前の呼び出しは `PlatformError`）、`done: Promise<AgentRunSummary>` を持つ。生成時刻（`clock.now()`）を run の開始時刻とする。停止条件の成立記録、ステップの集計、開始時刻は、すべてこのオブジェクトの内部に閉じる。インスタンスをリクエスト間で使い回す API は提供しない。
-  - 生成時の検証: `LoopLimits` は正の整数。`tools` のツール数が **20 を超える**場合は `ConfigError` で生成を拒否する（constitution 原則 2）。
-  - 停止条件: `stepLimit(n)`（`isStepCount` のラッパ）、`tokenBudget(n)`（各ステップの `inputTokens + outputTokens` の合計）、`deadline(clock, ms)`（run 開始時刻からの経過）。どれが成立したかを run 内部の記録に残す。
+  - **1回の実行につき1回生成する**（ADR-6）。`GuardedAgent` は1回の実行（run）に束縛されたオブジェクトで、`agent: ToolLoopAgent<never, TOOLS>`（`createAgentUIStreamResponse` に渡す）、`abortSignal: AbortSignal`（下記の合成済みシグナル。`abortSignal` は settings ではなく呼び出しごとの引数なので、Route は `createAgentUIStreamResponse` の `abortSignal` に渡す）、`messageMetadata`（`createAgentUIStreamResponse` の `messageMetadata` に渡す。`finish` で `{ run }` を返す。Route は C11 の `buildResponseMetadata` の値とマージする）、`onError`（`createAgentUIStreamResponse` の `onError` に渡す。学習者向けの固定文言を返し、生のエラー文をストリームに出さない）、`startedAt`（run の開始時刻）、`summary(): AgentRunSummary`（実行終了後に確定した値を返す。終了前の呼び出しは `PlatformError`）、`done: Promise<AgentRunSummary>` を持つ。生成時刻（`clock.now()`）を run の開始時刻とする。停止条件の成立記録、ステップの集計、開始時刻は、すべてこのオブジェクトの内部に閉じる。インスタンスをリクエスト間で使い回す API は提供しない。
+  - 生成時の検証: `LoopLimits` は正の整数（0・負数・小数・`NaN` は `ConfigError`）。`tools` のツール数が **20（`MAX_AGENT_TOOLS`）を超える**場合は `ConfigError` で生成を拒否する（constitution 原則 2）。
+  - 停止条件: `stepLimit(n, record)`（`isStepCount` のラッパ）、`tokenBudget(n, record)`（全ステップの `inputTokens + outputTokens` の合計。`undefined` は 0 とし、予算以上で成立）、`deadline(clock, ms, record, startedAt = clock.now())`（run 開始時刻からの経過が `ms` 以上で成立）。どれが成立したかを run の記録（`createStopConditionRecord()`）に残す。上限が正の整数でなければ `RangeError`（誤用の防止。`LoopLimits` の `ConfigError` は `createGuardedAgent` が担う）。`createRunStopConditions({ limits: { maxSteps, maxTotalTokens, maxDurationMs }, clock, startedAt }): { stopWhen, record }` が run ごとの入口で、呼ぶたびに新しい記録と mutable な `stopWhen` 配列を作る（`ToolLoopAgentSettings.stopWhen` は readonly 配列を受け付けない）。条件の引数は `{ steps: readonly { usage }[] }` だけの構造型とし、`any` を使わずにどの `TOOLS` の `StopCondition` にも代入できる。AI SDK v7 は全停止条件を `Promise.all` で同時に評価するため、同じステップで複数の条件が成立しうる。記録の `fired()` は成立した順ではなく `STOP_CONDITION_NAMES` の固定順で返し、停止理由は `deriveStopReason` の優先順位だけで決める（2026-10-07、T-16.1）。
   - **実行時間上限の強制**: `deadline` はステップの完了時にしか評価されないため、1回の LLM 呼び出しが応答しない場合に上限が効かない。これを補うため、`abortSignal = AbortSignal.any([options.signal, clock.timeoutSignal(limits.maxDurationMs)])` を合成し、LLM 呼び出しとツールへ渡す。タイムアウト側のシグナルが中断した場合は、学習者による停止（`aborted`）ではなく `timeout` として記録する（どちらのシグナルが先に中断したかを `AbortSignal.reason` で判定する）。
-  - **サマリの確定経路**:
-    1. `onStepEnd`: ステップ数、`usage` の累積、呼び出したツール名を run 内部に加算する。
-    2. `onEnd`: 正常終了（`completed` または停止条件の成立）でサマリを確定する。
-    3. `onError`（`createAgentUIStreamResponse` のストリームエラー）: `abortSignal.aborted` が true なら中断の理由（`aborted` / `timeout`）、そうでなければ `error` としてサマリを確定する。
-    4. 確定は1回だけ行う（最初に確定した値を採用する）。確定した時点で `done` を解決し、`observers` の `onRunEnd` を呼ぶ。
-    5. `messageMetadata` コールバックは、`part.type === "finish"` のときに `summary()` の値を `run` として付与する。`finish` は `onEnd` より後に送られるため、正常終了では確定済みの値が付く。中断・エラーでは `finish` が送られないことがあるため、UI は `run` がない場合に中断・エラーとして表示する（C16）。
-  - `deriveStopReason(input: StopReasonInput): StopReason`（優先順位: `aborted` → `error` → 成立した停止条件（`timeout` / `token-budget` / `step-limit`）→ `completed`）
+  - **サマリの確定経路**（2026-10-07、T-16.3 で AI SDK v7 の挙動に合わせて改訂）:
+    1. `onStepEnd`: ステップ数、`usage` の累積（`cacheRead`・`reasoning` を含む）、呼び出したツール名を run 内部に加算する（plan の `onStepEnd` / `onEnd` は v7 の `ToolLoopAgentSettings` の名前そのもの。`onStepFinish` / `onFinish` は非推奨の別名）。
+    2. 正常終了（`completed` または停止条件の成立）: `onEnd`、または `messageMetadata` の `finish` のうち先に来た方で確定する。v7 の `createAgentUIStream(Response)` では、UI ストリームの `finish` が `streamText` の `onEnd` より先に届くことがある（`onEnd` はイベント処理の flush で呼ばれる）。`finish` の時点で全ステップの `onStepEnd` と停止条件の評価は済んでいるので、どちらで確定しても同じ値になる。
+    3. 中断・タイムアウト: 合成した `abortSignal` の `abort` イベントで確定する。v7 は中断を `onError` ではなく `abort` パートで通知し、`ToolLoopAgentSettings` には `onAbort` / `onError` がないため。タイムアウトか呼び出し元かは `reason` の一致で判定する。生成時に呼び出し元のシグナルが既に中断済みなら、その場で `aborted` として確定する。
+    4. `onError`（`createAgentUIStreamResponse` のストリームエラー）: `abortSignal.aborted` が true なら中断の理由（`aborted` / `timeout`）、そうでなければ `error`（`AgentRunSummary.error` に `{ name, message }`。`message` は 200 文字で切る）として確定し、学習者向けの固定文言を返す。
+    5. 確定は上の経路のうち最初の1つだけを採用する。確定したサマリは凍結し、`done` を解決して `observers` の `onRunEnd` を1回ずつ呼ぶ。observer の例外は記録せずに握りつぶし、run の結果を変えない。
+    6. `messageMetadata` コールバックは、`part.type === "finish"` のときに確定済みのサマリを `run` として付与する。中断・エラーでは `finish` が送られないことがあるため、UI は `run` がない場合に中断・エラーとして表示する（C16）。
+    7. 制約: エラーは UI ストリームの `onError` でだけ捕まえる。`guarded.agent.generate()` / `.stream()` を直接呼んで（中断なしで）エラーになった場合、`done` は解決しない。M1 の Route は `createAgentUIStreamResponse` を使うので影響しない。`streamText` の既定のエラー処理は生のエラーを `console.error` に出し、`ToolLoopAgentSettings` からは変えられない（C16 の Route で `no-sensitive-logging` の方針との整合を確認する）。
+  - `deriveStopReason(input: StopReasonInput): StopReason`。`StopReasonInput = { abort?: "caller" | "timeout"; errored: boolean; fired: readonly StopConditionName[] | StopConditionRecord }`（どちらのシグナルが中断したかは `createGuardedAgent` が `AbortSignal.reason` で判定して `abort` に渡し、`deriveStopReason` は純粋関数のままにする）。優先順位: 呼び出し元の中断 `aborted` → タイムアウト側の中断 `timeout`（どちらの中断も `error` より上）→ `error` → 成立した停止条件（`timeout` / `token-budget` / `step-limit`。この列挙の順が、同時に成立した条件の間の優先順位）→ `completed`
+  - 公開 API（`@platform/ai-core/agents`）: `createGuardedAgent`、`MAX_AGENT_TOOLS`、`LoopLimits`・`AgentRunSummary`・`AgentTokenTotals`・`AgentRunError`・`RunObserver`・`RunMessageMetadata`・`GuardedAgent`・`GuardedAgentOptions` の型、停止条件（`createRunStopConditions`、`createStopConditionRecord`、`stepLimit`、`tokenBudget`、`deadline`、`STOP_CONDITION_NAMES`）と `deriveStopReason`・`STOP_REASONS`・`StopReason`・`StopReasonInput`・`AbortCause`。
+  - 型の注意: `ToolsContextSettings<TOOLS>` は generic な `TOOLS` では解決できないため、settings は `as unknown as ToolLoopAgentSettings<never, TOOLS>` で渡し、`stopWhen` は `satisfies StopCondition<TOOLS>[]` で型を確認する。
   - `interface RunObserver { onRunEnd(summary: AgentRunSummary): void }`（M1 は UI メタデータへの記録とテストで使う。トレース（004 Req 5）と評価レポート（004 Req 3.10）は、この observer を実装して接続する）
 - **Owns**: `LoopLimits` の検証（正の整数）、ツール数の上限（20）、停止理由の導出、`AgentRunSummary` の型。`ToolLoopAgent` を生成してよいのは `agents/guarded-agent.ts` だけ（それ以外の `new ToolLoopAgent` は `check:repo-rules` が失敗させる）。
 - **Does NOT own**: ツールの定義（C9）、承認ゲート（004）、コンテキスト圧縮（004）、スパンの出力（004）。
@@ -413,7 +417,7 @@ erDiagram
 | | totalTokens | `{ input: number; output: number; cacheRead: number; reasoning: number }` | 各ステップの `usage` の合計 |
 | | elapsedMs | `number` | 注入した `Clock` で計測 |
 | | toolsCalled | `readonly string[]` | 呼び出し順、重複を含む（Req 5.6） |
-| | error | `{ name: string; message: string } \| undefined` | `stopReason === "error"` のとき |
+| | error | `{ name: string; message: string } \| undefined` | `stopReason === "error"` のときだけ値を持つ（キー自体は常にある）。`message` は 200 文字で切る |
 | ToolOutcome\<T\> | — | `{ ok: true; data: T } \| { ok: false; failure: ToolFailure }` | ツール結果として LLM に返す形（Req 5.8） |
 | ToolFailure | kind | `"recoverable" \| "fatal" \| "timeout"` | 003 Req 1.3 の分類を先取りする。M1 は `recoverable` と `timeout` だけを使う |
 | | summary | `string` | エラーの要約（秘密情報とスタックトレースは含めない） |
