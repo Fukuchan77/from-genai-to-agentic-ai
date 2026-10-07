@@ -81,7 +81,7 @@
 |---|---|---|---|
 | W1 基盤 | 1 ツールチェーン、2 CI、3 ローカル依存サービス、4 テスト基盤、5 リポジトリ規約検査 | 完了（2026-09-27。敵対的レビュー2ラウンド） | [tasks-comp-w1.md](tasks-comp-w1.md) |
 | W2 ai-core の土台 | 6 ai-core scaffold、7 eval-suite scaffold、8 apps/web scaffold、9 ModelCatalog、10 Ports、11 testing ヘルパ、12 PlatformConfig、13 MockRuntime | 完了（2026-09-30。敵対的レビュー3ラウンド、2026-10-04 の検証で追加の修正） | [tasks-comp-w2.md](tasks-comp-w2.md) |
-| W3 ai-core の機能 | 14 ModelGateway、15 AciToolkit、16 GuardedAgent、17 ChatCore、18 SummaryPipeline、19 評価スイート | 着手（現在の波。14 完了） | 本ファイル |
+| W3 ai-core の機能 | 14 ModelGateway、15 AciToolkit、16 GuardedAgent、17 ChatCore、18 SummaryPipeline、19 評価スイート | 着手（現在の波。14〜15 完了） | 本ファイル |
 | W4 apps/web | 21 RequestGuard、20 AppShell、22 ChatFeature、23 ToolAgentFeature、24 SummaryFeature | 未着手 | [tasks-w4.md](tasks-w4.md) |
 | W5 E2E・解説・最終統合 | 25 E2E 生成・検査スクリプト、26 E2E 基盤、27 E2E シナリオ、28 解説ドキュメント、29 最終統合と NFR 検証 | 未着手 | [tasks-w5.md](tasks-w5.md) |
 
@@ -181,27 +181,27 @@ _Depends:_ 10, 12, 13
 _Requirements:_ 5.2, 5.3, 5.4, 5.7, 5.8, 6.4
 _Traces:_ REQ-005, REQ-006, C9
 
-- [ ] 15.1 (P) `aci/types.ts`・`define-tool.ts`: `ToolRisk`・`ToolOutcome`・`ToolFailure`・`ToolRuntime`（`clock`、`toolTimeoutMs`）・`GuardedToolSet`（`unique symbol` のブランド型。plan C9）・`defineAciTool`（`AciTool` を返す。AI SDK の `Tool` への変換は `ToolRuntime` を受け取って行い、実効のタイムアウトは `min(definition.timeoutMs ?? runtime.toolTimeoutMs, runtime.toolTimeoutMs)`、中断は `AbortSignal.any([options.abortSignal, runtime.clock.timeoutSignal(実効値)])` で合成する。例外とタイムアウトのツール結果化）+ テスト（fake Clock で、実効タイムアウトの選択（定義なし・定義が短い・定義が長い）、タイムアウトと例外のツール結果化、呼び出し元の中断の伝播）
+- [x] 15.1 (P) `aci/types.ts`・`define-tool.ts`: `ToolRisk`・`ToolOutcome`・`ToolFailure`・`ToolRuntime`（`clock`、`toolTimeoutMs`）・`GuardedToolSet`（`unique symbol` のブランド型。plan C9）・`defineAciTool`（`AciTool` を返す。AI SDK の `Tool` への変換は `ToolRuntime` を受け取って行い、実効のタイムアウトは `min(definition.timeoutMs ?? runtime.toolTimeoutMs, runtime.toolTimeoutMs)`、中断は `AbortSignal.any([options.abortSignal, runtime.clock.timeoutSignal(実効値)])` で合成する。例外とタイムアウトのツール結果化）+ テスト（fake Clock で、実効タイムアウトの選択（定義なし・定義が短い・定義が長い）、タイムアウトと例外のツール結果化、呼び出し元の中断の伝播）
   _Boundary:_ `packages/ai-core/src/aci/types.ts`, `packages/ai-core/src/aci/define-tool.ts`, `packages/ai-core/src/aci/define-tool.test.ts`
   _Depends:_ 10
   _Requirements:_ 5.8, 6.4
   _Traces:_ REQ-005, REQ-006, C9
-- [ ] 15.2 `aci/tool-set.ts`: `buildToolSet(tools, availability, runtime: ToolRuntime)`（`runtime` で各 `AciTool` を AI SDK の `Tool` に変換し、`GuardedToolSet` として返す。無効化ツールの一覧、`risk` が `read-only` 以外は `ConfigError` で拒否）+ テスト（`runtime.toolTimeoutMs`（`AGENT_TOOL_TIMEOUT_MS` 由来）と `runtime.clock` が全ツールに届くこと、戻り値が `GuardedToolSet` であること）
+- [x] 15.2 `aci/tool-set.ts`: `buildToolSet(tools, availability, runtime: ToolRuntime)`（`runtime` で各 `AciTool` を AI SDK の `Tool` に変換し、`GuardedToolSet` として返す。無効化ツールの一覧、`risk` が `read-only` 以外は `ConfigError` で拒否）+ テスト（`runtime.toolTimeoutMs`（`AGENT_TOOL_TIMEOUT_MS` 由来）と `runtime.clock` が全ツールに届くこと、戻り値が `GuardedToolSet` であること）
   _Boundary:_ `packages/ai-core/src/aci/tool-set.ts`, `packages/ai-core/src/aci/tool-set.test.ts`
   _Depends:_ 15.1, 12
   _Requirements:_ 5.4
   _Traces:_ REQ-005, C9
-- [ ] 15.3 `aci/tools/current-time.ts`・`calculator.ts`: 現在時刻ツール（Clock 注入）と再帰下降パーサの計算ツール（`eval` を使わない）+ `calculator.test.ts`
+- [x] 15.3 `aci/tools/current-time.ts`・`calculator.ts`: 現在時刻ツール（Clock 注入）と再帰下降パーサの計算ツール（`eval` を使わない）+ `calculator.test.ts`
   _Boundary:_ `packages/ai-core/src/aci/tools/current-time.ts`, `packages/ai-core/src/aci/tools/calculator.ts`, `packages/ai-core/src/aci/tools/calculator.test.ts`
   _Depends:_ 15.1
   _Requirements:_ 5.2, 5.7
   _Traces:_ REQ-005, C9
-- [ ] 15.4 `aci/tools/currency.ts`・`rates.json`・`weather.ts`・`web-search.ts`: 為替・天気（Open-Meteo）・Web検索（Tavily、キー未設定時は登録しない）ツール + `tools.test.ts`（fake Clock と 13.6 の fixture 実装を使う）
+- [x] 15.4 `aci/tools/currency.ts`・`rates.json`・`weather.ts`・`web-search.ts`: 為替・天気（Open-Meteo）・Web検索（Tavily、キー未設定時は登録しない）ツール + `tools.test.ts`（fake Clock と 13.6 の fixture 実装を使う）
   _Boundary:_ `packages/ai-core/src/aci/tools/currency.ts`, `packages/ai-core/src/aci/tools/rates.json`, `packages/ai-core/src/aci/tools/weather.ts`, `packages/ai-core/src/aci/tools/web-search.ts`, `packages/ai-core/src/aci/tools/tools.test.ts`
   _Depends:_ 10, 13, 15.1
   _Requirements:_ 5.2, 5.3
   _Traces:_ REQ-005, C9
-- [ ] 15.5 `aci/index.ts`: `./aci` の公開API集約
+- [x] 15.5 `aci/index.ts`: `./aci` の公開API集約
   _Boundary:_ `packages/ai-core/src/aci/index.ts`
   _Depends:_ 15.2, 15.3, 15.4
   _Requirements:_ 5.2
@@ -209,6 +209,10 @@ _Traces:_ REQ-005, REQ-006, C9
   _Verify:_ 19.1 と 23.1 のテストが公開サブパス `@platform/ai-core/aci` から import して通る
 
 ### Implementation Notes
+
+- AI SDK v7 の `Tool<INPUT, OUTPUT>` は `INPUT`・`OUTPUT` について不変（`needsApproval` と `execute` の引数位置、`inputSchema` が両方向に現れる）。そのため `AciTool<{expression:string}, R>` は `AciTool<unknown, unknown>` に代入できず、型の異なるツールの配列を受ける `buildToolSet` の引数には、`toTool(): Tool`（SDK の消去型）を持つ `AnyAciTool` を別に定義した。出力も不変なので、`readonly SearchHit[]` を返す web-search は `defineAciTool<IN, OUT>` の型引数を明示する。
+- 実効タイムアウトと呼び出し元の中断は `AbortSignal.any` の `reason` で判別する（`reason === timeoutSignal.reason` のときだけ `kind: "timeout"` のツール結果にし、それ以外の中断は理由をそのまま再 throw して `aborted` をエージェントへ伝える）。`execute` がシグナルを無視しても fake Clock で確定するよう、`raceWithAbort`（`ports/abort.ts`）で競わせる。想定外の例外の `message` は秘密情報を含みうるため、ツール結果に入れるのはエラー名だけにする。学習者向けの文言は `ToolExecutionError`（summary/nextAction）か `PlatformError` の message だけを使う。
+- `tool-risk-declared` の走査は `defineAciTool<...>(` を呼び出しとして扱うため、`function defineAciTool<INPUT, OUTPUT>(` という宣言自体を違反と判定した。宣言を `export const defineAciTool = <INPUT, OUTPUT>(...) =>` に変えて回避した。天気の URL は、録画済み fixture の URL（`current=temperature_2m,weather_code`）と一致させるため、`URLSearchParams`（カンマを `%2C` にする）を使わず手で組み立てる。
 
 ---
 

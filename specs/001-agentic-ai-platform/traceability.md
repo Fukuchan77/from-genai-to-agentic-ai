@@ -101,13 +101,13 @@ ID 規約は `tasks.md` の「ID 対応表」を参照する（この spec の p
 | Requirement | Design | Task | Test | Commit |
 |---|---|---|---|---|
 | 5.1 | C8, C16 | T-16.3, T-16.4, T-23.1, T-23.2 |  |  |
-| 5.2 | C9 | T-15.3, T-15.4, T-15.5 |  |  |
-| 5.3 | C9 | T-15.4 |  |  |
-| 5.4 | C9, C16 | T-15.2, T-23.1, T-23.4 |  |  |
+| 5.2 | C9 | T-15.3, T-15.4, T-15.5 | T-15.3: `calculator.test.ts` 34件（優先順位・右結合のべき乗・括弧・0 除算・ネストの上限・不正な式のエラー結果）、`tools.test.ts` の現在時刻3件（fake Clock）、T-15.4: `tools.test.ts`（為替・天気・Web 検索）、T-15.5: 公開サブパス `@platform/ai-core/aci` の import（一時テストで runtime export 22件を確認、未コミット。19.1 の回帰テストも公開サブパスから import） | T-15.3: `65e0f16`、T-15.4: `ab7a569`、T-15.5: `e5dd66b` |
+| 5.3 | C9 | T-15.4 | T-15.4: `tools.test.ts` 25件（Open-Meteo の fixture・HTTP 状態・signal の伝播、Web 検索の fixture プロバイダと最大5件、レート表の検証） | T-15.4: `ab7a569` |
+| 5.4 | C9, C16 | T-15.2, T-23.1, T-23.4 | T-15.2: `tool-set.test.ts` 10件（キー未設定の Web 検索が `disabled` に入り `requiredEnv: ["TAVILY_API_KEY"]`、`read-only` 以外の拒否、`GuardedToolSet` の型と凍結） | T-15.2: `c7cfd13` |
 | 5.5 | C16 | T-23.2, T-23.3 |  |  |
 | 5.6 | C8, C11, C16 | T-16.3, T-17.3, T-23.4 |  |  |
-| 5.7 | C9, C10 | T-10.1, T-15.3 | T-10.1: `clock.test.ts` 3件（fake の決定論的進行・期限での `TimeoutError`） | T-10.1: `fb60281` |
-| 5.8 | C9 | T-15.1 |  |  |
+| 5.7 | C9, C10 | T-10.1, T-15.3 | T-10.1: `clock.test.ts` 3件（fake の決定論的進行・期限での `TimeoutError`）、T-15.3: `tools.test.ts`（現在時刻ツールが注入した Clock を使う。`Date.now()` に置き換えると2件失敗する PROVE） | T-10.1: `fb60281`、T-15.3: `65e0f16` |
+| 5.8 | C9 | T-15.1 | T-15.1: `define-tool.test.ts` 22件（例外・タイムアウトのツール結果化、`ToolExecutionError` の summary/nextAction、想定外の例外の message を出さない） | T-15.1: `90bc262` |
 
 ## Requirement 6: ループ制御と強制停止条件
 
@@ -116,7 +116,7 @@ ID 規約は `tasks.md` の「ID 対応表」を参照する（この spec の p
 | 6.1 | C4, C8, C22 | T-12.1, T-16.1, T-16.3, T-28.6 | T-12.1: `env-schema.test.ts`（停止条件の既定値 10 / 50,000 / 120,000 / 15,000 と正の整数検証） | T-12.1: `5ca6a98` |
 | 6.2 | C8, C16 | T-16.2, T-16.3, T-23.1, T-23.4 |  |  |
 | 6.3 | C8, C15, C16 | T-16.3, T-22.1, T-23.1, T-23.4 |  |  |
-| 6.4 | C4, C9, C13, C16 | T-15.1, T-15.2, T-20.1, T-23.1 |  |  |
+| 6.4 | C4, C9, C13, C16 | T-15.1, T-15.2, T-20.1, T-23.1 | T-15.1: `define-tool.test.ts`（実効タイムアウト `min(定義, runtime)` の3通り、呼び出し元の中断の伝播）、T-15.2: `tool-set.test.ts`（`runtime.toolTimeoutMs` と `runtime.clock` が全ツールに届く） | T-15.1: `90bc262`、T-15.2: `c7cfd13` |
 | 6.5 | C8 | T-16.3 |  |  |
 
 ## Requirement 7: モジュール解説ドキュメント
@@ -158,6 +158,7 @@ Task 列に記載する。
 
 ## Gaps
 
+- 2026-10-07 の `/sdd-ship`（T-15.1〜T-15.5）では、要件ギャップは検出しなかった。ai-core の gate テストに `src/aci` の4ファイル 91件（`define-tool` 22、`tool-set` 10、`calculator` 34、`tools` 25）が加わり、`src/aci` の行カバレッジは100%。spec drift として、plan C9 に未定義だった `ToolAvailability`（`FeatureId` → boolean と `requiredFeature`）、`AnyAciTool`・`BuiltToolSet`・`GuardedToolSet<TOOLS>` の形、中断とエラーのツール結果化の規則、`ConfigError` の対象、ツール名と天気の入力・URL、追加の公開 API を、plan C9 と Error Handling に記録した。Web 検索ツールはキーがなくても `WebSearchProvider` を要する（T-20.1 の `platform.ts` が渡す）。`rates.json` の `with { type: "json" }` を Next/Turbopack でビルドできるかは T-20 以降で確認する。
 - 2026-10-07 の `/sdd-ship`（T-14.1〜T-14.6）では、要件ギャップは検出しなかった。W2 から引き継いだ D9（明示指定したモデル ID と実行モードの整合）は T-14.1 / T-14.3 で `ModelSelectionError` として実装し、plan C6（`GatewayDeps`・`ModelOption`・検査の順序・エラー）、Error Handling、File Structure を実装に合わせた。ai-core の gate テストは 114件から150件に増えた（`gateway.test.ts` 28件、`ollama-preflight.test.ts` 8件。`catalog.local.test.ts` 2件は理由付き skip）。`gateway.ts` の未到達の分岐（`withRecording` の中の `mode === "mock"`。設定が `mock` での録画を禁じるための防御）が1つ残る。`module/1-1` のタグはローカルにだけあり、push と再作成は T-29.4 で行う。
 - 2026-10-04 の W2 `/sdd-validate-impl` と `/sdd-ship` では、要件ギャップは検出しなかった（追跡できない AC は0件）。非空虚性の監査で見つかった fake pass 2件と PROVE の欠落2件、同梱シナリオの曖昧な述語の検査がないこと（D3）を `bdc1584` で修正し、ai-core の gate テストは110件から114件に増えた（lines 94.05%、branches 78.47%）。plan C7 の `createScenarioModel` のシグネチャ（D1）と曖昧さの検査の基準を、実装に合わせて書き直した。`PlatformError` は新設の `./errors` サブパスから公開すると決めた（D11）。追加は T-21.1 で行う。明示指定したモデル ID と実行モード・プロバイダの整合（D9）は、T-14.1 / T-14.3 で扱う。
 - 2026-09-30 の `/sdd-ship`（T-13.1〜T-13.7）では、要件ギャップは検出しなかった。ai-core の gate テストは77件から110件に増え（skip 2件は理由付き）、`src/mock` の行カバレッジは92.21%（ai-core 全体 94.05%）。W2 の敵対的レビュー（`.sdd/reviews/001-agentic-ai-platform-impl-w2-review-2026-09-30*.md`、Round 3 APPROVE）の修正で加わった契約（外部サービス fixture の `requestKey` と HTTP の method・ヘッダー・body による同一性、カセットの保存キー規則と v1 の Zod 検証、`recordingMiddleware` の `options`、`./mock` の公開 API）を spec drift として検出し、承認を得て plan C7・Data Model・File Structure を実装に合わせた。`fixtures/cassettes/` の種類別 `.gitkeep` 4件が境界外と判定されたため、T-13・T-13.6 の `_Boundary:_` を `fixtures/cassettes/**/.gitkeep` に広げた。W2 gate に `typecheck` 段と4規則を結線し、W2 の移行（archive / promote）は続くコミットで行う。

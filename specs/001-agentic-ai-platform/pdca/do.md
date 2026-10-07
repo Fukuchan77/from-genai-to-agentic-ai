@@ -3146,3 +3146,35 @@ GREEN 後、7件すべての新規テストについて独立した deliberate b
 - Spec drift: plan C6 に `GatewayDeps` の形、`resolveEmbedding` の引数、`ModelOption`、検査の順序、`ModelSelectionError`（D9 のエラー型。tasks の 14.1 で「実装時に決めて plan C6 に記録する」としていたもの）、事前検査のキャッシュの具体値（成功だけを 5 秒、タイムアウト 2 秒）がなかった。plan C6・Error Handling・File Structure を実装に合わせた。
 - Risks: `./models` の value export はプロバイダ SDK・`node:fs`・`node:crypto` を読み込むため、クライアントは `import type` だけを使う（C20 のクライアントバンドル検査で確認）。Azure のデプロイメント名はカタログの ID と同じにする必要がある（解説 C22 で扱う）。`gateway.ts` の防御的な分岐1つは未到達。
 - Mechanical fixes: tasks.md（14.1〜14.6 を `[x]`、Implementation Notes、進捗）、traceability.md（1.13・1.14・2.1・2.2・2.3・2.6・2.7・2.9・2.10・2.13・3.2・3.9・7.11 の Test/Commit、Gaps）。
+
+### 2026-10-07 Task 15 RED / GREEN / PROVE Evidence
+
+- Objective: ツール定義の共通規約（リスク区分、実効タイムアウト、エラーと中断のツール結果化、Clock 注入）、`buildToolSet` と `GuardedToolSet`、M1 の5ツール、`./aci` の公開 API。
+- テストの実行: `pnpm --filter @platform/ai-core exec vitest run <path> --coverage.enabled=false`。
+
+**RED evidence**:
+
+- 15.1: `Cannot find module './define-tool'`。15.2: `Cannot find module './tool-set'`。15.3: `./current-time`・`./calculator` が見つからない。15.4: `Cannot find module './currency'`。
+
+**GREEN**:
+
+- 15.1 `define-tool.test.ts` 22/22（`tsc` clean）、15.2 `tool-set.test.ts` 10/10、15.3 `calculator.test.ts` 34件と `tools.test.ts` の現在時刻3件、15.4 `tools.test.ts` 25件。
+
+**PROVE evidence**（壊す → 失敗 → 復元）:
+
+- 15.1: `effectiveToolTimeoutMs` の `min` を除去 → `expected 5000 to be 1000`（「長い定義の上限」）。タイムアウトの分岐を `if (false)` → タイムアウトの4件が「promise rejected DOMException TimeoutError instead of resolving」。`summary` に `error.message` を使う → 秘密を出さないテストの deep-equal。`AbortSignal.any` から呼び出し元のシグナルを除く → 中断の伝播のテストが `expected false to be true`（5 秒のタイムアウトを待たずに失敗するよう、テストの順序を先に入れ替えた）。
+- 15.2: リスク検査を除去 → write・destructive・「無効化されるツールでも非 read-only を拒否」が `expected function to throw`。`!== true` を `=== false` → `expected ['webSearch'] to deeply equal []`。`toTool` に2倍のタイムアウトを渡す → 300 ms の確定のテストが `expected false to be true`。Clock を複製して渡す → 同一性のテスト。`Object.freeze` を除去 → `expected false to be true`。`GuardedToolSet` のブランドを除去 → `tsc` が `TS2578 Unused '@ts-expect-error'`。
+- 15.3: `clock.now()` を `Date.now()` → 現在時刻の2件。`^` の右辺を `primary` で解析 → `2^3^2` と `2^-1`。減算の左右を入れ替え → `expected 9 to be 3`。0 除算の検査を除去 → 「expected 計算結果が有限の数になりません。 to be 0 で割ることはできません。」。深さの検査 `>=` を `>` → ネストのテスト。閉じない括弧の分岐を壊す → メッセージの不一致。
+- 15.4: fetcher に signal を渡さない → `expected undefined to be true`。HTTP 状態の検査を除去 → deep-equal。URL のカンマを `%2C` に符号化 → 録画済み fixture を使う3件と URL のテスト。為替レートを逆数に → 換算の2件。基準通貨の refine を除去 → レート表の2件。`requiredFeature` を除去 → 登録のテスト。5件の `slice` を除去 → 7件が返る。
+- 15.5: 一時の `packages/eval-suite/tests/` のテストで `@platform/ai-core/aci` を import し、runtime export 22件で成功（削除、未コミット）。`node scripts/check-repo-rules.mjs --only tool-risk-declared` → `scanned 13 FILES`、違反0。`calculator.ts` の `risk:` を消すと違反になり、規則がファイルを見ていることを確認した。
+
+**Verification**（ワーカーの最終 `mise run gate`、exit 0）:
+
+- model-ID 87 files、repository rules 8規則すべて走査件数 > 0。root `executed=257 passed=257`。ai-core `Tests 205 passed | 2 skipped`、`executed=205 passed=205 failed=0`。lines 95.83%、`src/aci` 100%、`src/aci/tools` lines 100%（`calculator.ts` statements 99.12%）。
+- 統合コミット: 15.1 `90bc262`、15.2 `c7cfd13`、15.3 `65e0f16`、15.4 `ab7a569`、15.5 `e5dd66b`。fixture は既存の `fixtures/http/weather.json`（東京）と `fixtures/web-search/agentic-ai.json` で足り、異常系と大阪はテスト内で組み立てた。
+
+### 2026-10-07 Task 15 Validation and Ship
+
+- Spec drift: plan C9 は `buildToolSet(tools: readonly AciTool[], …)` で、`ToolAvailability` を定義していなかった。AI SDK v7 の `Tool` の不変性による `AnyAciTool`、`GuardedToolSet<TOOLS>` と実行時の凍結、`requiredFeature` と `toolAvailabilityFromConfig`、中断・エラーのツール結果化の規則、`ConfigError` の対象、ツール名と天気の `{ city }` 入力・9都市の表・URL の組み立て、追加の公開 API を plan C9 と Error Handling に記録した。
+- Risks: Web 検索ツールはキーがなくても `WebSearchProvider` を要する（T-20.1）。`mock` で Web 検索を有効とみなすかは Route の判断（T-23.1）。`rates.json` の import attributes は Next/Turbopack で未確認。
+- Mechanical fixes: tasks.md（15.1〜15.5 を `[x]`、Implementation Notes、進捗）、traceability.md（5.2・5.3・5.4・5.7・5.8・6.4 の Test/Commit、Gaps）。
