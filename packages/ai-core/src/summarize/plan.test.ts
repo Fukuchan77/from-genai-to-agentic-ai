@@ -11,6 +11,7 @@ import {
 	formatSourceText,
 	integrationGroups,
 	integrationTokens,
+	MIN_CHUNK_TOKENS,
 	OUTPUT_RESERVE_TOKENS,
 	planSummary,
 	wholeOverheadTokens,
@@ -161,6 +162,26 @@ describe("planSummary", () => {
 
 		expect(wholeOverheadTokens(titled)).toBeGreaterThan(wholeOverheadTokens(plain));
 		expect(wholeOverheadTokens(timestamped)).toBeGreaterThan(wholeOverheadTokens(plain));
+	});
+
+	it("stages at exactly MIN_CHUNK_TOKENS per chunk and refuses one token below", () => {
+		const source: LoadedSource = { kind: "transcript", text: longText };
+		const entryWithChunkBudget = (tokens: number) => {
+			let contextWindow = 1;
+			while (chunkBudgetTokens(source, entryWithContext(contextWindow)) < tokens)
+				contextWindow += 1;
+			const entry = entryWithContext(contextWindow);
+			expect(chunkBudgetTokens(source, entry)).toBe(tokens);
+			return entry;
+		};
+
+		const atMinimum = planSummary(source, entryWithChunkBudget(MIN_CHUNK_TOKENS));
+
+		expect(atMinimum.strategy).toBe("staged");
+		expect(atMinimum.chunks.every((chunk) => estimateTokens(chunk) <= MIN_CHUNK_TOKENS)).toBe(true);
+		expect(() => planSummary(source, entryWithChunkBudget(MIN_CHUNK_TOKENS - 1))).toThrow(
+			expect.objectContaining({ code: "capability-unsupported" }),
+		);
 	});
 
 	it("refuses a model whose context window leaves no room for a chunk", () => {
