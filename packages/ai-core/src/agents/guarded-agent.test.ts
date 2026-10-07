@@ -1,6 +1,8 @@
 import {
+	APICallError,
 	createAgentUIStream,
 	type LanguageModel,
+	simulateReadableStream,
 	type ToolSet,
 	tool,
 	type UIMessageChunk,
@@ -19,6 +21,7 @@ import { defineScenario } from "../mock/scenario";
 import { createScenarioModel } from "../mock/scenario-model";
 import { createFakeClock, type FakeClock } from "../ports/clock";
 import {
+	AGENT_RUN_ERROR_MESSAGE,
 	type AgentRunSummary,
 	createGuardedAgent,
 	type GuardedAgent,
@@ -127,6 +130,26 @@ function hangingModel(): { model: MockLanguageModelV4; called: Promise<void> } {
 			}),
 	});
 	return { model, called: called.promise };
+}
+
+const FAKE_SECRET = "sk-ant-SECRET123";
+
+/** A model that streams some text and then an `error` part (e.g. a provider overload). */
+function midStreamErrorModel(error: unknown): MockLanguageModelV4 {
+	return new MockLanguageModelV4({
+		doStream: async () => ({
+			stream: simulateReadableStream({
+				chunks: [
+					{ type: "stream-start", warnings: [] },
+					{ type: "text-start", id: "t1" },
+					{ type: "text-delta", id: "t1", delta: "途中まで" },
+					{ type: "error", error },
+				],
+				initialDelayInMs: null,
+				chunkDelayInMs: null,
+			}),
+		}),
+	});
 }
 
 function recordingObserver(): RunObserver & { readonly calls: AgentRunSummary[] } {
@@ -315,7 +338,7 @@ describe("createGuardedAgent: abort and error", () => {
 		expect(observer.calls).toHaveLength(1);
 	});
 
-	it("records error with the error name and message for a stream error", async () => {
+	it("records error with a closed code and a fixed message for a stream error", async () => {
 		const clock = createFakeClock();
 		const model = new MockLanguageModelV4({
 			doStream: async () => {
@@ -329,23 +352,61 @@ describe("createGuardedAgent: abort and error", () => {
 		expect(await guarded.done).toMatchObject({
 			stopReason: "error",
 			steps: 0,
-			error: { name: "TypeError", message: "provider exploded" },
+			error: { code: "unexpected", message: AGENT_RUN_ERROR_MESSAGE },
 		});
 		const error = chunks.find((chunk) => chunk.type === "error");
 		expect(error).toMatchObject({ errorText: "エージェントの実行中にエラーが発生しました。" });
 		expect(JSON.stringify(chunks)).not.toContain("provider exploded");
 	});
 
-	it("records a non-Error throw value under a generic name", () => {
+	it("keeps a raw mid-stream error message out of the summary and every UI chunk", async () => {
+		const clock = createFakeClock();
+		const model = midStreamErrorModel(new Error(`Invalid x-api-key ${FAKE_SECRET} for org acme`));
+		const guarded = createGuardedAgent(options({ clock, model }));
+
+		const chunks = await runToEnd(guarded, "計算してください");
+		const summary = await guarded.done;
+
+		expect(summary).toMatchObject({
+			stopReason: "error",
+			error: { code: "unexpected", message: AGENT_RUN_ERROR_MESSAGE },
+		});
+		// The finish chunk is still sent after a mid-stream error part and carries the summary.
+		const finish = chunks.find((chunk) => chunk.type === "finish");
+		expect(finish?.messageMetadata).toEqual({ run: summary });
+		expect(JSON.stringify(chunks)).not.toContain(FAKE_SECRET);
+		expect(JSON.stringify(summary)).not.toContain(FAKE_SECRET);
+		expect(JSON.stringify(summary)).not.toContain("acme");
+	});
+
+	it.each([
+		[
+			"a PlatformError",
+			new PlatformError("provider-unavailable", `秘密 ${FAKE_SECRET}`),
+			"provider-unavailable",
+		],
+		[
+			"an APICallError",
+			new APICallError({
+				message: `upstream rejected ${FAKE_SECRET}`,
+				url: "https://api.example.test/v1",
+				requestBodyValues: { prompt: FAKE_SECRET },
+				statusCode: 529,
+			}),
+			"provider-unavailable",
+		],
+		["a non-Error throw value", `plain ${FAKE_SECRET}`, "unexpected"],
+	] as const)("records %s under its closed code without the raw text", (_label, thrown, code) => {
 		const clock = createFakeClock();
 		const guarded = createGuardedAgent(options({ clock }));
 
-		guarded.onError("plain failure");
+		guarded.onError(thrown);
 
 		expect(guarded.summary()).toMatchObject({
 			stopReason: "error",
-			error: { name: "UnknownError", message: "plain failure" },
+			error: { code, message: AGENT_RUN_ERROR_MESSAGE },
 		});
+		expect(JSON.stringify(guarded.summary())).not.toContain(FAKE_SECRET);
 	});
 
 	it("records the abort cause, not error, when the stream errors after an abort", () => {

@@ -1,4 +1,5 @@
 import {
+	APICallError,
 	type Instructions,
 	type LanguageModel,
 	type LanguageModelUsage,
@@ -10,7 +11,7 @@ import {
 } from "ai";
 import type { GuardedToolSet } from "../aci/types";
 import { ConfigError } from "../config/load";
-import { PlatformError } from "../errors";
+import { PlatformError, type PlatformErrorCode } from "../errors";
 import type { Clock } from "../ports/clock";
 import { createRunStopConditions } from "./stop-conditions";
 import { type AbortCause, deriveStopReason, type StopReason } from "./stop-reason";
@@ -41,8 +42,22 @@ export interface AgentTokenTotals {
 	readonly reasoning: number;
 }
 
+/**
+ * Closed classification of the error that ended a run: the `PlatformError` code, or
+ * `"unexpected"` for anything else. AI SDK `APICallError`s count as `provider-unavailable`.
+ */
+export type AgentRunErrorCode = PlatformErrorCode | "unexpected";
+
+/** The fixed learner-facing text recorded for every run error (never the raw error message). */
+export const AGENT_RUN_ERROR_MESSAGE = "エージェントの実行中にエラーが発生しました。";
+
+/**
+ * Why a run ended in `error`. The summary is sent to the browser as `finish` message metadata,
+ * so it holds only a closed code and a fixed message: a raw error message can carry API keys,
+ * request bodies or internal hosts (plan "Error Handling", constitution principle 7).
+ */
 export interface AgentRunError {
-	readonly name: string;
+	readonly code: AgentRunErrorCode;
 	readonly message: string;
 }
 
@@ -117,12 +132,10 @@ const ERROR_TEXT: Readonly<Record<StopReason, string>> = {
 	completed: "エージェントの実行中にエラーが発生しました。",
 	"step-limit": "エージェントの実行中にエラーが発生しました。",
 	"token-budget": "エージェントの実行中にエラーが発生しました。",
-	error: "エージェントの実行中にエラーが発生しました。",
+	error: AGENT_RUN_ERROR_MESSAGE,
 	aborted: "エージェントの実行を中断しました。",
 	timeout: "実行時間の上限に達したため、エージェントを停止しました。",
 };
-
-const MAX_ERROR_MESSAGE_LENGTH = 200;
 
 function assertValidLimits(limits: LoopLimits): void {
 	for (const field of LOOP_LIMIT_FIELDS) {
@@ -144,10 +157,14 @@ function assertToolCount(tools: ToolSet): void {
 	}
 }
 
+function runErrorCode(error: unknown): AgentRunErrorCode {
+	if (error instanceof PlatformError) return error.code;
+	if (APICallError.isInstance(error)) return "provider-unavailable";
+	return "unexpected";
+}
+
 function runError(error: unknown): AgentRunError {
-	const name = error instanceof Error ? error.name : "UnknownError";
-	const message = error instanceof Error ? error.message : String(error);
-	return { name, message: message.slice(0, MAX_ERROR_MESSAGE_LENGTH) };
+	return { code: runErrorCode(error), message: AGENT_RUN_ERROR_MESSAGE };
 }
 
 /**

@@ -2,7 +2,9 @@
 // AI SDK agent runtime. Client components may import the types (e.g. `AgentRunSummary`,
 // `StopReason`) with `import type`.
 export {
+	AGENT_RUN_ERROR_MESSAGE,
 	type AgentRunError,
+	type AgentRunErrorCode,
 	type AgentRunSummary,
 	type AgentTokenTotals,
 	createGuardedAgent,
