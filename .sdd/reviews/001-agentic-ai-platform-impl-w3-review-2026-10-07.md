@@ -125,3 +125,23 @@ REQUEST_CHANGES
 
 ## Hallucination Signal
 forced: false
+
+## 対応記録（2026-10-07）
+
+- [HIGH] H1 要約のプロバイダエラーが `output-invalid` に化ける → `2c56283`（`onError` で集めたエラーを検証より先に元のまま投げる）
+- [HIGH] H2 エージェントの生のエラー文が `finish` のメタデータに載る → `436ac42`（`AgentRunSummary.error` を閉じた `code` と固定文言に）
+- [HIGH] H3 AI SDK 既定の `onError` が生のエラーを `console.error` に出す → `67c13a0`（settings の `onError` で置き換え、何も出力しない）
+- [MEDIUM] M4 `adaptHistoryForModel` が `metadata.provider` を信頼する → `de504f2`（プロバイダ固有フィールドと `custom` パートを常に除き、出所は `metadata.modelId` とカタログで判定）
+- [MEDIUM] M5 Ollama の `num_ctx` が計画の予算と一致しない → `00eb5e9`（要約の呼び出しに `providerOptions.ollama.options.num_ctx`。チャット・エージェントは対象外として traceability の Gaps に記録）
+- [MEDIUM] M6 記事の取得に SSRF の防御・タイムアウト・サイズ上限がない → `219dd0d`、`7e867fc`（`url-guard.ts`、手動リダイレクト、15 秒、5 MiB。DNS rebinding とストリーミングでの上限は Gaps に記録）
+- [MEDIUM] M7 Stryker の回避が境界外・未宣言 → 文書で対応（`41e48a9`。T-19・T-19.3 の `_Boundary:_`、plan C1・C18・File Structure、research.md、steering、AGENTS.md）
+- [MEDIUM] M8 plan・tasks が実装に追随していない → 文書で対応（`82c1f99..41e48a9` の各 ship と、修正後のコードに合わせた本記録と同じコミット `docs(sdd): record W3 review round 1 fixes`）
+- [LOW] L9 `</source>` の変種がエスケープされない → `68adf47`
+- [LOW] L10 module/1-1 の local テストが実 Ollama で未実行 → 文書で対応（`41e48a9`。do.md と tasks.md 19.2 に未実測として記録。実 Ollama での実行は未了）
+- [LOW] L11 observer の例外の握りつぶし → `c4e6798`（`onObserverError`）
+- [LOW] L12 `AnyAciTool` が構造型 → `2ce7962`、`77df298`（`WeakSet` の実行時検査と `unique symbol` のブランド）
+- [LOW] L13 要約の `modelId` がカタログに限定されない → `256478f`
+- [LOW] L14 統合プロンプトの予算未検査 → `f9070bc`、`255186a`（予算に収まるグループで段階的に統合）
+- [LOW] L15 `generate()` で `done` が未解決 → `67c13a0`（`generate()` のサブクラスで確定して再送出）
+- [LOW] L16 `MIN_CHUNK_TOKENS` の境界が変異で殺されない → `e93f840`
+- 検証: `e93f840` で `mise run gate` exit 0（root 257/257、ai-core 651/651 skip 4・lines 97.84%、eval-suite 3/3 skip 1）、`mise run test:mutation` 90.32。Round 2 は別のレビュアーで実施する。

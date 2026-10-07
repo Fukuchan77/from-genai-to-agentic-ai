@@ -3382,3 +3382,75 @@ GREEN 後、7件すべての新規テストについて独立した deliberate b
 - Spec drift: plan C21 の「最終回答の Outcome」は曖昧で、実装は各ツールの `ToolOutcome`（成功と recoverable な失敗）と最終回答のテキストを検証し、`ai` に依存しないため `agent.stream()` で実行する。C18 は eval-suite に閾値がないことを記していなかった。Stryker の回避が plan に宣言されていなかった（レビューの MEDIUM）。plan C1・C18・C21・File Structure、research.md、steering、AGENTS.md を更新した。
 - W3 敵対的レビュー r1（REQUEST_CHANGES: HIGH 3 / MEDIUM 5 / LOW 8）の指摘のうち、文書で扱うもの（MEDIUM の Stryker の境界と宣言、MEDIUM の plan・tasks の未追随、LOW の local テストの未実測）をこの ship で反映した。15 と 16 のノートの矛盾（ツール結果はエラー名だけ、run のサマリは生のエラー文）については、16 のノートと plan C8・Data Model を「サマリはエラー名と学習者向けの固定文言だけを持つ」に改めた。コードの修正とその記録は review-fix で行う。
 - Mechanical fixes: tasks.md（19.1〜19.3 を `[x]`、Implementation Notes、14.6・16 のノートの追記、T-19・T-19.3 の `_Boundary:_`、進捗を「実装完了、敵対的レビュー対応中」）、traceability.md（1.1・1.4・1.7・1.13・1.14・1.15・1.16 の Test/Commit、Gaps）、AGENTS.md（プロジェクト状態と W3 gate・CI の説明）。
+
+### 2026-10-07 W3 Adversarial Review Round 1: REQUEST_CHANGES
+
+- Review: `.sdd/reviews/001-agentic-ai-platform-impl-w3-review-2026-10-07.md`
+- HIGH 3: 要約のプロバイダエラーが `output-invalid` に化ける（H1）、エージェントの生のエラー文が `finish` のメタデータでブラウザへ届く（H2）、AI SDK 既定の `onError` が生のエラー（`APICallError` の要求本文を含む）を `console.error` に出す（H3）。
+- MEDIUM 5: `adaptHistoryForModel` がクライアントの `metadata.provider` を信頼する（M4）、Ollama の `num_ctx` が計画の予算と一致しない（M5）、記事の取得に SSRF の防御・タイムアウト・サイズ上限がない（M6）、Stryker の回避が境界外（M7）、plan・tasks が実装に追随していない（M8）。
+- LOW 8: `</source>` の変種（L9）、local テストの未実測（L10）、observer の例外の握りつぶし（L11）、`AnyAciTool` が構造型（L12）、要約の `modelId` がカタログに限定されない（L13）、統合プロンプトの予算未検査（L14）、`generate()` で `done` が未解決（L15）、`MIN_CHUNK_TOKENS` の境界が変異で殺されない（L16）。
+- M7・M8・L10 は Task 19 の ship（`82c1f99..41e48a9`）で文書として扱った。残り13件を2つのワーカーで修正した（agents/chat/aci と summarize。互いの境界は重ならない）。
+
+### 2026-10-07 Review Fix RED / GREEN / PROVE Evidence
+
+単一ファイルの実行は `pnpm --filter @platform/ai-core exec vitest run --coverage.enabled=false <file>`（フラグなしだと80%のカバレッジ閾値で失敗する）。
+
+**H2**（`436ac42`、`agents/guarded-agent.ts`）:
+
+- RED: 5件が `-  "code": "unexpected"` で失敗。ストリーム途中の `error` パートに `sk-ant-SECRET123` を含め、UI チャンクとサマリのどこにも出ないこと、`finish.messageMetadata` が `{ run: summary }` であることを検査。ほかに PlatformError、`requestBodyValues` に秘密を含む `APICallError`、Error でない throw。
+- GREEN: `AgentRunSummary.error` を `{ code: AgentRunErrorCode; message: AGENT_RUN_ERROR_MESSAGE }` にし、`name` と200文字の生メッセージを削除。
+- PROVE: 生メッセージを戻す → 5件失敗。UI の `onError` を `ERROR_TEXT + String(error)` → `not to contain 'sk-ant-SECRET123'`。PlatformError の code の対応を外す → 1件、`APICallError` の対応を外す → 1件。
+
+**H3 + L15**（`67c13a0`、`guarded-agent.ts`）:
+
+- RED: `console.error` が `[Error: bad key sk-ant-SECRET123]` で呼ばれた（途中の `error` パートと `doStream` の reject の両方）。`agent.stream()` を直接消費すると `completed` で確定した（2つ目のバグ）。`agent.generate()` が throw すると `summary()` が「終わる前」で throw した。
+- GREEN: settings に `onError: ({ error }) => finalise(error)` を渡す（`prepareCall` が `streamText` へ展開する。何も出力しない）。`GuardedToolLoopAgent` サブクラスの `generate()` が確定してから再送出する。
+- PROVE: settings の `onError` を外す → 3件失敗。サブクラスの確定を外す → generate のテストが PlatformError で失敗。`finalise(error)` を `finalise()` → 5件失敗。テストの stderr にあった `TypeError: provider exploded` は消えた。
+
+**L11**（`c4e6798`）: RED `expected [] to deeply equal [[Error: observer failed, …]]`。GREEN `onObserverError?: (error, observer) => void`（既定は no-op、その throw も無視）。PROVE 呼び出しを外す → 同じ失敗、通知先から再送出 → `Error: rethrown`、成功時に呼ぶ → `called 1 times`。
+
+**L12**（`2ce7962`、`77df298`、`aci/types.ts`・`define-tool.ts`・`tool-set.ts`）:
+
+- RED: 手書き、実ツールのスプレッドコピー、機能が無効な手書きの3件が `expected function to throw`。`@ts-expect-error` のテストが `TS2578 Unused '@ts-expect-error'`。
+- GREEN: モジュール内の `WeakSet` と `isDefinedAciTool`、`buildToolSet` の `ConfigError`、型だけの `unique symbol` ブランド。`77df298` は4件の生存変異しか生まない冗長なオブジェクト検査を削除した。
+- PROVE: `has()` をスタブ → 3件、`definedTools.add` を外す → 既存6件が新しい `ConfigError`、ブランドを外す → TS2578。
+
+**M4**（`de504f2`、`chat/adapt-history.ts`）:
+
+- RED: 10件失敗（`not to contain 'cacheControl'`、偽装した provider の各ケース）。
+- GREEN: プロバイダ固有フィールド4種と `custom` パートを常に除く。出所は `Object.hasOwn(MODEL_CATALOG, metadata.modelId)` のエントリの provider（矛盾すれば不明）。テストの偽装 ID は `check:model-ids` に掛からない `"forged-model"`。
+- PROVE: 旧来の `sameProvider ? {...part}` → 3件、`hasOwn` を外す → `TypeError`、矛盾の検査を外す → 1件、同じプロバイダで custom を許す → 1件、推論の規則から `sameProvider` を外す → 12件。
+
+**H1**（`2c56283`、`summarize/pipeline.ts`）:
+
+- RED: 途中の `{type:"error"}` に対し `SummaryValidationError ... issuesByAttempt [3× "JSON として解析できませんでした"]`。
+- GREEN: `onError` で集めたエラーがあれば `NoObjectGeneratedError` の判定より先に `streamErrors[0]` を投げる。元のインスタンス、`doStreamCalls` 1、`restart` なしを検査。
+- PROVE: その行を外す → 新しいテストと既存の reject テスト（`expected AI_NoOutputGeneratedError ... to be Error: provider down`）が失敗。
+
+**M5**（`00eb5e9`）: RED `expected undefined to deeply equal { ollama }`。GREEN Ollama のエントリへの要約呼び出しすべてに `providerOptions.ollama.options.num_ctx = contextWindow`。実 `createOllama` に fetch を注入し、要求本文に `options.num_ctx: 40960` があることを確認。PROVE `return {}` → 2件、provider の検査を外す → 1件。
+
+**M6**（`219dd0d`、`7e867fc`、`source.ts`・`errors.ts`・新規 `url-guard.ts`）:
+
+- RED: 13件失敗（`expected { kind: 'article', text: 'secret' } to be an instance of SourceFetchError` ほか）。
+- GREEN: `URL.hostname` のリテラル検査（IPv4 の非公開帯域、IPv6 の ::・::1・IPv4 互換/マップ/NAT64・fc00::/7・fe80::/10・fec0::/10・ff00::/8、localhost・*.local・*.internal・単一ラベル）。`redirect: "manual"` で最大5回、行き先ごとに検査。`SourceDeps.clock` の 15 秒タイムアウト（fetch と競争させ、signal を無視する fetcher も打ち切る）。5 MiB の UTF-8 バイト上限。新しい reason `disallowed-url`・`timeout`・`too-large`。テストは `url-guard.test.ts` 56件、`source.test.ts` 14件、`pipeline.test.ts` 1件。
+- PROVE（それぞれ失敗を確認）: マップ/NAT64 分岐 → 3件、protocol 検査 → ftp・gopher を受理、169.254/16 → 2件、fetch 前の検査 → 7件、`redirect: "manual"` → `expected false to be true`、上限 `>=`→`>`、タイムアウトの対応 → reason が `network`、サイズ `>`→`>=` と文字数化 → 境界テスト、競争を外す → `Test timed out in 5000ms`。
+- PROVE 中の発見: 事前に abort した signal で放棄した要求が unhandled rejection を出したため、`request.catch(() => undefined)` で修正した。
+- `7e867fc`: `hardSplit` を補間探索（`fittingEnd`）に変えた。2 MB の `"word "` 行で qwen3:8b 2.5 s → 0.66 s、日本語 2 MB 6.2 s → 0.77 s。PROVE 二分探索に戻す → `expected 4934318 to be less than 1600000`、`low - 1` と `start + 1` の除去 → 各6件。
+
+**L9**（`68adf47`）: RED 7件。GREEN `/<(\s*\/?\s*source\b[^>]*)>/giu` で題名と本文の全変種を `&lt;…&gt;` に。PROVE 題名を素通し → 7件、`i` フラグを外す → 大文字の2件。
+
+**L13**（`256478f`）: RED 5件。GREEN `modelId` を `MODEL_CATALOG` の ID の `z.enum` にし、未使用の `SUMMARY_LIMITS.modelIdMaxLength` を削除。`constructor`・`toString`・`__proto__`・`""` を拒否。PROVE `z.string()` に戻す → 5件。
+
+**L14**（`f9070bc`、`255186a`、`plan.ts`・`pipeline.ts`）: RED `integrationTokens is not a function`、次に `expected length 9 but got 6`。GREEN `integrationTokens`（実測 462 に対し 473、過大側で5%以内）、`integrationGroups`、`mergeUntilOneGroup`（途中の統合はイベントなし）。5チャンクで2件分の予算なら9回の呼び出し。PROVE ループ無効 → 6回、進展の検査を外す → 拒否テスト失敗、境界 `>`→`>=` → 2件、単独部分の検査を外す → 1件。`255186a` は Stryker が等価変異と示した2つの guard を削除した。
+
+**L16**（`e93f840`）: チャンク予算ちょうど 256 で段階計画（各チャンク ≤ 256）、255 で拒否。PROVE `<=` の変異で失敗。`stryker run --mutate packages/ai-core/src/summarize/plan.ts` で `killed 4`、plan.ts 84.97。
+
+### 2026-10-07 Review Fix Verification
+
+- 統合コミット（agents/chat/aci）: H2 `436ac42`、H3+L15 `67c13a0`、L11 `c4e6798`、L12 `2ce7962`、M4 `de504f2`、L12 refactor `77df298`。
+- 統合コミット（summarize）: H1 `2c56283`、M5 `00eb5e9`、M6 `219dd0d`、M6 perf `7e867fc`、L9 `68adf47`、L13 `256478f`、L14 `f9070bc`、L14 refactor `255186a`、L16 `e93f840`。
+- `e93f840` での `mise run gate` → exit 0: root `executed=257 passed=257`。ai-core `executed=651 passed=651 failed=0 skipped=4`、lines 97.84%。eval-suite `executed=3 passed=3 skipped=1`。9規則すべて走査件数 > 0。（summarize ワーカーの報告の 628 は agents の修正を統合する前の数。）
+- `mise run test:mutation`: agents の修正後 88.86、summarize の修正後 90.32（閾値 70）。plan.ts の生存変異（行の詰め込み 134・149・155・156・162、エラー文言、空の統合プロンプト、1行あたりの `+ 1`、速度だけに効く初回の probe）は残る。
+- 挙動の変化: localhost や LAN の記事 URL（学習者自身の開発サーバーなど）は、どの実行モードでも拒否される。fixture は `example.test` だけを使う。
+- 残るリスクは traceability.md の Gaps に記録した（DNS rebinding、本文のストリーミング上限、`num_ctx` は要約だけ、Ollama のメモリ未実測、署名なしの推論の再送）。ツール結果の要約に `PlatformError.message` を入れる規約は変えていない。
+- plan C8・C9・C11・C12・C15・Data Model・Error Handling・File Structure、research ADR-6・ADR-7、tasks.md の 15〜18 のノートと T-18・T-18.2 の `_Boundary:_`（`url-guard.ts`・`url-guard.test.ts` を追加）を修正後のコードに合わせた。
