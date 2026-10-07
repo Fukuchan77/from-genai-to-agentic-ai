@@ -152,4 +152,4 @@ run = "node scripts/check-model-ids.mjs"
 
 [tasks."check:repo-rules"]
 description = "Validate repository governance rules"
-run = "node scripts/check-repo-rules.mjs --only no-dynamic-eval,actions-pinned,frozen-lockfile,allow-builds-reasoned,no-deprecated-object-api,guarded-agent-only,ai-core-no-ui-deps,no-sensitive-logging"
+run = "node scripts/check-repo-rules.mjs --only no-dynamic-eval,actions-pinned,frozen-lockfile,allow-builds-reasoned,no-deprecated-object-api,guarded-agent-only,ai-core-no-ui-deps,no-sensitive-logging,tool-risk-declared"
