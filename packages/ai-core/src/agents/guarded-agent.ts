@@ -91,6 +91,13 @@ export interface GuardedAgentOptions<TOOLS extends ToolSet> {
 	/** The caller's abort (`request.signal` in a Route Handler). */
 	readonly signal: AbortSignal;
 	readonly observers?: readonly RunObserver[] | undefined;
+	/**
+	 * Receives an exception thrown by an observer's `onRunEnd`, with that observer. The run's
+	 * outcome, `done` and the other observers are unaffected either way. Defaults to a no-op; an
+	 * implementation must not log the error's message or the summary's raw values (constitution 7).
+	 * An exception thrown by this callback itself is ignored.
+	 */
+	readonly onObserverError?: ((error: unknown, observer: RunObserver) => void) | undefined;
 }
 
 /** The `run` message metadata sent with the UI stream's `finish` chunk. */
@@ -211,6 +218,7 @@ export function createGuardedAgent<TOOLS extends ToolSet>(
 
 	const { clock, limits } = options;
 	const observers = [...(options.observers ?? [])];
+	const onObserverError = options.onObserverError ?? (() => {});
 	const startedAt = clock.now();
 	const { stopWhen, record } = createRunStopConditions({ limits, clock, startedAt });
 	const timeoutSignal = clock.timeoutSignal(limits.maxDurationMs);
@@ -251,11 +259,20 @@ export function createGuardedAgent<TOOLS extends ToolSet>(
 		for (const observer of observers) {
 			try {
 				observer.onRunEnd(summary);
-			} catch {
+			} catch (error) {
 				// An observer must not change the run's outcome or starve the other observers.
+				reportObserverError(error, observer);
 			}
 		}
 		return summary;
+	}
+
+	function reportObserverError(error: unknown, observer: RunObserver): void {
+		try {
+			onObserverError(error, observer);
+		} catch {
+			// The reporter is best effort; it must not break finalisation either.
+		}
 	}
 
 	function onAbort(): void {

@@ -560,6 +560,72 @@ describe("createGuardedAgent: finalisation", () => {
 	});
 });
 
+describe("createGuardedAgent: observer errors", () => {
+	it("reports an observer's exception to onObserverError with that observer", async () => {
+		const clock = createFakeClock();
+		const failure = new Error("observer failed");
+		const failing: RunObserver = {
+			onRunEnd: () => {
+				throw failure;
+			},
+		};
+		const later = recordingObserver();
+		const reported: [unknown, RunObserver][] = [];
+		const guarded = createGuardedAgent(
+			options({
+				clock,
+				observers: [failing, later],
+				onObserverError: (error, observer) => reported.push([error, observer]),
+			}),
+		);
+
+		await runToEnd(guarded, "計算してください");
+
+		expect(reported).toEqual([[failure, failing]]);
+		expect(reported[0]?.[1]).toBe(failing);
+		expect(later.calls).toHaveLength(1);
+		expect((await guarded.done).stopReason).toBe("completed");
+	});
+
+	it("does not call onObserverError when every observer succeeds", async () => {
+		const clock = createFakeClock();
+		const onObserverError = vi.fn();
+		const guarded = createGuardedAgent(
+			options({ clock, observers: [recordingObserver()], onObserverError }),
+		);
+
+		await runToEnd(guarded, "計算してください");
+
+		expect(onObserverError).not.toHaveBeenCalled();
+	});
+
+	it("keeps the run and later observers intact when onObserverError throws too", async () => {
+		const clock = createFakeClock();
+		const later = recordingObserver();
+		const guarded = createGuardedAgent(
+			options({
+				clock,
+				observers: [
+					{
+						onRunEnd: () => {
+							throw new Error("observer failed");
+						},
+					},
+					later,
+				],
+				onObserverError: () => {
+					throw new Error("reporter failed");
+				},
+			}),
+		);
+
+		await runToEnd(guarded, "計算してください");
+
+		expect((await guarded.done).stopReason).toBe("completed");
+		expect(later.calls).toHaveLength(1);
+	});
+});
+
 describe("createGuardedAgent: validation", () => {
 	function aciTools(count: number): AnyAciTool[] {
 		return Array.from({ length: count }, (_, index) =>
