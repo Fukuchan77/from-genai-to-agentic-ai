@@ -2,9 +2,14 @@ import { generateText } from "ai";
 import { describe, expect, it, vi } from "vitest";
 import { type EnvSource, loadPlatformConfig } from "../config";
 import { PlatformError } from "../errors";
+import { createFakeClock } from "../ports/clock";
 import { createTextStreamModel } from "../testing/mock-models";
 import { defaultModelFor, listModels } from "./catalog";
-import { ModelSelectionError, ProviderCredentialsMissingError } from "./errors";
+import {
+	ModelSelectionError,
+	OllamaUnavailableError,
+	ProviderCredentialsMissingError,
+} from "./errors";
 import { createModelGateway, type GatewayDeps } from "./gateway";
 import { PROVIDER_FACTORIES, type ProviderFactories } from "./providers";
 
@@ -210,6 +215,70 @@ describe("createModelGateway resolve (model selection, D9)", () => {
 			name: "ModelSelectionError",
 			reason: "unknown-model",
 			details: { modelId: unknownId, mode: "mock" },
+		});
+	});
+});
+
+describe("createModelGateway resolve (local)", () => {
+	const localEmbeddingId = defaultModelFor("local", "ollama", "embedding");
+	const tagsBody = (...names: string[]) => ({
+		status: 200,
+		headers: {},
+		body: JSON.stringify({ models: names.map((name) => ({ name })) }),
+	});
+
+	it("checks Ollama and builds the Ollama model for the configured base URL", async () => {
+		const fetch = vi.fn().mockResolvedValue(tagsBody(localChatId, localEmbeddingId));
+		const gateway = createModelGateway({
+			config: configFor({
+				AI_TEST_RUN_MODE: "local",
+				OLLAMA_BASE_URL: "http://ollama.test:11434",
+			}),
+			fetcher: { fetch },
+			clock: createFakeClock(),
+		});
+
+		const resolved = await gateway.resolve({ purpose: "chat" });
+
+		expect(resolved).toMatchObject({ mode: "local", entry: { id: localChatId } });
+		expect(resolved.model.modelId).toBe(localChatId);
+		expect(resolved.model.provider).toContain("ollama");
+		expect(fetch).toHaveBeenCalledWith("http://ollama.test:11434/api/tags", expect.anything());
+	});
+
+	it("raises OllamaUnavailableError with the URL and start guidance before building a model", async () => {
+		const providers = spyProviders();
+		const gateway = createModelGateway({
+			config: configFor({ AI_TEST_RUN_MODE: "local" }),
+			providers,
+			fetcher: { fetch: vi.fn().mockRejectedValue(new TypeError("fetch failed")) },
+			clock: createFakeClock(),
+		});
+
+		const error = await caught(gateway.resolve({ purpose: "chat" }));
+
+		expect(error).toBeInstanceOf(OllamaUnavailableError);
+		expect(error).toMatchObject({
+			code: "provider-unavailable",
+			baseUrl: "http://127.0.0.1:11434",
+			reason: "unreachable",
+		});
+		expect((error as Error).message).toContain("http://127.0.0.1:11434");
+		expect((error as Error).message).toContain("ollama serve");
+		expect(providers.calls).toEqual([]);
+	});
+
+	it("names the model to pull when Ollama does not have it", async () => {
+		const gateway = createModelGateway({
+			config: configFor({ AI_TEST_RUN_MODE: "local" }),
+			providers: spyProviders(),
+			fetcher: { fetch: vi.fn().mockResolvedValue(tagsBody(localEmbeddingId)) },
+			clock: createFakeClock(),
+		});
+
+		await expect(gateway.resolve({ purpose: "chat" })).rejects.toMatchObject({
+			reason: "model-missing",
+			message: expect.stringContaining(`ollama pull ${localChatId}`),
 		});
 	});
 });

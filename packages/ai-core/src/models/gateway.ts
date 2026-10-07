@@ -5,9 +5,11 @@ import { type CassetteStore, createCassetteStore } from "../mock/cassette-store"
 import { CASSETTE_FIXTURE_DIRECTORY } from "../mock/fixtures";
 import type { ScenarioDefinition } from "../mock/scenario";
 import { createScenarioModel } from "../mock/scenario-model";
-import type { HttpFetcher } from "../ports/http";
+import { type Clock, systemClock } from "../ports/clock";
+import { createNodeHttpFetcher, type HttpFetcher } from "../ports/http";
 import { type CatalogModelId, MODEL_CATALOG } from "./catalog";
 import { ModelSelectionError, ProviderCredentialsMissingError } from "./errors";
+import { createOllamaPreflight } from "./ollama-preflight";
 import {
 	type LanguageModelV4,
 	missingCredentials,
@@ -29,8 +31,10 @@ export interface GatewayDeps {
 	readonly mock?: GatewayMockOptions;
 	/** Provider factory table; tests inject fakes. Defaults to {@link PROVIDER_FACTORIES}. */
 	readonly providers?: ProviderFactories;
-	/** HTTP port used by the Ollama preflight in `local` mode. */
+	/** HTTP port used by the Ollama preflight in `local` mode. Defaults to the Node fetcher. */
 	readonly fetcher?: HttpFetcher;
+	/** Clock for the preflight cache and timeout. Defaults to {@link systemClock}. */
+	readonly clock?: Clock;
 }
 
 export interface ResolveRequest {
@@ -62,6 +66,11 @@ export function createModelGateway(deps: GatewayDeps): ModelGateway {
 	};
 	const scenarios = deps.mock?.scenarios ?? [...M1_2_SCENARIOS, ...M1_3_SCENARIOS];
 	const cassettes = deps.mock?.cassettes ?? createCassetteStore(CASSETTE_FIXTURE_DIRECTORY);
+	const ollama = createOllamaPreflight({
+		baseUrl: config.ollamaBaseUrl,
+		fetcher: deps.fetcher ?? createNodeHttpFetcher(),
+		clock: deps.clock ?? systemClock,
+	});
 
 	function selectEntry(purpose: ModelPurpose, modelId: ModelId | undefined): ModelEntry {
 		const id = modelId ?? config.models[purpose];
@@ -104,6 +113,7 @@ export function createModelGateway(deps: GatewayDeps): ModelGateway {
 					mode: config.mode,
 				};
 			}
+			if (entry.provider === "ollama") await ollama.ensureModel(entry.id);
 			const model = providers[entry.provider](settings).languageModel(entry.id);
 			return { model, entry, mode: config.mode };
 		},
