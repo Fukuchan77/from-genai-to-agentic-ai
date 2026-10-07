@@ -34,10 +34,18 @@ interface SourceText {
 	readonly withChapters: boolean;
 }
 
+// Any opening or closing `source` tag, whatever its case, spacing or attributes.
+const SOURCE_TAG = /<(\s*\/?\s*source\b[^>]*)>/giu;
+
+/** Escapes every `source` tag in untrusted text so it cannot open or close the data block. */
+function escapeSourceTags(text: string): string {
+	return text.replace(SOURCE_TAG, "&lt;$1&gt;");
+}
+
 function sourceBlock(text: string, title?: string): string {
-	// A closing delimiter inside the data must not end the source block early.
-	const body = text.replaceAll("</source>", "</ source>");
-	const header = title ? `タイトル: ${title.replaceAll("\n", " ")}\n\n` : "";
+	// The title (from the article's <title>) is as untrusted as the text.
+	const body = escapeSourceTags(text);
+	const header = title ? `タイトル: ${escapeSourceTags(title.replaceAll("\n", " "))}\n\n` : "";
 	return `<source>\n${header}${body}\n</source>`;
 }
 
