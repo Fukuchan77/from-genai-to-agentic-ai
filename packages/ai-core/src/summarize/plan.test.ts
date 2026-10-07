@@ -16,7 +16,12 @@ import {
 	planSummary,
 	wholeOverheadTokens,
 } from "./plan";
-import { buildIntegrationPrompt } from "./prompts";
+import {
+	buildChunkPrompt,
+	buildIntegrationPrompt,
+	buildSummaryPrompt,
+	type SummaryPrompt,
+} from "./prompts";
 import type { Summary } from "./schema";
 import type { LoadedSource } from "./source";
 import { estimateTokens, TOKEN_SAFETY_FACTOR } from "./tokens";
@@ -42,6 +47,20 @@ function entryWithContext(contextWindow: number): ModelEntry {
 
 const paragraph = "エージェントは目標に向けてツールを使い、結果を評価しながら処理を進めます。";
 const longText = Array.from({ length: 400 }, (_, index) => `${index}: ${paragraph}`).join("\n");
+
+const NO_CACHE = { cachePolicy: { mode: "none", recordsCacheReads: false } } as const;
+
+/** The text of a prompt as the planner measures it: instructions, then each text part. */
+function promptTextOf(prompt: SummaryPrompt): string {
+	return [
+		prompt.instructions,
+		...prompt.messages.flatMap((message) =>
+			typeof message.content === "string"
+				? [message.content]
+				: message.content.flatMap((part) => (part.type === "text" ? [part.text] : [])),
+		),
+	].join("\n");
+}
 
 describe("estimateTokens", () => {
 	it("applies the 1.2 safety factor to the gpt-tokenizer count and rounds up", () => {
@@ -162,6 +181,65 @@ describe("planSummary", () => {
 
 		expect(wholeOverheadTokens(titled)).toBeGreaterThan(wholeOverheadTokens(plain));
 		expect(wholeOverheadTokens(timestamped)).toBeGreaterThan(wholeOverheadTokens(plain));
+	});
+
+	it("measures the whole and chunk overheads from the real empty prompts (W3 review r2 N6)", () => {
+		const entry = entryWithContext(40_960);
+		const sources: LoadedSource[] = [
+			{ kind: "transcript", text: "x" },
+			{ kind: "article", text: "x", title: "タイトル" },
+			{ kind: "youtube", text: "x", segments: [{ text: "x", startSeconds: 0 }] },
+		];
+		for (const source of sources) {
+			// The planner measures the empty prompt with a wide chunk number (valid for any index).
+			const overhead = estimateTokens(
+				promptTextOf(
+					buildChunkPrompt(
+						{
+							text: "",
+							index: 99_998,
+							total: 99_999,
+							withChapters: Boolean(source.segments?.length),
+							...(source.title ? { title: source.title } : {}),
+						},
+						NO_CACHE,
+					),
+				),
+			);
+
+			expect(overhead).toBeGreaterThan(0);
+			expect(chunkBudgetTokens(source, entry)).toBe(contextBudgetTokens(entry) - overhead);
+			expect(wholeOverheadTokens(source)).toBe(
+				estimateTokens(
+					promptTextOf(
+						buildSummaryPrompt(
+							{
+								text: "",
+								withChapters: Boolean(source.segments?.length),
+								...(source.title ? { title: source.title } : {}),
+							},
+							NO_CACHE,
+						),
+					),
+				),
+			);
+		}
+	});
+
+	it("keeps every staged chunk's whole prompt within the context budget", () => {
+		const source: LoadedSource = { kind: "transcript", text: longText };
+		const entry = entryWithContext(8_192);
+
+		const plan = planSummary(source, entry);
+
+		expect(plan.strategy).toBe("staged");
+		plan.chunks.forEach((chunk, index) => {
+			const prompt = buildChunkPrompt(
+				{ text: chunk, index: index + 1, total: plan.chunks.length, withChapters: false },
+				NO_CACHE,
+			);
+			expect(estimateTokens(promptTextOf(prompt))).toBeLessThanOrEqual(contextBudgetTokens(entry));
+		});
 	});
 
 	it("stages at exactly MIN_CHUNK_TOKENS per chunk and refuses one token below", () => {
@@ -285,21 +363,9 @@ describe("integrationGroups", () => {
 	}
 
 	it("estimates the integration prompt at or slightly above its real size", () => {
-		const prompt = buildIntegrationPrompt(
-			{ partials, ...options },
-			{
-				cachePolicy: { mode: "none", recordsCacheReads: false },
-			},
+		const actual = estimateTokens(
+			promptTextOf(buildIntegrationPrompt({ partials, ...options }, NO_CACHE)),
 		);
-		const text = [
-			prompt.instructions,
-			...prompt.messages.flatMap((message) =>
-				typeof message.content === "string"
-					? [message.content]
-					: message.content.flatMap((part) => (part.type === "text" ? [part.text] : [])),
-			),
-		].join("\n");
-		const actual = estimateTokens(text);
 
 		const estimate = integrationTokens(partials, options);
 
@@ -309,6 +375,19 @@ describe("integrationGroups", () => {
 		expect(integrationTokens(partials.slice(0, 2), options)).toBeGreaterThan(
 			integrationTokens(partials.slice(0, 1), options),
 		);
+	});
+
+	it("sums the empty prompt and one line per partial, each with its newline (W3 review r2 N6)", () => {
+		const emptyRaw = countTokens(
+			promptTextOf(buildIntegrationPrompt({ partials: [], ...options }, NO_CACHE)),
+		);
+		const raw = partials.reduce(
+			(total, item) => total + countTokens(JSON.stringify(item)) + 1,
+			emptyRaw,
+		);
+
+		expect(integrationTokens([], options)).toBe(Math.ceil(emptyRaw * TOKEN_SAFETY_FACTOR));
+		expect(integrationTokens(partials, options)).toBe(Math.ceil(raw * TOKEN_SAFETY_FACTOR));
 	});
 
 	it("keeps every partial in one group when they all fit", () => {
