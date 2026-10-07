@@ -48,14 +48,25 @@ export interface AciToolDefinition<INPUT, OUTPUT> {
 	execute(input: INPUT, context: AciToolContext): Promise<OUTPUT> | OUTPUT;
 }
 
-/** A tool that is not yet an AI SDK `Tool`; `toTool` converts it with a `ToolRuntime`. */
-export interface AciTool<INPUT = unknown, OUTPUT = unknown> {
+interface AciToolMetadata {
 	readonly name: string;
 	readonly description: string;
 	readonly risk: ToolRisk;
 	readonly timeoutMs: number | undefined;
 	readonly requiredFeature: FeatureId | undefined;
+}
+
+/** A tool that is not yet an AI SDK `Tool`; `toTool` converts it with a `ToolRuntime`. */
+export interface AciTool<INPUT, OUTPUT> extends AciToolMetadata {
 	toTool(runtime: ToolRuntime): Tool<INPUT, ToolOutcome<OUTPUT>>;
+}
+
+/**
+ * An `AciTool` of any input and output type. `Tool<INPUT>` is invariant in `INPUT`, so a list of
+ * differently typed tools (`buildToolSet`'s argument) needs this erased form.
+ */
+export interface AnyAciTool extends AciToolMetadata {
+	toTool(runtime: ToolRuntime): Tool;
 }
 
 /**
