@@ -9,10 +9,14 @@ import {
 	contextBudgetTokens,
 	fittingEnd,
 	formatSourceText,
+	integrationGroups,
+	integrationTokens,
 	OUTPUT_RESERVE_TOKENS,
 	planSummary,
 	wholeOverheadTokens,
 } from "./plan";
+import { buildIntegrationPrompt } from "./prompts";
+import type { Summary } from "./schema";
 import type { LoadedSource } from "./source";
 import { estimateTokens, TOKEN_SAFETY_FACTOR } from "./tokens";
 
@@ -237,5 +241,91 @@ describe("fittingEnd", () => {
 		expect(plan.chunks.join("")).toBe(line);
 		// Bisection over the rest of the line tokenized about 30 times the line here.
 		expect(tokenized.characters).toBeLessThan(line.length * 8);
+	});
+});
+
+describe("integrationGroups", () => {
+	const partial: Summary = {
+		title: "部分要約",
+		keyPoints: ["要点その一です。", "要点その二です。", "要点その三です。"],
+		tags: ["AI", "評価"],
+		actionItems: ["試してみる"],
+	};
+	const options = { withChapters: false, title: "長い記事" };
+	const partials = Array.from({ length: 5 }, (_, index) => ({ ...partial, title: `部分${index}` }));
+
+	// The smallest context window whose budget holds `tokens`; asserts the budget is exactly that.
+	function entryWithBudget(tokens: number): ModelEntry {
+		let contextWindow = 1;
+		while (contextBudgetTokens(entryWithContext(contextWindow)) < tokens) contextWindow += 1;
+		const entry = entryWithContext(contextWindow);
+		expect(contextBudgetTokens(entry)).toBe(tokens);
+		return entry;
+	}
+
+	it("estimates the integration prompt at or slightly above its real size", () => {
+		const prompt = buildIntegrationPrompt(
+			{ partials, ...options },
+			{
+				cachePolicy: { mode: "none", recordsCacheReads: false },
+			},
+		);
+		const text = [
+			prompt.instructions,
+			...prompt.messages.flatMap((message) =>
+				typeof message.content === "string"
+					? [message.content]
+					: message.content.flatMap((part) => (part.type === "text" ? [part.text] : [])),
+			),
+		].join("\n");
+		const actual = estimateTokens(text);
+
+		const estimate = integrationTokens(partials, options);
+
+		// Summing per-line counts errs on the safe side: never below the real prompt, within 5%.
+		expect(estimate).toBeGreaterThanOrEqual(actual);
+		expect(estimate).toBeLessThanOrEqual(Math.ceil(actual * 1.05));
+		expect(integrationTokens(partials.slice(0, 2), options)).toBeGreaterThan(
+			integrationTokens(partials.slice(0, 1), options),
+		);
+	});
+
+	it("keeps every partial in one group when they all fit", () => {
+		const entry = entryWithBudget(integrationTokens(partials, options));
+
+		expect(integrationGroups(partials, options, entry)).toEqual([partials]);
+	});
+
+	it("groups the partials so each group's integration prompt fits the budget", () => {
+		const entry = entryWithBudget(integrationTokens(partials.slice(0, 2), options));
+
+		const groups = integrationGroups(partials, options, entry);
+
+		expect(groups).toEqual([partials.slice(0, 2), partials.slice(2, 4), partials.slice(4)]);
+		for (const group of groups) {
+			expect(integrationTokens(group, options)).toBeLessThanOrEqual(contextBudgetTokens(entry));
+		}
+	});
+
+	it("refuses with capability-unsupported when no group can hold two partials", () => {
+		const entry = entryWithBudget(integrationTokens(partials.slice(0, 2), options) - 1);
+
+		expect(() => integrationGroups(partials, options, entry)).toThrow(
+			expect.objectContaining({ code: "capability-unsupported" }),
+		);
+	});
+
+	it("refuses with capability-unsupported when a single partial does not fit", () => {
+		const entry = entryWithBudget(integrationTokens(partials.slice(0, 1), options) - 1);
+
+		expect(() => integrationGroups(partials.slice(0, 1), options, entry)).toThrow(
+			expect.objectContaining({ code: "capability-unsupported" }),
+		);
+	});
+
+	it("accepts a single partial that fits exactly", () => {
+		const entry = entryWithBudget(integrationTokens(partials.slice(0, 1), options));
+
+		expect(integrationGroups(partials.slice(0, 1), options, entry)).toEqual([partials.slice(0, 1)]);
 	});
 });

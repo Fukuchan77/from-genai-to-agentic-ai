@@ -9,7 +9,14 @@ import {
 import type { z } from "zod";
 import type { ModelEntry } from "../models/types";
 import { type CachePolicy, cachePolicyFor } from "./cache-policy";
-import { OUTPUT_RESERVE_TOKENS, planSummary, type SummaryPlan, type SummaryStrategy } from "./plan";
+import {
+	type IntegrationOptions,
+	integrationGroups,
+	OUTPUT_RESERVE_TOKENS,
+	planSummary,
+	type SummaryPlan,
+	type SummaryStrategy,
+} from "./plan";
 import {
 	buildChunkPrompt,
 	buildIntegrationPrompt,
@@ -145,6 +152,45 @@ function promptOptions(cachePolicy: CachePolicy, feedback: readonly string[] | u
 }
 
 /**
+ * Integrates groups of partial summaries (no events) until all of them fit one integration prompt
+ * of the context budget; `integrationGroups` refuses when merging cannot progress (W3 review L14).
+ * A group of one is carried over without a call.
+ */
+async function* mergeUntilOneGroup(
+	partials: readonly Summary[],
+	options: IntegrationOptions,
+	call: { readonly context: CallContext; readonly cachePolicy: CachePolicy },
+): AsyncGenerator<SummaryEvent, Summary[]> {
+	let current = [...partials];
+	let groups = integrationGroups(current, options, call.context.deps.entry);
+	while (groups.length > 1) {
+		const next: Summary[] = [];
+		for (const group of groups) {
+			if (group.length === 1) {
+				next.push(...group);
+				continue;
+			}
+			const merged = yield* withRegeneration(
+				(_attempt, feedback) =>
+					generateSummaryObject(
+						buildIntegrationPrompt(
+							{ partials: group, ...options },
+							promptOptions(call.cachePolicy, feedback),
+						),
+						call.context,
+						false,
+					),
+				discardRestart,
+			);
+			next.push(merged.value);
+		}
+		current = next;
+		groups = integrationGroups(current, options, call.context.deps.entry);
+	}
+	return current;
+}
+
+/**
  * Streams one summary for `plan`. `whole` makes one call; `staged` summarizes each chunk (no events)
  * and then streams the integration of the partial summaries. Every call is regenerated at most
  * twice on a schema failure, after which `SummaryValidationError` is thrown.
@@ -186,9 +232,14 @@ export async function* streamSummary(
 			);
 			partials.push(chunk.value);
 		}
+		const merged = yield* mergeUntilOneGroup(
+			partials,
+			{ withChapters: plan.withChapters, ...title },
+			{ context, cachePolicy },
+		);
 		finalPrompt = (feedback) =>
 			buildIntegrationPrompt(
-				{ partials, withChapters: plan.withChapters, ...title },
+				{ partials: merged, withChapters: plan.withChapters, ...title },
 				promptOptions(cachePolicy, feedback),
 			);
 	}

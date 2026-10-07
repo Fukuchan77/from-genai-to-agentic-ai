@@ -35,6 +35,7 @@ import {
 	summarizeSource,
 	TranscriptUnavailableError,
 } from "./index";
+import { contextBudgetTokens, integrationTokens } from "./plan";
 
 function structuredEntry(mode: RunMode, provider: ProviderId): ModelEntry {
 	return getModelEntry(defaultModelFor(mode, provider, "structured"));
@@ -501,6 +502,76 @@ describe("streamSummary: staged", () => {
 				attempts: 1,
 			},
 		});
+	});
+
+	it("integrates in rounds when all partial summaries do not fit one prompt", async () => {
+		const partial = { ...baseSummary, title: "部分" };
+		const options = { withChapters: false };
+		const model = new MockLanguageModelV4({
+			doStream: async () => ({
+				stream: simulateReadableStream<LanguageModelV4StreamPart>({
+					chunks: [
+						{ type: "stream-start", warnings: [] },
+						{ type: "text-start", id: "t" },
+						{ type: "text-delta", id: "t", delta: JSON.stringify(partial) },
+						{ type: "text-end", id: "t" },
+						{
+							type: "finish",
+							finishReason: { unified: "stop", raw: undefined },
+							usage: {
+								inputTokens: { total: 10, noCache: 10, cacheRead: 0, cacheWrite: 0 },
+								outputTokens: { total: 1, text: 1, reasoning: 0 },
+							},
+						},
+					],
+				}),
+			}),
+		});
+		// A budget that holds the integration of exactly two partial summaries.
+		const needed = integrationTokens([partial, partial], options);
+		let contextWindow = 1;
+		while (contextBudgetTokens({ ...mockEntry, contextWindow }) < needed) contextWindow += 1;
+		const entry: ModelEntry = { ...mockEntry, contextWindow };
+		const plan: SummaryPlan = {
+			strategy: "staged",
+			estimatedInputTokens: 0,
+			chunks: ["一", "二", "三", "四", "五"],
+			withChapters: false,
+		};
+
+		const events = await collect(plan, { model, entry });
+		const integrationCalls = model.doStreamCalls.slice(5).map(promptText);
+
+		// 5 chunks; round 1 merges [2, 2, 1] (2 calls); round 2 merges [2, 1] (1 call); then the
+		// final integration of the last two.
+		expect(model.doStreamCalls).toHaveLength(9);
+		expect(integrationCalls.every((text) => text.includes("部分要約（JSON）の一覧"))).toBe(true);
+		expect(events.filter((event) => event.type === "restart")).toEqual([]);
+		expect(events.at(-2)).toEqual({ type: "final", summary: partial });
+		expect(events.at(-1)).toMatchObject({
+			type: "meta",
+			meta: { strategy: "staged", chunks: 5, actualInputTokens: 90 },
+		});
+	});
+
+	it("refuses with capability-unsupported before integrating when partials cannot be merged", async () => {
+		const model = scenarioModel();
+		const partial = { ...baseSummary, title: "分割要約" };
+		const needed = integrationTokens([partial, partial], { withChapters: false });
+		let contextWindow = 1;
+		while (contextBudgetTokens({ ...mockEntry, contextWindow }) < needed - 1) contextWindow += 1;
+		const entry: ModelEntry = { ...mockEntry, contextWindow };
+		const plan: SummaryPlan = {
+			strategy: "staged",
+			estimatedInputTokens: 0,
+			chunks: ["fixture:summary-split 一", "fixture:summary-split 二"],
+			withChapters: false,
+		};
+
+		const { error } = await collectUntilError(plan, { model, entry });
+
+		expect(error).toMatchObject({ code: "capability-unsupported" });
+		expect(model.doStreamCalls).toHaveLength(2);
 	});
 
 	it("applies the same regeneration rule to a chunk summary", async () => {

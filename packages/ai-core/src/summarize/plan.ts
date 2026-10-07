@@ -1,6 +1,12 @@
 import { PlatformError } from "../errors";
 import type { ModelEntry } from "../models/types";
-import { buildChunkPrompt, buildSummaryPrompt, type SummaryPrompt } from "./prompts";
+import {
+	buildChunkPrompt,
+	buildIntegrationPrompt,
+	buildSummaryPrompt,
+	type SummaryPrompt,
+} from "./prompts";
+import type { Summary } from "./schema";
 import type { LoadedSource } from "./source";
 import { countTextTokens, estimateFromCount, estimateTokens } from "./tokens";
 
@@ -176,12 +182,67 @@ export function planSummary(source: LoadedSource, entry: ModelEntry): SummaryPla
 		return { strategy: "whole", chunks: [text], ...common };
 	}
 	const budget = chunkBudgetTokens(source, entry);
-	if (budget < MIN_CHUNK_TOKENS) {
-		throw new PlatformError(
-			"capability-unsupported",
-			"選択したモデルのコンテキスト上限が小さすぎるため、この入力を要約できません。",
-			{ modelId: entry.id, contextWindow: entry.contextWindow },
-		);
-	}
+	if (budget < MIN_CHUNK_TOKENS) throw contextTooSmall(entry);
 	return { strategy: "staged", chunks: splitIntoChunks(text, budget), ...common };
+}
+
+function contextTooSmall(entry: ModelEntry): PlatformError {
+	return new PlatformError(
+		"capability-unsupported",
+		"選択したモデルのコンテキスト上限が小さすぎるため、この入力を要約できません。",
+		{ modelId: entry.id, contextWindow: entry.contextWindow },
+	);
+}
+
+export interface IntegrationOptions {
+	readonly withChapters: boolean;
+	readonly title?: string;
+}
+
+// The prompt joins one JSON line per partial; like line packing, the raw counts of the empty
+// prompt and of each line (plus one per newline) are summed instead of re-tokenizing every group.
+function integrationRawTokens(partials: readonly Summary[], options: IntegrationOptions): number {
+	const overhead = countTextTokens(
+		promptText(buildIntegrationPrompt({ partials: [], ...options }, NO_CACHE)),
+	);
+	return partials.reduce(
+		(total, partial, index) =>
+			total + countTextTokens(JSON.stringify(partial)) + (index === 0 ? 0 : 1),
+		overhead,
+	);
+}
+
+/** Estimated tokens of the prompt that integrates `partials` (staged summaries, ADR-9). */
+export function integrationTokens(
+	partials: readonly Summary[],
+	options: IntegrationOptions,
+): number {
+	return estimateFromCount(integrationRawTokens(partials, options));
+}
+
+/**
+ * Groups partial summaries in order so the integration prompt of each group fits the context
+ * budget; `streamSummary` integrates the groups and repeats until one group remains (W3 review
+ * L14). Throws `capability-unsupported` when a partial alone does not fit, or when no group can
+ * hold two partials, since merging could then never finish.
+ */
+export function integrationGroups(
+	partials: readonly Summary[],
+	options: IntegrationOptions,
+	entry: ModelEntry,
+): Summary[][] {
+	const budget = contextBudgetTokens(entry);
+	const groups: Summary[][] = [];
+	let current: Summary[] = [];
+	for (const partial of partials) {
+		if (current.length > 0 && integrationTokens([...current, partial], options) > budget) {
+			groups.push(current);
+			current = [];
+		}
+		current.push(partial);
+		if (integrationTokens(current, options) > budget) throw contextTooSmall(entry);
+	}
+	if (current.length > 0) groups.push(current);
+	if (partials.length > 1 && groups.length === partials.length) throw contextTooSmall(entry);
+	return groups;
 }
