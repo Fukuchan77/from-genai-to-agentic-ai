@@ -199,7 +199,20 @@ async function fetchArticle(
 		if (redirects >= ARTICLE_FETCH_LIMITS.maxRedirects) {
 			throw new SourceFetchError("http-status", { status: response.status });
 		}
-		target = new URL(location, target).href;
+		target = resolveLocation(location, target);
+	}
+}
+
+/**
+ * Resolves a redirect `Location` against the URL that returned it. A location that does not parse
+ * is not a fetchable public http(s) URL, so it is refused like one (`disallowed-url`), before any
+ * request, instead of leaking the URL parser's `TypeError` (W3 review r2 N5).
+ */
+function resolveLocation(location: string, base: string): string {
+	try {
+		return new URL(location, base).href;
+	} catch {
+		throw new SourceFetchError("disallowed-url");
 	}
 }
 

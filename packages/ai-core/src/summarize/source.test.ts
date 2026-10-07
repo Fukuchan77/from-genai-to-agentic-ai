@@ -249,6 +249,25 @@ describe("loadSource: article fetch limits", () => {
 		expect(calls).toHaveLength(1);
 	});
 
+	it("refuses an unparsable redirect location with SourceFetchError(disallowed-url)", async () => {
+		const { http, calls } = spyFetcher(
+			createFixtureHttpFetcher([
+				{
+					url: "https://example.test/broken",
+					status: 302,
+					headers: { location: "http://[" },
+					body: "",
+				},
+			]),
+		);
+
+		const error = await failure("https://example.test/broken", withHttp(http));
+
+		expect(error).toBeInstanceOf(SourceFetchError);
+		expect(error).toMatchObject({ code: "source-unavailable", reason: "disallowed-url" });
+		expect(calls).toHaveLength(1);
+	});
+
 	it("stops after the redirect limit with SourceFetchError(http-status)", async () => {
 		const hops = Array.from({ length: ARTICLE_FETCH_LIMITS.maxRedirects + 1 }, (_, index) => ({
 			url: `https://example.test/hop-${index}`,
