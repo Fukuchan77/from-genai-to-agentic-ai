@@ -81,7 +81,7 @@
 |---|---|---|---|
 | W1 基盤 | 1 ツールチェーン、2 CI、3 ローカル依存サービス、4 テスト基盤、5 リポジトリ規約検査 | 完了（2026-09-27。敵対的レビュー2ラウンド） | [tasks-comp-w1.md](tasks-comp-w1.md) |
 | W2 ai-core の土台 | 6 ai-core scaffold、7 eval-suite scaffold、8 apps/web scaffold、9 ModelCatalog、10 Ports、11 testing ヘルパ、12 PlatformConfig、13 MockRuntime | 完了（2026-09-30。敵対的レビュー3ラウンド、2026-10-04 の検証で追加の修正） | [tasks-comp-w2.md](tasks-comp-w2.md) |
-| W3 ai-core の機能 | 14 ModelGateway、15 AciToolkit、16 GuardedAgent、17 ChatCore、18 SummaryPipeline、19 評価スイート | 着手（現在の波。14〜18 完了） | 本ファイル |
+| W3 ai-core の機能 | 14 ModelGateway、15 AciToolkit、16 GuardedAgent、17 ChatCore、18 SummaryPipeline、19 評価スイート | 実装完了、敵対的レビュー対応中（2026-10-07。Round 1 REQUEST_CHANGES） | 本ファイル |
 | W4 apps/web | 21 RequestGuard、20 AppShell、22 ChatFeature、23 ToolAgentFeature、24 SummaryFeature | 未着手 | [tasks-w4.md](tasks-w4.md) |
 | W5 E2E・解説・最終統合 | 25 E2E 生成・検査スクリプト、26 E2E 基盤、27 E2E シナリオ、28 解説ドキュメント、29 最終統合と NFR 検証 | 未着手 | [tasks-w5.md](tasks-w5.md) |
 
@@ -167,7 +167,7 @@ _Traces:_ REQ-001, REQ-002, REQ-003, REQ-007, C6, C22
 - D9 のモード検査は `ModelSelectionError`（`code: "invalid-request"`、`reason` は `unknown-model` / `mode-mismatch` / `no-default` / `purpose-mismatch`）で拒否する。`AI_MODEL_*` の ID も要求の `modelId` も、`resolve` の最初の検査で同じように扱う。検査の順序は、カタログと実行モード → 機能（2.9）→ 認証情報（2.6）→ Ollama の事前検査（2.7）とし、すべてモデル生成の前に行う。このため、`local` で `live` 専用の ID を指定しても Ollama へは接続しない。
 - Ollama の事前検査は、成功した `/api/tags` の一覧だけを 5 秒キャッシュする。失敗はキャッシュしないので、`ollama serve` を起動すれば次の要求で回復する。同時に来た検査は1回の取得を共有し、タイムアウトは注入した `Clock` の `timeoutSignal(2000)` で付ける。`OLLAMA_BASE_URL` は末尾の `/api` の有無をどちらも受け付け、`ollama-ai-provider-v2` には `${server}/api` を渡す。
 - 録画は `config.recording` が真のときだけ `wrapLanguageModel` で合成する（`recordedWith` は実行モード、時刻は `Clock` から取る）。既定の `Redactor` は `process.env` ではなく `config.credentials` から作る（C4 の「`process.env` を読むのは既定引数の1か所」を守るため）。埋め込みは録画の対象外とした（カセットの形式が LanguageModel 専用のため）。
-- 14.6: 注釈付きタグ `module/1-1` を 14.5 の統合コミット `f671813` にローカルで付けた（メッセージは「module/1-1: reference implementation of module 1-1 (Req 1, 2)」に続けて、含むもの（タスク 1〜13、14.1〜14.5）、並列に進めた後続モジュールの途中の実装は W2 以外なし、含まないもの（C19 の E2E、C22 の解説）、29.4 で人間の承認後に push する旨）。作業環境は使い捨てのためタグは失われうる。29.4 は同じコミットと同じメッセージで作り直す。`f671813` を `main` に残すため、W3 の PR はマージコミットで取り込む（squash / rebase しない）。
+- 14.6: 注釈付きタグ `module/1-1` を 14.5 の統合コミット `f671813` にローカルで付けた（メッセージは「module/1-1: reference implementation of module 1-1 (Req 1, 2)」に続けて、含むもの（タスク 1〜13、14.1〜14.5）、並列に進めた後続モジュールの途中の実装は W2 以外なし、含まないもの（C19 の E2E、C22 の解説）、29.4 で人間の承認後に push する旨）。作業環境は使い捨てのためタグは失われうる。29.4 は同じコミットと同じメッセージで作り直す。`f671813` を `main` に残すため、W3 の PR はマージコミットで取り込む（squash / rebase しない）。local 限定のテスト（14.5 の `catalog.local.test.ts`、19.2 の `summary-quality.local.test.ts`）は、クラウドの作業環境に Ollama がないため理由付きのスキップしか確認しておらず、実 Ollama では未実行である。29.4 でタグを push する前に `mise run test:local` を実 Ollama で実行し、修正が必要になればタグを付け直す（W3 敵対的レビュー r1 の LOW）。
 
 ---
 
@@ -251,7 +251,7 @@ _Traces:_ REQ-005, REQ-006, C8
 
 - AI SDK v7 の `isStopConditionMet` は `Promise.all` で全停止条件を同時に評価する。そのため同じステップで複数の条件が成立しうるし、`stepLimit` を `isStepCount`（戻り値の型が `PromiseLike | boolean`）に委譲して async にしたことで、記録の「成立した順」がマイクロタスクの順に左右された。そこで `fired()` は成立順ではなく `STOP_CONDITION_NAMES` の固定順で返し、停止理由は `deriveStopReason` の固定優先順位（timeout → token-budget → step-limit）だけで決める。`ToolLoopAgentSettings.stopWhen` は readonly 配列を受け付けないため、`createRunStopConditions` は実行ごとに新しい mutable 配列を返し、条件の引数型は `{ usage }` だけの構造型にした（`any` なしでどの `TOOLS` の `StopCondition` にも代入できる。`expectTypeOf` で固定）。呼び出し元の中断と実行時間上限の中断は 16.3 が `AbortSignal.reason` で判定して `StopReasonInput.abort: "caller" | "timeout"` として渡し、`deriveStopReason` は純粋関数のままにした（どちらの中断も error より上）。
 - v7 の `createAgentUIStream(Response)` では、UI ストリームの `finish` が `streamText` の `onEnd` より先に届くことがある（`onEnd` はイベント処理の flush で呼ばれる）。そのため `messageMetadata` の `finish` でもサマリを確定する。`finish` の時点で全ステップの `onStepEnd` と停止条件の評価は済んでいるので、`onEnd` で確定した場合と同じ値になる。確定は最初の1回だけ採用する。
-- v7 では中断が `onError` に来ない。`streamText` は中断を `abort` パートに変換し、`onAbort` も出すが、`ToolLoopAgentSettings` に `onAbort` / `onError` はない。そこで合成した `abortSignal` の `abort` イベントでサマリを確定する（タイムアウトか呼び出し元かは `reason` の一致で判定）。生成時に既に中断済みの場合は、その場で `aborted` として確定する。`onError` は中断済みなら中断理由、そうでなければ `error` として確定し、学習者向けの固定文言を返す（生のエラー文はストリームに出さない）。`abortSignal` は settings ではなく呼び出しごとの引数なので、route は `guarded.abortSignal` を `createAgentUIStreamResponse` に渡す。`ToolsContextSettings<TOOLS>` は generic な TOOLS では解決できないため、settings は `as unknown as ToolLoopAgentSettings<never, TOOLS>` で渡す。
+- v7 では中断が `onError` に来ない。`streamText` は中断を `abort` パートに変換し、`onAbort` も出すが、`ToolLoopAgentSettings` に `onAbort` / `onError` はない。そこで合成した `abortSignal` の `abort` イベントでサマリを確定する（タイムアウトか呼び出し元かは `reason` の一致で判定）。生成時に既に中断済みの場合は、その場で `aborted` として確定する。`onError` は中断済みなら中断理由、そうでなければ `error` として確定し、学習者向けの固定文言を返す（生のエラー文はストリームに出さない）。`abortSignal` は settings ではなく呼び出しごとの引数なので、route は `guarded.abortSignal` を `createAgentUIStreamResponse` に渡す。`ToolsContextSettings<TOOLS>` は generic な TOOLS では解決できないため、settings は `as unknown as ToolLoopAgentSettings<never, TOOLS>` で渡す。run のサマリ（`AgentRunSummary.error`）が持つのはエラー名と学習者向けの固定文言だけで、生のエラー文は持たない（15 のツール結果と同じ規則。詳細は W3 敵対的レビューの修正の記録を参照）。
 
 ---
 
@@ -342,26 +342,30 @@ _Traces:_ REQ-004, C12
 M1 のツールエージェントの通し実行を回帰として検証し、`local` 限定の品質評価の適用例を1件置く。
 W3 の締めとして gate を結線する。
 
-_Boundary:_ `packages/eval-suite/package.json`, `packages/eval-suite/tests/regression/tool-agent-run.test.ts`, `packages/eval-suite/tests/capability/summary-quality.local.test.ts`, `mise.toml`, `.github/workflows/ci.yml`
+_Boundary:_ `packages/eval-suite/package.json`, `packages/eval-suite/tests/regression/tool-agent-run.test.ts`, `packages/eval-suite/tests/capability/summary-quality.local.test.ts`, `mise.toml`, `.github/workflows/ci.yml`, `stryker.config.mjs`, `pnpm-workspace.yaml`, `pnpm-lock.yaml`, `patches/@stryker-mutator__vitest-runner@10.0.0.patch`（Stryker の4ファイルは 2026-10-07 の W3 敵対的レビュー r1 の MEDIUM で事後に追加。plan C18 の互換性の回避）
 _Depends:_ 7, 9, 13, 15, 16, 18（19.3 は 14、17 にも依存する）
 _Requirements:_ 1.1, 1.4, 1.7, 1.13, 1.14, 1.15, 1.16
 _Traces:_ REQ-001, C21, C1, C2
 
-- [ ] 19.1 `tests/regression/tool-agent-run.test.ts`: `mock` シナリオでツールエージェントを最後まで実行し、停止理由・ツール呼び出し列・最終回答の Outcome を回帰として検証する。`packages/eval-suite/package.json` に `test`・`test:coverage`（`vitest run --coverage.enabled --coverage.reporter=html --coverage.thresholds.lines=0`。閾値の強制は gate の `test` 段。plan C18）スクリプトを加える
+- [x] 19.1 `tests/regression/tool-agent-run.test.ts`: `mock` シナリオでツールエージェントを最後まで実行し、停止理由・ツール呼び出し列・最終回答の Outcome を回帰として検証する。`packages/eval-suite/package.json` に `test`・`test:coverage`（`vitest run --coverage.enabled --coverage.reporter=html --coverage.thresholds.lines=0`。閾値の強制は gate の `test` 段。plan C18）スクリプトを加える
   _Boundary:_ `packages/eval-suite/tests/regression/tool-agent-run.test.ts`, `packages/eval-suite/package.json`
   _Depends:_ 7, 13, 15, 16
   _Requirements:_ 1.1, 1.13
   _Traces:_ REQ-001, C21
-- [ ] 19.2 `tests/capability/summary-quality.local.test.ts`: `local` 限定で要約が3件の要点を持つことを実モデルで確認する例
+- [x] 19.2 `tests/capability/summary-quality.local.test.ts`: `local` 限定で要約が3件の要点を持つことを実モデルで確認する例
   _Boundary:_ `packages/eval-suite/tests/capability/summary-quality.local.test.ts`
   _Depends:_ 7, 18, 11
   _Requirements:_ 1.13, 1.14
   _Traces:_ REQ-001, C21
-- [ ] 19.3 W3 の締め: `mise.toml` の `gate` に W3 の規則を、`ci.yml` に `mutation` ジョブ（`mise run test:mutation`）と `ci-status` の `needs` を加える（[tasks.md](tasks.md)「gate と CI の段階的な結線」）
-  _Boundary:_ `mise.toml`, `.github/workflows/ci.yml`
+- [x] 19.3 W3 の締め: `mise.toml` の `gate` に W3 の規則を、`ci.yml` に `mutation` ジョブ（`mise run test:mutation`）と `ci-status` の `needs` を加える（[tasks.md](tasks.md)「gate と CI の段階的な結線」）
+  _Boundary:_ `mise.toml`, `.github/workflows/ci.yml`, `stryker.config.mjs`, `pnpm-workspace.yaml`, `pnpm-lock.yaml`, `patches/@stryker-mutator__vitest-runner@10.0.0.patch`
   _Depends:_ 14, 15, 16, 17, 18, 19.1, 19.2
   _Requirements:_ 1.4, 1.7, 1.15, 1.16
   _Traces:_ REQ-001, C1, C2
   _Verify:_ `mise run gate` が成功し、`tool-risk-declared` が走査件数を出力する。gate-reporter が `*.local.test.ts` を理由付きのスキップとして数える。`mise run test:mutation` がローカルで閾値（70）を満たし、PR の `ci-status` が `mutation` を含めて成功する
 
 ### Implementation Notes
+
+- 19.1: `@platform/eval-suite` が依存しているのは `@platform/ai-core` だけで、`ai` には依存していない（pnpm の厳格な解決）。そのため `createAgentUIStream` や `UIMessageChunk` は import できない。通し実行は `guarded.agent.stream({ prompt, abortSignal: guarded.abortSignal })` の `fullStream` を読んで行い、`tool-result` の `output` を Outcome として集め、最後のステップの `text-delta` を最終回答とする。停止理由とツール列は `await guarded.done` のサマリで検証した。回帰の対象は「M1 の5ツールを `buildToolSet` で組んだ実際の構成」（天気は HTTP の fixture、Web 検索は fixture プロバイダ、時刻は FakeClock）とし、シナリオは公開の `M1_2_SCENARIOS` に加え、ツール列と失敗 Outcome を作るシナリオ1件をテスト内で `defineScenario` している。UI メッセージストリームの `finish` メタデータは C8 の単体テストと 23 の Route Handler テストの責務とし、ここでは重複させない。
+- 19.2: `describeLocal` のファクトリは引数に `it` を受け取る（`SuiteFactory`）。理由付きのスキップは `beforeEach` の `context.skip(reason)` で行われ、gate-reporter はその理由ごとに件数を数える。gate レーンでは "Local tests require AI_TEST_RUN_MODE=local."、Ollama がない local レーンでは "Ollama is unavailable at …" になることを確認した。本体はまず `config.mode === "local"` を検査するので、スキップの判定が壊れたときには緑にならず、失敗として表に出る。要点の検査そのものは実モデルで未実行で、`mise run test:local` での確認が要る。
+- 19.3: gate の `check:repo-rules --only` に `tool-risk-declared` を加え、CI に `mutation` ジョブ（タイムアウト 30 分）と `ci-status` の `needs`・`MUTATION_RESULT` を加えた。`mise run test:mutation` はこの toolchain で一度も動いていなかった。TypeScript 7 に JS API がないため `stryker.config.mjs` の `tsconfigFile` を存在しないファイルに向け、`@stryker-mutator/vitest-runner` 10.0.0 がテスト名を空白で連結する（Vitest 5 は `suite > test` で照合する）ために絞り込んだ実行が0件になり全変異が生き残っていた（8.40%）のを、`pnpm patch` で `" > "` 区切りにした（`30d4437`。境界外の変更だったため、レビュー後に `_Boundary:_` を広げた）。変異スコアは 88.80%（閾値 70）。

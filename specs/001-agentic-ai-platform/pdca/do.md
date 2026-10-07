@@ -3334,3 +3334,51 @@ GREEN 後、7件すべての新規テストについて独立した deliberate b
 - Spec drift: plan C12 の `streamSummary(plan, deps)` の `deps` の形、`summarizeSource` ほかの追加の公開 API、v7 の system メッセージの制約によるプロンプトの形、分割の予算と最小チャンク、`SummaryMeta` の集計の範囲（実測・キャッシュ読み出しは全呼び出しの合計、`attempts` は最終の呼び出し）、YouTube ID の形式（fixture のため 1〜64 文字）、`SummaryValidationError` のコードが plan になかった。plan C12・Data Model・HTTP API・Error Handling・File Structure を実装に合わせた。
 - Risks: `jsdom` の `createRequire` での読み込みは Next/Turbopack では未確認（T-24）。チャンクの詰め方は行ごとのトークン数の合計で、チャンクごとに再トークン化しない（安全係数 1.2 で吸収）。チャンクが非常に多いときの統合プロンプトの予算は未検査。Stryker の対象 `summarize/plan.ts`・`retry.ts` はワーカーの時点では未実行（19.3 の後の `mise run test:mutation` で plan 82.61%、retry 100%）。
 - Mechanical fixes: tasks.md（18.1〜18.6 を `[x]`、Implementation Notes、進捗）、traceability.md（4.1〜4.12 の Test/Commit、Gaps）。
+
+### 2026-10-07 Task 19.1〜19.2 RED / GREEN / PROVE Evidence
+
+- Objective: M1 のツールエージェントの通し実行を回帰として検証し、`local` 限定の品質評価の例を1件置く。eval-suite に `test`・`test:coverage` スクリプトを加える（依存は追加しない）。基点は `18990d7`。
+- 19.1 は公開サブパス `@platform/ai-core/{agents,aci,mock,testing}` だけを import する（14.4・15.5・16.4 の `_Verify:_` の一部）。
+
+**RED evidence**:
+
+- 19.1: スクリプトを加える前は `turbo run test --filter=@platform/eval-suite` が `WARNING No tasks were executed`（gate がこのテストを実行しない）。テスト自体は既にある挙動を検証するため、直接の実行では 3/3 で通った。
+- 19.2: 新しい例のテストのため RED はない。
+
+**PROVE evidence**（ai-core の実装を壊し、`git checkout` で戻す）:
+
+- `stop-reason.ts:44` を `return "completed"` → ケース3が `expected { stopReason: 'completed', … } to match object { stopReason: 'step-limit', … }`。
+- `guarded-agent.ts:229` でツール名を記録しない → 3件とも `toolsCalled` の照合で失敗。
+- `define-tool.ts:71` の `"recoverable"` を `"fatal"` → ケース2が `{ ok: false, failure }` の deep-equal で失敗。
+- `weather.ts` の WMO コード 0 を「快晴」→ ケース1が `toolOutputs` の deep-equal で失敗。
+- 19.2: `local-only.ts:38` の guard を外して本体を実行させると `AssertionError: expected 'mock' to be 'local'`（スキップが本体を止めている）。要点の検査（`summarySchema`、`SUMMARY_LIMITS.keyPointCount` の3件、空でない、互いに異なる）は、sandbox に Ollama がなく、プロンプトに一致する mock シナリオもないため、実モデルでは未実行。
+
+**Verification**:
+
+- 19.1: `mise run test` → `@platform/eval-suite:test: Gate test summary: executed=3 passed=3 failed=0`。`mise run test:coverage` は `packages/eval-suite/coverage/`（gitignore 済み）を作る。
+- 19.2: gate では `skipped=1`、理由 `Local tests require AI_TEST_RUN_MODE=local.: 1`。`AI_TEST_RUN_MODE=local AI_TEST_SUITE=local`（Ollama なし）では `executed=0 skipped=1`、理由 `Ollama is unavailable at http://127.0.0.1:11434: fetch failed. Start it with \`ollama serve\`.`。eval-suite の `tsc` と biome は clean。
+- ワーカーの最終 `mise run gate`（exit 0）: Biome 152 files、model-ID 127 files、8規則すべて走査件数 > 0、TypeScript eval-suite 3 / ai-core 101 / root 10 / web 3 files。ai-core `executed=461 passed=461 failed=0 skipped=4`、lines 97.6%。root `executed=257 passed=257`。eval-suite `executed=3 passed=3 failed=0 skipped=1`。
+- 観察: `turbo run test` が `WARNING no output files found for task @platform/eval-suite#test` を出す（`test` の `outputs: ["coverage/**"]` に対し、eval-suite はカバレッジを書かない。`//#test` も同じ）。無害だが、`turbo.json` の所有者が出力を空にすれば消える。
+- 統合コミット: 19.1 `cd097b5`、19.2 `47258a6`。
+
+### 2026-10-07 Stryker の互換性の修正（コーディネーター、`30d4437`）
+
+- 問題: 19.3 の `_Verify:_` のために `mise run test:mutation` を実行すると、(1) Stryker の tsconfig の前処理が `ts.parseConfigFileTextToJson` を呼び、TypeScript 7（ネイティブコンパイラ）が JS API を持たないため dry run の前に停止した。(2) それを回避すると、スコアが 8.40% で、静的でない変異がすべて生き残った。
+- 原因の切り分け（probe）: `@stryker-mutator/vitest-runner` 10.0.0 は変異ごとの `testNamePattern` をスイート名とテスト名の空白区切りで作るが、Vitest 5 は `suite > test` に照合する。パターンなしの実行は2件を通し、`/deriveStopReason derives completed/` は2件ともスキップし、`/deriveStopReason > derives completed/` はそのテストを実行した。つまり絞り込んだ各実行が0件のテストを走らせていた。
+- 修正: `stryker.config.mjs` の `tsconfigFile` を存在しないファイル（`stryker-no-tsconfig-rewrite.json`）に向けて書き換えを止める（ルートの tsconfig は `tsconfig.base.json` を継承するだけで、書き換えは不要）。`pnpm patch` で vitest-runner の名前の連結を `" > "` にし、`pnpm-workspace.yaml` の `patchedDependencies`（理由と外す条件のコメント付き）と `pnpm-lock.yaml` を更新した。
+- 結果: `mise run test:mutation` 88.80%（閾値 70）。ファイル別: define-tool 90.72、stop-conditions 92.31、stop-reason 100、run-mode 100、resolve 78.13、plan 82.61、retry 100。所要 1分33秒。
+- 境界: 4ファイルは 19.3 の `_Boundary:_` の外だった。W3 敵対的レビュー r1 の MEDIUM を受け、T-19・T-19.3 の `_Boundary:_` に加え、plan C1・C18・File Structure、research.md の Risks、`.sdd/steering/tech.md`、AGENTS.md に回避と外す条件（vitest-runner が Vitest 5 の `suite > test` の照合に対応したらパッチを、Stryker が TypeScript の JS API を必要としなくなったら `tsconfigFile` の回避を外す）を記録した。
+
+### 2026-10-07 Task 19.3 W3 の締め（コーディネーター、`79c5eec`）
+
+- `mise.toml` の `check:repo-rules --only` に `tool-risk-declared` を加えた（`tool-risk-declared: scanned 13 FILES`）。
+- `ci.yml` に `mutation` ジョブ（`timeout-minutes: 30`、checkout・mise-action は既存のジョブと同じ SHA、`mise run setup` → `mise run test:mutation`）を加え、`ci-status` の `needs` と `MUTATION_RESULT` の検査を加えた。
+- 最終 `mise run gate`（exit 0）: root `executed=257 passed=257`。ai-core `executed=523 passed=523 skipped=4`、lines 97.63%。eval-suite `executed=3 passed=3 skipped=1`（理由 `Local tests require AI_TEST_RUN_MODE=local.`）。`mise run audit` は脆弱性なし。
+- `_Verify:_` の未完了: PR の `ci-status`（`mutation` を含む）の結果は pending。
+- 統合ブランチの先頭は `f8379f7`（`origin/main` のマージ）。
+
+### 2026-10-07 Task 19 Validation and Ship
+
+- Spec drift: plan C21 の「最終回答の Outcome」は曖昧で、実装は各ツールの `ToolOutcome`（成功と recoverable な失敗）と最終回答のテキストを検証し、`ai` に依存しないため `agent.stream()` で実行する。C18 は eval-suite に閾値がないことを記していなかった。Stryker の回避が plan に宣言されていなかった（レビューの MEDIUM）。plan C1・C18・C21・File Structure、research.md、steering、AGENTS.md を更新した。
+- W3 敵対的レビュー r1（REQUEST_CHANGES: HIGH 3 / MEDIUM 5 / LOW 8）の指摘のうち、文書で扱うもの（MEDIUM の Stryker の境界と宣言、MEDIUM の plan・tasks の未追随、LOW の local テストの未実測）をこの ship で反映した。15 と 16 のノートの矛盾（ツール結果はエラー名だけ、run のサマリは生のエラー文）については、16 のノートと plan C8・Data Model を「サマリはエラー名と学習者向けの固定文言だけを持つ」に改めた。コードの修正とその記録は review-fix で行う。
+- Mechanical fixes: tasks.md（19.1〜19.3 を `[x]`、Implementation Notes、14.6・16 のノートの追記、T-19・T-19.3 の `_Boundary:_`、進捗を「実装完了、敵対的レビュー対応中」）、traceability.md（1.1・1.4・1.7・1.13・1.14・1.15・1.16 の Test/Commit、Gaps）、AGENTS.md（プロジェクト状態と W3 gate・CI の説明）。

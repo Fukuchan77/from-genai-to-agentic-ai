@@ -307,7 +307,7 @@ New feature（greenfield、full discovery）。リポジトリにはソースコ
 
 - ⚠️ Turborepo 2.11 と pnpm 12 の組み合わせが未検証 — mitigation: 最初のタスクで検証する。失敗したら mise + `pnpm -r` へ後退する（ADR-1）。
 - ⚠️ Vitest 5 の mock 状態リセットの挙動変更（`vaz-agentic-ai-next` で認証 spec を壊した） — mitigation: M1 は next-auth を使わない。`vi.restoreAllMocks` などの利用規約をテストヘルパに集約する。
-- ⚠️ Stryker 10 と Vitest 5 / TypeScript 7 の組み合わせが未検証 — mitigation: `typescript-checker` なしで実行する。動かない場合は、手書きの「壊した制御ロジック」fixture によるテスト（Req 1.16 の代替手段）へ切り替える。
+- ⚠️ Stryker 10 と Vitest 5 / TypeScript 7 の組み合わせが未検証 — mitigation: `typescript-checker` なしで実行する。動かない場合は、手書きの「壊した制御ロジック」fixture によるテスト（Req 1.16 の代替手段）へ切り替える。（2026-10-07、T-19.3 で実測: そのままでは動かなかった。TypeScript 7 に JS API がないため `tsconfigFile` の書き換えで停止し、`@stryker-mutator/vitest-runner` 10.0.0 の `testNamePattern` が Vitest 5 の `suite > test` に一致せず全変異が生き残った（8.40%）。`tsconfigFile` の回避と `pnpm patch` のパッチで 88.80% になった。外す条件は plan C18）
 - ⚠️ TypeScript 7.1 先行版（ネイティブ `tsc`）が `--listFilesOnly` を持つかは未検証 — mitigation: 5.4 で実測する。持たない場合は、`count-tsc` が tsconfig の `files`・`include`・`exclude` を `node:fs` で展開して数える（plan C20）。
 - ⚠️ Playwright の WebKit エンジンは参照リポジトリで実績がない（両リポジトリとも Chromium と Firefox のみ） — mitigation: CI のマトリクスで早期に実行する。
 - ⚠️ YouTube 字幕の取得は非公式 API に依存し、仕様変更で壊れやすい — mitigation: `TranscriptSource` ポートの背後に置く。`mock` では fixture を使う。取得失敗は Req 4.11 のエラーとして扱う。

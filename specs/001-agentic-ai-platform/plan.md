@@ -98,7 +98,7 @@ flowchart LR
 - **Responsibility**: ワークスペース構成、版の固定、lint / format / typecheck / test を1コマンドにまとめる品質ゲートを提供する。
 - **Public interface**: mise タスク `setup`、`gate`、`lint`、`lint:fix`、`typecheck`、`test`、`test:local`、`test:db`、`test:e2e`、`test:mutation`、`test:coverage`、`outdated`、`secret-scan`、`secret-scan:staged`、`audit`、`services:up`、`services:up:db`、`services:down`、`gate:repeat`、`docs:check`、`check:model-ids`、`check:repo-rules`。`gate` は `lint` → `check:model-ids` → `check:repo-rules` → `typecheck` → `test` → `docs:check` の順に実行し、1段でも失敗すれば非ゼロで終了する。
 - **gate と CI の段階的な結線**（2026-09-27、`/sdd-analyze` H-3。CI のジョブは2回目の `/sdd-analyze` H-1 で追加）: 各段は「走査0件で失敗」するため、検査対象がまだない段を最初から入れると、実装の途中で gate が必ず失敗する。CI のジョブ（C2）も同じで、対象のないジョブを最初から入れると `ci-status` が最終統合まで失敗し続ける。そこで tasks.md の実装の波（W1〜W5）ごとに、その波の締めのタスクが、対象が揃った段、`check:repo-rules` の規則、CI のジョブを加える（どの波で何を加えるかは tasks.md の「gate と CI の段階的な結線」表が正本）。波の途中では、直前の波の締めで確定した構成を使う。一度加えた段・規則・ジョブは外さない。W5 の締め（最終統合）で、上記の全段・全規則・全ジョブの構成になる。
-- **Owns**: `mise.toml`、ルートの `package.json`、`pnpm-lock.yaml`、`pnpm-workspace.yaml`（`minimumReleaseAge: 1440`、`allowBuilds`。各エントリの直前に許可理由のコメントを必ず書く（constitution 原則 7）。コメントのないエントリは `check:repo-rules` が失敗させる）、`turbo.json`（ルートタスク `//#test`・`//#typecheck` を含む）、`biome.json`（ADR-3）、`tsconfig.base.json`、ルートの `tsconfig.json`（どのワークスペースにも属さない `tooling/**/*.ts` とルートの設定ファイルを型検査の対象にする）、`vitest.config.ts`（ルート直下の `tooling/`・`scripts/` のテストだけを対象にする。ワークスペースは集約しない。C18「テストの実行単位」）、`.githooks/`、`scripts/gate/*`。
+- **Owns**: `mise.toml`、ルートの `package.json`、`pnpm-lock.yaml`、`pnpm-workspace.yaml`（`minimumReleaseAge: 1440`、`allowBuilds`。各エントリの直前に許可理由のコメントを必ず書く（constitution 原則 7）。コメントのないエントリは `check:repo-rules` が失敗させる。`patchedDependencies` は Stryker の互換性の回避（C18）だけで、パッチは `patches/` に置き、直前のコメントに理由と外す条件を書く）、`turbo.json`（ルートタスク `//#test`・`//#typecheck` を含む）、`biome.json`（ADR-3）、`tsconfig.base.json`、ルートの `tsconfig.json`（どのワークスペースにも属さない `tooling/**/*.ts` とルートの設定ファイルを型検査の対象にする）、`vitest.config.ts`（ルート直下の `tooling/`・`scripts/` のテストだけを対象にする。ワークスペースは集約しない。C18「テストの実行単位」）、`.githooks/`、`scripts/gate/*`。
 - **Does NOT own**: 各ワークスペースのソースとテストの中身、CI ワークフロー（C2）、Compose 定義（C3）。
 - **Requirements**: 1.1, 1.3, 1.4, 1.5, 1.6, 1.11, 1.12, 1.15, 2.18, NFR（検証速度、決定性、オフライン動作、型安全性、サプライチェーン）
 
@@ -195,7 +195,7 @@ flowchart LR
     1. `onStepEnd`: ステップ数、`usage` の累積（`cacheRead`・`reasoning` を含む）、呼び出したツール名を run 内部に加算する（plan の `onStepEnd` / `onEnd` は v7 の `ToolLoopAgentSettings` の名前そのもの。`onStepFinish` / `onFinish` は非推奨の別名）。
     2. 正常終了（`completed` または停止条件の成立）: `onEnd`、または `messageMetadata` の `finish` のうち先に来た方で確定する。v7 の `createAgentUIStream(Response)` では、UI ストリームの `finish` が `streamText` の `onEnd` より先に届くことがある（`onEnd` はイベント処理の flush で呼ばれる）。`finish` の時点で全ステップの `onStepEnd` と停止条件の評価は済んでいるので、どちらで確定しても同じ値になる。
     3. 中断・タイムアウト: 合成した `abortSignal` の `abort` イベントで確定する。v7 は中断を `onError` ではなく `abort` パートで通知し、`ToolLoopAgentSettings` には `onAbort` / `onError` がないため。タイムアウトか呼び出し元かは `reason` の一致で判定する。生成時に呼び出し元のシグナルが既に中断済みなら、その場で `aborted` として確定する。
-    4. `onError`（`createAgentUIStreamResponse` のストリームエラー）: `abortSignal.aborted` が true なら中断の理由（`aborted` / `timeout`）、そうでなければ `error`（`AgentRunSummary.error` に `{ name, message }`。`message` は 200 文字で切る）として確定し、学習者向けの固定文言を返す。
+    4. `onError`（`createAgentUIStreamResponse` のストリームエラー）: `abortSignal.aborted` が true なら中断の理由（`aborted` / `timeout`）、そうでなければ `error` として確定し、学習者向けの固定文言を返す。`AgentRunSummary.error` はエラー名と学習者向けの固定文言だけを持ち、生のエラー文を持たない（`finish` のメタデータでクライアントへ届くため。C9 のツール結果と同じ規則。2026-10-07 の W3 敵対的レビュー r1 の HIGH への対応。修正の記録は review-fix の項目で行う）。
     5. 確定は上の経路のうち最初の1つだけを採用する。確定したサマリは凍結し、`done` を解決して `observers` の `onRunEnd` を1回ずつ呼ぶ。observer の例外は記録せずに握りつぶし、run の結果を変えない。
     6. `messageMetadata` コールバックは、`part.type === "finish"` のときに確定済みのサマリを `run` として付与する。中断・エラーでは `finish` が送られないことがあるため、UI は `run` がない場合に中断・エラーとして表示する（C16）。
     7. 制約: エラーは UI ストリームの `onError` でだけ捕まえる。`guarded.agent.generate()` / `.stream()` を直接呼んで（中断なしで）エラーになった場合、`done` は解決しない。M1 の Route は `createAgentUIStreamResponse` を使うので影響しない。`streamText` の既定のエラー処理は生のエラーを `console.error` に出し、`ToolLoopAgentSettings` からは変えられない（C16 の Route で `no-sensitive-logging` の方針との整合を確認する）。
@@ -318,8 +318,9 @@ flowchart LR
   - `@platform/ai-core/testing`: `describeLocal(name, fn)`、`itLocal(name, fn)`（`localAvailability` が不可なら理由付きでスキップする）、`createTextStreamModel`、`createToolCallingModel`、`createObjectModel`（`MockLanguageModelV4` + `simulateReadableStream`）、`createFakeClock`。
   - `tooling/vitest/gate-reporter.ts`: 実行・成功・失敗・スキップ（理由別）の件数と、DB 依存で未実行の件数（`*.pg.test.ts` のファイル数）を表示する。実行件数が 0 なら終了コードを非ゼロにする。
   - **テストの実行単位**（2026-09-27、3回目の `/sdd-analyze` H-1）: gate の `test` 段は `turbo run test` で、`test` スクリプトを持つ各ワークスペースと、ルートタスク `//#test`（ルートの `vitest.config.ts`。対象は `tooling/`・`scripts/` のテストだけ）を、それぞれ独立した Vitest プロセスで1回ずつ実行する。ルートの設定は `projects` でワークスペースを集約しない（同じテストを2回実行しないため）。ルートと各ワークスペースの `vitest.config.ts` は、`setup-hermetic` と `gate-reporter` を共通に登録する。`localAvailability` を利用する `packages/ai-core` と `packages/eval-suite` は `global-setup-local.ts` も登録する。`gate-reporter` は実行単位ごとに件数を表示し、その単位の実行件数が 0 なら失敗する。テストの選択は CLI のファイル名フィルタではなく、mise タスクが設定する `AI_TEST_SUITE` で行う（2026-09-27、Task 1 の実装検証。Vitest の CLI フィルタは `exclude` で外したファイルを戻せないため）。ルートと各ワークスペースの `vitest.config.ts` は同じ規則に従う: `gate`（既定。`test`・`test:coverage`）は `*.pg.test.*` 以外のすべてを収集し、`*.local.test.*` は `local` が使えなければ理由付きでスキップされる。`local`（`test:local`）は `*.local.test.*` だけ、`pg`（`test:db`）は `*.pg.test.*` だけを収集する。0件での失敗（`passWithNoTests: false` と `gate-reporter`）は `gate` だけに適用し、`local`・`pg` では対象のない実行単位を許す。未知の値は設定の読み込み時に失敗する。`turbo.json` の `test` と `//#test` は、strict env モードでも値が渡りキャッシュキーに入るよう、`AI_TEST_RUN_MODE`・`AI_TEST_SUITE`・`OLLAMA_BASE_URL` を `env` に宣言する。ワークスペースの `test` スクリプトと `test:coverage` スクリプト（`vitest run --coverage.enabled --coverage.reporter=html --coverage.thresholds.lines=0`。HTML レポートの生成だけを行い、行カバレッジ80%の閾値は gate の `test` 段だけが強制する）は最初のテストと同時に加える（`ai-core` は 6.3、`eval-suite` は 19.1、`apps/web` は 21.1。スクリプトのないワークスペースは turbo の実行対象にならない）。
-  - カバレッジ（NFR テストカバレッジ）: `packages/ai-core/vitest.config.ts` はカバレッジを常に有効にし（`coverage.enabled: true`、`thresholds.lines: 80`）、gate の `test` 段で閾値を下回れば失敗させる。`mise run test:coverage` は `turbo run test:coverage` で各ワークスペースの `test:coverage` スクリプトを実行し、HTML レポートを作るだけのタスクで、閾値の強制は gate が担う（2026-09-27、`/sdd-analyze` M-6）。
-  - `stryker.config.mjs`: 対象は制御ロジック（`agents/stop-conditions.ts`、`agents/stop-reason.ts`、`aci/define-tool.ts`、`config/run-mode.ts`、`mock/resolve.ts`、`summarize/plan.ts`、`summarize/retry.ts`）に限る。`typescript-checker` は使わない。変異対象はすべて `packages/ai-core` にあるため、`vitest.configFile` は `packages/ai-core/vitest.config.ts` とする。閾値 `break: 70`。
+  - カバレッジ（NFR テストカバレッジ）: `packages/ai-core/vitest.config.ts` はカバレッジを常に有効にし（`coverage.enabled: true`、`thresholds.lines: 80`）、gate の `test` 段で閾値を下回れば失敗させる。`mise run test:coverage` は `turbo run test:coverage` で各ワークスペースの `test:coverage` スクリプトを実行し、HTML レポートを作るだけのタスクで、閾値の強制は gate が担う（2026-09-27、`/sdd-analyze` M-6）。閾値を強制するのは `ai-core` だけで、`src/` を持たない `eval-suite` はカバレッジの閾値を持たない（`test:coverage` は空の HTML レポートを作る。2026-10-07、T-19.1）。
+  - `stryker.config.mjs`: 対象は制御ロジック（`agents/stop-conditions.ts`、`agents/stop-reason.ts`、`aci/define-tool.ts`、`config/run-mode.ts`、`mock/resolve.ts`、`summarize/plan.ts`、`summarize/retry.ts`）に限る。`typescript-checker` は使わない。変異対象はすべて `packages/ai-core` にあるため、`vitest.configFile` は `packages/ai-core/vitest.config.ts` とする。閾値 `break: 70`（2026-10-07 の実測 88.80%）。
+    - **Stryker の互換性の回避**（2026-10-07、`30d4437`。W3 の締めで `mise run test:mutation` を初めて実行して判明。research.md の Risks）: (1) Stryker は `tsconfigFile` を TypeScript の JS API（`ts.parseConfigFileTextToJson`）で書き換えるが、TypeScript 7（ネイティブコンパイラ）は JS API を持たないため、`tsconfigFile` を存在しないファイル（`stryker-no-tsconfig-rewrite.json`）に向けて書き換えを止める（ルートの tsconfig は sandbox に複写される `tsconfig.base.json` を継承するだけで、書き換えは不要。checker も tsconfig を読まない）。(2) `@stryker-mutator/vitest-runner` 10.0.0 は変異ごとの `testNamePattern` をスイート名とテスト名の空白区切りで作るが、Vitest 5 は `suite > test` に照合するため、絞り込んだ実行が0件になり、静的でない変異がすべて生き残っていた（スコア 8.40%）。`pnpm patch` で `" > "` 区切りにしたパッチ（`patches/@stryker-mutator__vitest-runner@10.0.0.patch`、`pnpm-workspace.yaml` の `patchedDependencies`）を当てる。外す条件: パッチは `@stryker-mutator/vitest-runner` が Vitest 5 の `suite > test` の名前の照合に対応したら、`tsconfigFile` の回避は Stryker が TypeScript の JS API を必要としなくなったら外す。
 - **Owns**: テストファイルの命名規約: `*.test.ts`（gate で実行）、`*.local.test.ts`（比較・品質評価。`local` のときだけ実行）、`*.db.test.ts`（インプロセス DB で gate に含める）、`*.pg.test.ts`（Docker の Postgres が必要。`mise run test:db` だけで実行）。
 - **Does NOT own**: Evals の実体とグレーダー（004）。
 - **Requirements**: 1.12, 1.13, 1.14, 1.15, 1.16, 2.5, 2.11, NFR（テストカバレッジ、決定性、オフライン動作）
@@ -364,7 +365,7 @@ flowchart LR
 #### C21 EvalSuiteScaffold（`packages/eval-suite/`）
 
 - **Responsibility**: 評価スイートのワークスペースを用意し、テスト方針（タグ規約、`local` 限定）の適用例を1件ずつ置く。
-- **Public interface**: `package.json`、`vitest.config.ts`（`setup-hermetic`、`global-setup-local`、`gate-reporter` を登録する。C18「テストの実行単位」）、`tests/capability/README.md`、`tests/regression/tool-agent-run.test.ts`（C8 の単体テストとは重ねず、M1 のツールエージェントを C7 のシナリオで最後まで走らせ、停止理由、呼び出したツールの列、最終回答の Outcome を回帰として検証する。`ai-core` の `stop-reason.test.ts` は純粋関数の網羅、こちらはエージェントの通し実行、と役割を分ける）、`tests/capability/summary-quality.local.test.ts`（`local` 限定の例。要約が3点の要点を持つことを実モデルで確認する）。
+- **Public interface**: `package.json`、`vitest.config.ts`（`setup-hermetic`、`global-setup-local`、`gate-reporter` を登録する。C18「テストの実行単位」）、`tests/capability/README.md`、`tests/regression/tool-agent-run.test.ts`（C8 の単体テストとは重ねず、M1 の5ツールを `buildToolSet` で組んだ実際の構成（天気は HTTP の fixture、Web 検索は fixture プロバイダ、時刻は fake Clock）のツールエージェントを C7 のシナリオで最後まで走らせ、停止理由、呼び出したツールの列、各ツールが返した `ToolOutcome`（成功と recoverable な失敗）、最終回答のテキストを回帰として検証する。`eval-suite` は `@platform/ai-core` だけに依存し `ai` に依存しない（pnpm の厳格な解決で `createAgentUIStream` を import できない）ため、`guarded.agent.stream({ prompt, abortSignal: guarded.abortSignal })` の `fullStream` を読んで実行し、停止理由とツールの列は `await guarded.done` のサマリで検証する。UI メッセージストリームの `finish` のメタデータは C8 の単体テストと C16 の Route Handler のテストの責務とする。`ai-core` の `stop-reason.test.ts` は純粋関数の網羅、こちらはエージェントの通し実行、と役割を分ける）、`tests/capability/summary-quality.local.test.ts`（`local` 限定の例。要約が3点の要点を持つことを実モデルで確認する）。
 - **Owns**: 評価スイートのディレクトリ規約。
 - **Does NOT own**: Capability / Regression 評価の本体、LLM-as-a-Judge（004 Req 3）。
 - **Requirements**: 1.1, 1.13, 1.14
@@ -424,7 +425,7 @@ erDiagram
 | | totalTokens | `{ input: number; output: number; cacheRead: number; reasoning: number }` | 各ステップの `usage` の合計 |
 | | elapsedMs | `number` | 注入した `Clock` で計測 |
 | | toolsCalled | `readonly string[]` | 呼び出し順、重複を含む（Req 5.6） |
-| | error | `{ name: string; message: string } \| undefined` | `stopReason === "error"` のときだけ値を持つ（キー自体は常にある）。`message` は 200 文字で切る |
+| | error | `{ name: string; message: string } \| undefined` | `stopReason === "error"` のときだけ値を持つ（キー自体は常にある）。`name` はエラー名、`message` は学習者向けの固定文言で、生のエラー文は入れない（C8） |
 | ToolOutcome\<T\> | — | `{ ok: true; data: T } \| { ok: false; failure: ToolFailure }` | ツール結果として LLM に返す形（Req 5.8） |
 | ToolFailure | kind | `"recoverable" \| "fatal" \| "timeout"` | 003 Req 1.3 の分類を先取りする。M1 は `recoverable` と `timeout` だけを使う |
 | | summary | `string` | エラーの要約（秘密情報とスタックトレースは含めない） |
@@ -554,14 +555,15 @@ erDiagram
 |------|---------------|----------------|
 | `mise.toml` | Modify | ツール（node、pnpm、gitleaks）の版固定と、[mise タスク](#mise-タスク学習者と-ci-の入口)の定義。 |
 | `package.json` | Create | ルートの開発依存（typescript、turbo、biome、vitest、stryker、`@types/node`）を完全一致で固定し、`packageManager` と `engines` を宣言する。 |
-| `pnpm-workspace.yaml` | Create | `apps/*`、`packages/*` の宣言、`minimumReleaseAge: 1440`、監査済みの `allowBuilds`。 |
+| `pnpm-workspace.yaml` | Create | `apps/*`、`packages/*` の宣言、`minimumReleaseAge: 1440`、監査済みの `allowBuilds`、理由付きの `overrides` と `patchedDependencies`（Stryker の回避。C18）。 |
 | `pnpm-lock.yaml` | Create | pnpm が生成するロックファイル。`--frozen-lockfile` によるクリーンな clone での再現（Req 1.3）の前提。 |
 | `turbo.json` | Create | `typecheck`、`test`、`build` のタスクグラフと入出力（キャッシュ対象）の定義。 |
 | `biome.json` | Create | リポジトリ全体の lint / format 規約（ADR-3）。Tailwind CSS v4 の `@theme` / `@custom-variant` / `@apply` を走査できるよう、Web scaffold 導入時に CSS parser の `tailwindDirectives` を有効化する。 |
 | `tsconfig.base.json` | Create | 全ワークスペース共通の strict な TypeScript 設定。 |
 | `tsconfig.json` | Create | ルートの型検査の設定（ベースを継承し、`tooling/**/*.ts` とルートの設定ファイルを対象にする。`turbo.json` のルートタスク `//#typecheck` が使う）。 |
 | `vitest.config.ts` | Create | ルート直下の `tooling/`・`scripts/` のテストの Vitest 設定（`setup-hermetic` と `gate-reporter` の登録）。ワークスペースは集約しない（C18「テストの実行単位」）。 |
-| `stryker.config.mjs` | Create | 制御ロジックに限定したミューテーションテストの設定。 |
+| `stryker.config.mjs` | Create | 制御ロジックに限定したミューテーションテストの設定（TypeScript 7 のための `tsconfigFile` の回避を含む。C18）。 |
+| `patches/@stryker-mutator__vitest-runner@10.0.0.patch` | Create | Vitest 5 の `suite > test` の名前の照合に合わせるパッチ（C18。対応版が出たら外す）。2026-10-07、`30d4437`。 |
 | `compose.yaml` | Create | `db` / `trace` プロファイルのローカル依存サービス。 |
 | `infra/postgres/init/01-extensions.sql` | Create | pgvector 拡張の有効化と Langfuse 用データベースの作成。 |
 | `.env.example` | Create | 必要な環境変数名の一覧（値なし）と説明。[環境変数](#環境変数env-example-に名前だけを列挙する)の表の全変数を、最初のタスクで一度に作る（後続のタスクが並列に同じファイルを編集しないため。`config/load.test.ts` がスキーマとの一致を検査する）。 |
@@ -737,7 +739,7 @@ erDiagram
 | `packages/eval-suite/package.json` | Create | 評価スイートのワークスペース定義（`@platform/ai-core` に依存）。 |
 | `packages/eval-suite/tsconfig.json` | Create | ベース設定の継承。 |
 | `packages/eval-suite/vitest.config.ts` | Create | node 環境、`setup-hermetic`、`global-setup-local`、`gate-reporter` の登録。 |
-| `packages/eval-suite/tests/regression/tool-agent-run.test.ts` | Create | ツールエージェントの通し実行の回帰テスト（`mock`。停止理由、ツールの呼び出し列、Outcome）。 |
+| `packages/eval-suite/tests/regression/tool-agent-run.test.ts` | Create | ツールエージェントの通し実行の回帰テスト（`mock`。停止理由、ツールの呼び出し列、各ツールの `ToolOutcome`、最終回答のテキスト）。 |
 | `packages/eval-suite/tests/capability/summary-quality.local.test.ts` | Create | `local` 限定の要約品質テストの例。 |
 | `packages/eval-suite/tests/capability/README.md` | Create | Capability / Regression の配置規約と 004 への引き継ぎ事項。 |
 
