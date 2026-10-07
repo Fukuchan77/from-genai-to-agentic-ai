@@ -124,7 +124,11 @@ export interface GuardedAgent<TOOLS extends ToolSet = ToolSet> {
 	readonly onError: (error: unknown) => string;
 	/** The finalised summary. Throws `PlatformError` before the run has ended. */
 	summary(): AgentRunSummary;
-	/** Resolves with the summary once it is finalised. */
+	/**
+	 * Resolves with the summary once it is finalised. It settles on every path: the UI stream, a
+	 * direct `agent.stream()` (through the `streamText` `onError` / `onEnd`) and a direct
+	 * `agent.generate()` (which finalises with the error before rethrowing it).
+	 */
 	readonly done: Promise<AgentRunSummary>;
 }
 
@@ -168,10 +172,36 @@ function runError(error: unknown): AgentRunError {
 }
 
 /**
+ * `generateText` has no `onError` and rejects instead, so a direct `agent.generate()` that throws
+ * would leave `done` pending. This subclass finalises the run with the error, then rethrows it.
+ */
+class GuardedToolLoopAgent<TOOLS extends ToolSet> extends ToolLoopAgent<never, TOOLS> {
+	readonly #finalise: (error: unknown) => void;
+
+	constructor(settings: ToolLoopAgentSettings<never, TOOLS>, finalise: (error: unknown) => void) {
+		super(settings);
+		this.#finalise = finalise;
+	}
+
+	override async generate(
+		...args: Parameters<ToolLoopAgent<never, TOOLS>["generate"]>
+	): ReturnType<ToolLoopAgent<never, TOOLS>["generate"]> {
+		try {
+			return await super.generate(...args);
+		} catch (error) {
+			this.#finalise(error);
+			throw error;
+		}
+	}
+}
+
+/**
  * Creates the guarded agent for one run. The three stop conditions (step limit, token budget,
  * deadline) are always set, the composed abort signal enforces `maxDurationMs` even while an LLM
  * call hangs, and the run summary is finalised exactly once — by `onEnd` on a normal end, by the
- * composed signal's `abort` event, or by `onError` — whichever comes first.
+ * composed signal's `abort` event, by the `streamText` `onError` (which also replaces the AI SDK
+ * default that logs the raw error), by a rejected `agent.generate()`, or by the UI stream's
+ * `onError` — whichever comes first.
  */
 export function createGuardedAgent<TOOLS extends ToolSet>(
 	options: GuardedAgentOptions<TOOLS>,
@@ -256,8 +286,16 @@ export function createGuardedAgent<TOOLS extends ToolSet>(
 		onEnd: () => {
 			finalise();
 		},
+		// Not part of `ToolLoopAgentSettings`'s type, but `prepareCall` spreads every non-lifecycle
+		// setting into `streamText`. Without it `streamText` falls back to `console.error(error)`,
+		// which logs provider errors whose request body holds the raw prompt (constitution 7).
+		// Finalising here also settles `done` when `agent.stream()` is consumed directly, and it runs
+		// before `onEnd`, which `streamText` still calls after a mid-stream error part.
+		onError: ({ error }: { readonly error: unknown }) => {
+			finalise(error);
+		},
 	} as unknown as ToolLoopAgentSettings<never, TOOLS>;
-	const agent = new ToolLoopAgent<never, TOOLS>(settings);
+	const agent = new GuardedToolLoopAgent<TOOLS>(settings, finalise);
 
 	if (abortSignal.aborted) finalise();
 	else abortSignal.addEventListener("abort", onAbort, { once: true });

@@ -8,7 +8,16 @@ import {
 	type UIMessageChunk,
 } from "ai";
 import { MockLanguageModelV4 } from "ai/test";
-import { describe, expect, expectTypeOf, it } from "vitest";
+import {
+	afterEach,
+	beforeEach,
+	describe,
+	expect,
+	expectTypeOf,
+	it,
+	type MockInstance,
+	vi,
+} from "vitest";
 import { z } from "zod";
 import { M1_2_SCENARIOS } from "../../fixtures/scenarios/m1-2";
 import { defineAciTool } from "../aci/define-tool";
@@ -418,6 +427,87 @@ describe("createGuardedAgent: abort and error", () => {
 			"実行時間の上限に達したため、エージェントを停止しました。",
 		);
 		expect(guarded.summary()).toMatchObject({ stopReason: "timeout", error: undefined });
+	});
+});
+
+describe("createGuardedAgent: error logging and direct agent use", () => {
+	let consoleError: MockInstance<typeof console.error>;
+	beforeEach(() => {
+		consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+	});
+	afterEach(() => {
+		consoleError.mockRestore();
+	});
+
+	it.each([
+		["a mid-stream error part", () => midStreamErrorModel(new Error(`bad key ${FAKE_SECRET}`))],
+		[
+			"a rejected model call",
+			() =>
+				new MockLanguageModelV4({
+					doStream: async () => {
+						throw new Error(`bad key ${FAKE_SECRET}`);
+					},
+				}),
+		],
+	])("never writes the raw error to console.error for %s", async (_label, makeModel) => {
+		const clock = createFakeClock();
+		const guarded = createGuardedAgent(options({ clock, model: makeModel() }));
+
+		await runToEnd(guarded, "計算してください");
+
+		expect((await guarded.done).stopReason).toBe("error");
+		expect(consoleError).not.toHaveBeenCalled();
+	});
+
+	it("settles done with error when agent.stream() is consumed directly", async () => {
+		const clock = createFakeClock();
+		const model = midStreamErrorModel(new Error(`bad key ${FAKE_SECRET}`));
+		const guarded = createGuardedAgent(options({ clock, model }));
+
+		const result = await guarded.agent.stream({
+			prompt: "計算してください",
+			abortSignal: guarded.abortSignal,
+		});
+		for await (const _part of result.fullStream) {
+			// drain
+		}
+
+		expect(guarded.summary()).toMatchObject({
+			stopReason: "error",
+			error: { code: "unexpected", message: AGENT_RUN_ERROR_MESSAGE },
+		});
+		expect(await guarded.done).toBe(guarded.summary());
+		expect(consoleError).not.toHaveBeenCalled();
+	});
+
+	it("settles done with error and rethrows when agent.generate() throws", async () => {
+		const clock = createFakeClock();
+		const failure = new Error(`bad key ${FAKE_SECRET}`);
+		const model = new MockLanguageModelV4({
+			doGenerate: async () => {
+				throw failure;
+			},
+		});
+		const observer = recordingObserver();
+		const guarded = createGuardedAgent(options({ clock, model, observers: [observer] }));
+
+		await expect(
+			guarded.agent.generate({ prompt: "計算してください", abortSignal: guarded.abortSignal }),
+		).rejects.toBe(failure);
+
+		expect(guarded.summary()).toMatchObject({ stopReason: "error", error: { code: "unexpected" } });
+		expect(await guarded.done).toBe(guarded.summary());
+		expect(observer.calls).toHaveLength(1);
+	});
+
+	it("settles done as completed when agent.generate() succeeds", async () => {
+		const clock = createFakeClock();
+		const guarded = createGuardedAgent(options({ clock }));
+
+		await guarded.agent.generate({ prompt: "計算してください", abortSignal: guarded.abortSignal });
+
+		expect(guarded.summary()).toMatchObject({ stopReason: "completed", steps: 3 });
 	});
 });
 
