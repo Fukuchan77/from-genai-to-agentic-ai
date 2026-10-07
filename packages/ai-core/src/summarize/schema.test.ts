@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { PlatformError } from "../errors";
+import { MODEL_CATALOG } from "../models/catalog";
 import { SourceFetchError, SummaryValidationError, TranscriptUnavailableError } from "./errors";
 import {
 	formatSchemaIssues,
@@ -109,7 +110,35 @@ describe("summarySchema", () => {
 });
 
 describe("summarizeRequestSchema", () => {
-	const base = { id: "req-1", modelId: "model-x" };
+	// Every ID comes from the catalog: no model ID literal outside catalog.ts.
+	const catalogIds = Object.keys(MODEL_CATALOG);
+	const modelId = catalogIds[0] as string;
+	const base = { id: "req-1", modelId };
+	const transcriptInput = { kind: "transcript", text: "t" };
+
+	it("accepts every catalog model ID", () => {
+		for (const id of catalogIds) {
+			expect(
+				summarizeRequestSchema.safeParse({ ...base, modelId: id, input: transcriptInput }).success,
+			).toBe(true);
+		}
+	});
+
+	it.each([`${modelId}-not-in-catalog`, "constructor", "toString", "__proto__", ""])(
+		"rejects the model ID %j, which is not in the catalog",
+		(candidate) => {
+			const result = summarizeRequestSchema.safeParse({
+				...base,
+				modelId: candidate,
+				input: transcriptInput,
+			});
+
+			expect(result.success).toBe(false);
+			expect(result.error?.issues).toHaveLength(1);
+			expect(result.error?.issues[0]?.path).toEqual(["modelId"]);
+			expect(result.error?.issues[0]?.message).toMatch(/モデル/u);
+		},
+	);
 
 	it.each([
 		{ kind: "article", url: "https://example.test/articles/agentic-ai" },

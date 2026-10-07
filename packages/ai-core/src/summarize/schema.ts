@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { type CatalogModelId, MODEL_CATALOG } from "../models/catalog";
 
 export const SUMMARY_LIMITS = Object.freeze({
 	titleMaxLength: 120,
@@ -14,7 +15,6 @@ export const SUMMARY_LIMITS = Object.freeze({
 	// The HTTP body limit (512 KiB, C14) is the binding cap in the web app; this bounds library use.
 	transcriptTextMaxLength: 200_000,
 	requestIdMaxLength: 200,
-	modelIdMaxLength: 200,
 });
 
 const nonEmptyText = (max: number) => z.string().trim().min(1).max(max);
@@ -113,11 +113,19 @@ export const summaryInputSchema = z.discriminatedUnion("kind", [
 
 export type SummaryInput = z.infer<typeof summaryInputSchema>;
 
+// The same catalog enum as the chat and agent bodies (chat/request-schema.ts), so an unknown ID
+// is a 400 at the schema instead of a later ModelSelectionError (plan "HTTP API": `modelId: ModelId`).
+const CATALOG_MODEL_IDS = Object.freeze(Object.keys(MODEL_CATALOG)) as readonly CatalogModelId[];
+
+const modelIdSchema = z.enum(CATALOG_MODEL_IDS, {
+	error: "モデル ID がモデルカタログにありません。選択肢の中からモデルを選んでください。",
+});
+
 /** The body of `POST /api/summarize`; unknown fields are rejected. */
 export const summarizeRequestSchema = z.strictObject({
 	id: z.string().min(1).max(SUMMARY_LIMITS.requestIdMaxLength),
 	input: summaryInputSchema,
-	modelId: z.string().min(1).max(SUMMARY_LIMITS.modelIdMaxLength),
+	modelId: modelIdSchema,
 });
 
 export type SummarizeRequest = z.infer<typeof summarizeRequestSchema>;
