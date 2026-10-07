@@ -235,11 +235,12 @@ flowchart LR
 
 - **Responsibility**: ペルソナのテンプレート、モデル切り替え時の履歴変換、応答メタデータの組み立てを提供する。
 - **Public interface**:
-  - `PERSONAS: readonly PersonaTemplate[]`（`id`、`version`（semver）、`title`、`render(vars): string`）、`getPersona(id): PersonaTemplate`
-  - `adaptHistoryForModel(messages: readonly UIMessage[], target: ModelEntry): UIMessage[]`（ADR-7）
-  - `buildResponseMetadata(input: { entry: ModelEntry; usage: LanguageModelUsage; run?: AgentRunSummary; toolsCalled?: readonly string[] }): ResponseMetadata`
-  - `chatRequestSchema`、`agentRequestSchema`（`z.strictObject`。`messages`、`modelId`、`personaId`）
+  - `PERSONAS: readonly PersonaTemplate[]`（凍結済み。`id`、`version`（semver）、`title`、`render(vars: PersonaVars): string`。`PersonaVars = { modelName?; today? }` で、サーバーが信頼できる値（カタログの表示名と、Clock から得た `YYYY-MM-DD`）だけを渡し、リクエスト本文からは受け取らない。値を渡したときだけ「# 実行時の情報」節を末尾に加える）、`PERSONA_IDS`、`PersonaId`、`isPersonaId(value)`、`DEFAULT_PERSONA_ID`（`general-assistant`）、`getPersona(id): PersonaTemplate`（未知の ID は `PlatformError("invalid-request")`）。各ペルソナのファイルはデータ（`id`・`version`・`title`・`instructions`）だけを export し、`personas/index.ts` が `render` 付きのテンプレートに組み立てる（循環参照を避けるため）。プロンプトの本文を変えたら `version` を上げる。
+  - `adaptHistoryForModel(messages: readonly UIMessage[], target: ModelEntry): UIMessage[]`（ADR-7。`IMAGE_OMITTED_TEXT` も公開する）。生成元のプロバイダは、assistant メッセージの `metadata.provider`（`ResponseMetadata.provider`）から判定する。生成元が不明な assistant メッセージとすべての user パートは別プロバイダとして扱い、プロバイダ固有フィールド（`providerMetadata`・`providerReference`・`callProviderMetadata`・`resultProviderMetadata`）を除く。推論（`reasoning`・`reasoning-file`）は同じプロバイダで、かつ `capabilities.reasoning` のときだけ残す。結果のないツール呼び出し（`input-streaming` / `input-available`）は同じプロバイダでも除き、承認系の状態（`approval-*`、`output-denied`）は残す。別プロバイダが実行したツール（`providerExecuted`）と `custom` パートは除く。`step-start` だけになったメッセージは送らない。メッセージとパートは常に浅いコピーで、入力を変えない。
+  - `buildResponseMetadata(input: { entry: ModelEntry; persona: Pick<PersonaTemplate, "id" | "version">; usage?: LanguageModelUsage; run?: AgentRunSummary; toolsCalled?: readonly string[]; disabledTools?: readonly DisabledTool[] }): ResponseMetadata`（凍結した JSON 化可能な値を返す）。`usage` はストリームの `start` では渡さず（使用量がまだない）、`finish` で `part.totalUsage` を渡す。クライアントの `useChat` が2つをマージする。`toolsCalled` は、明示の値があればそれ、なければ `run.toolsCalled`、どちらもなければキー自体を省く（素のチャットはツール一覧を出さず、エージェントがツールを使わずに答えたときは `[]`）。エージェントの Route は `finish` で先に `guarded.messageMetadata({ part })` を呼んで run を確定させ、返る `{ run }` を渡す（C8）。
+  - `chatRequestSchema`、`agentRequestSchema`（`z.strictObject`。同じ形で、[Interfaces / Contracts](#interfaces--contracts) の HTTP API の表を参照）。メッセージはエンベロープ（`id`・`role`・`metadata`・`parts`）だけを strict に検査し、パートは `type` だけを見て他のフィールドを保持する。パートの中身の検証は C15・C16 の Route が AI SDK の `validateUIMessages` で行う（スキーマの型は `UIMessage[]` ではない）。`role: "system"` は受け付けない（ペルソナだけがシステムプロンプトになる）。
 - **Owns**: `personas/*.ts`（汎用アシスタント、Python 講師、厳密なレビュアの3種から開始）、`ResponseMetadata` の型。
+- **制約**: assistant メッセージの `metadata.provider` はクライアントが送る値で、改ざんできる。切り替え先のプロバイダを名乗っても、そのメッセージ自身のプロバイダ固有フィールドが通るだけ（変換しない送信と同じ）で、必要なら Route で `metadata.modelId` がカタログにあることを確かめる。画像以外のファイル（PDF 等）は対応の可否を表す機能フラグがないため、そのまま送る。将来 AI SDK が `UIMessage` に最上位のフィールドを加えると、strict なエンベロープは更新するまでそれを拒否する。
 - **Does NOT own**: HTTP の検査（C14）、会話の永続化（Out of Scope）。
 - **Requirements**: 3.3, 3.7, 3.10, 5.6
 
@@ -281,6 +282,7 @@ flowchart LR
 - **Public interface**: `POST /api/chat`（[Interfaces / Contracts](#interfaces--contracts)）。UI: `ChatPanel`（`useChat` + `DefaultChatTransport`）、`ModelSelector`、`PersonaSelector`、`ImageAttachButton`（モデルが `imageInput` に対応しているときだけ有効）、`ReasoningDisclosure`（`<details>` で折りたたむ）、`MessageMeta`（モデル名、入出力トークン数、キャッシュ読み出し量）、`ErrorBanner`（再送ボタン付き）、停止ボタン（`ChatPanel` の中で `stop()` を呼ぶ。独立した部品にはしない）。
 - **Owns**: チャット画面の状態（`useChat` が管理し、永続化しない）。
 - **Does NOT own**: 履歴変換とメタデータの組み立て（C11）、ツール（C16）。
+- **Route の注意**: `chatRequestSchema` はメッセージのエンベロープだけを検査するため、Route は `body.messages` を `validateUIMessages` で検証してから `adaptHistoryForModel`・`convertToModelMessages` に渡す（C11。2026-10-07、T-17.3）。
 - **Requirements**: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8, 3.9, 3.10
 
 #### C16 ToolAgentFeature（`/agent`、`POST /api/agent/tools`）
@@ -429,9 +431,10 @@ erDiagram
 | Field | Type | Notes |
 |-------|------|-------|
 | modelId / modelName / provider | `ModelId` / `string` / `ProviderId` | Req 3.7 |
-| usage | `{ inputTokens: number; outputTokens: number; cacheReadTokens?: number; reasoningTokens?: number }` | `usage.inputTokenDetails.cacheReadTokens`、`usage.outputTokenDetails.reasoningTokens` から写す |
-| personaId / personaVersion | `string` / `string` | Req 3.10 |
-| run | `AgentRunSummary \| undefined` | `/api/agent/tools` のときだけ |
+| usage | `{ inputTokens: number; outputTokens: number; cacheReadTokens?: number; reasoningTokens?: number } \| undefined` | `usage.inputTokenDetails.cacheReadTokens`、`usage.outputTokenDetails.reasoningTokens` から写す。`start` ではキーがない（使用量がまだない）。報告されない入出力の合計は 0、報告された 0 は残す |
+| personaId / personaVersion | `PersonaId` / `string` | Req 3.10 |
+| run | `AgentRunSummary \| undefined` | `/api/agent/tools` の `finish` のときだけ |
+| toolsCalled | `readonly string[] \| undefined` | Req 5.6。明示の値、なければ `run.toolsCalled`。`/api/chat` ではキーがない |
 | disabledTools | `readonly { name: string; reason: string; requiredEnv: readonly string[] }[]` | Req 5.4 |
 
 **要約（C12）**
@@ -476,7 +479,7 @@ erDiagram
 
 | Method / Path | Request body（`z.strictObject`） | Stream の内容 | 主な拒否 |
 |---|---|---|---|
-| `POST /api/chat` | `{ id: string; messages: UIMessage[]; modelId: ModelId; personaId: string }` | `text`、`reasoning`（`sendReasoning: true`）、`file`、`messageMetadata: ResponseMetadata` | 400 `invalid-request` / `limit-exceeded` / `capability-unsupported`（画像非対応モデルへの画像送信など）、413 `payload-too-large`、429 `rate-limited`、503 `provider-unavailable`（Ollama 未起動、認証情報なし） |
+| `POST /api/chat` | `{ id: string; messages: UIMessage[]（role は user / assistant のみ）; modelId: CatalogModelId; personaId: PersonaId; trigger?: "submit-message" \| "regenerate-message"; messageId?: string }`（`trigger`・`messageId` は `DefaultChatTransport` が既定で付けるため受け付け、Route は使わない。2026-10-07、T-17.3） | `text`、`reasoning`（`sendReasoning: true`）、`file`、`messageMetadata: ResponseMetadata` | 400 `invalid-request` / `limit-exceeded` / `capability-unsupported`（画像非対応モデルへの画像送信など）、413 `payload-too-large`、429 `rate-limited`、503 `provider-unavailable`（Ollama 未起動、認証情報なし） |
 | `POST /api/agent/tools` | 同上 | 上記 + `tool-<name>` パート（`input-streaming` → `input-available` → `output-available` / `output-error`）、`messageMetadata.run: AgentRunSummary` | 同上 |
 | `POST /api/summarize` | `{ id: string; input: SummaryInput; modelId: ModelId }` | `data-summary`（`DeepPartial<Summary>`、同じ `id` で上書き）、`data-summary-meta`（`SummaryMeta`）、`data-summary-restart`（`{ attempt: number; issues: string[] }`） | 上記 + 422 `source-unavailable`（`reason: "http-status" \| "empty-body" \| "network" \| "no-captions" \| "private" \| "fetch-failed"`、`status?`）。いずれも LLM を呼ぶ前に返す（Req 4.7、4.11） |
 

@@ -81,7 +81,7 @@
 |---|---|---|---|
 | W1 基盤 | 1 ツールチェーン、2 CI、3 ローカル依存サービス、4 テスト基盤、5 リポジトリ規約検査 | 完了（2026-09-27。敵対的レビュー2ラウンド） | [tasks-comp-w1.md](tasks-comp-w1.md) |
 | W2 ai-core の土台 | 6 ai-core scaffold、7 eval-suite scaffold、8 apps/web scaffold、9 ModelCatalog、10 Ports、11 testing ヘルパ、12 PlatformConfig、13 MockRuntime | 完了（2026-09-30。敵対的レビュー3ラウンド、2026-10-04 の検証で追加の修正） | [tasks-comp-w2.md](tasks-comp-w2.md) |
-| W3 ai-core の機能 | 14 ModelGateway、15 AciToolkit、16 GuardedAgent、17 ChatCore、18 SummaryPipeline、19 評価スイート | 着手（現在の波。14〜16 完了） | 本ファイル |
+| W3 ai-core の機能 | 14 ModelGateway、15 AciToolkit、16 GuardedAgent、17 ChatCore、18 SummaryPipeline、19 評価スイート | 着手（現在の波。14〜17 完了） | 本ファイル |
 | W4 apps/web | 21 RequestGuard、20 AppShell、22 ChatFeature、23 ToolAgentFeature、24 SummaryFeature | 未着手 | [tasks-w4.md](tasks-w4.md) |
 | W5 E2E・解説・最終統合 | 25 E2E 生成・検査スクリプト、26 E2E 基盤、27 E2E シナリオ、28 解説ドキュメント、29 最終統合と NFR 検証 | 未着手 | [tasks-w5.md](tasks-w5.md) |
 
@@ -264,23 +264,27 @@ _Depends:_ 9, 16
 _Requirements:_ 3.3, 3.7, 3.10, 5.6
 _Traces:_ REQ-003, REQ-005, C11
 
-- [ ] 17.1 (P) `chat/personas/*`: 汎用アシスタント・Python講師・厳密レビュアの3テンプレート（`id`/`version`/`title`/`render`）+ テスト（ID一意性、版の形式、描画結果）
+- [x] 17.1 (P) `chat/personas/*`: 汎用アシスタント・Python講師・厳密レビュアの3テンプレート（`id`/`version`/`title`/`render`）+ テスト（ID一意性、版の形式、描画結果）
   _Boundary:_ `packages/ai-core/src/chat/personas/index.ts`, `packages/ai-core/src/chat/personas/general-assistant.ts`, `packages/ai-core/src/chat/personas/python-mentor.ts`, `packages/ai-core/src/chat/personas/strict-reviewer.ts`, `packages/ai-core/src/chat/personas/personas.test.ts`
   _Depends:_ 9
   _Requirements:_ 3.10
   _Traces:_ REQ-003, C11
-- [ ] 17.2 (P) `chat/adapt-history.ts`: `adaptHistoryForModel`（推論・プロバイダ固有メタデータ・非対応画像の除外・変換、表示用履歴は変えない）+ テスト
+- [x] 17.2 (P) `chat/adapt-history.ts`: `adaptHistoryForModel`（推論・プロバイダ固有メタデータ・非対応画像の除外・変換、表示用履歴は変えない）+ テスト
   _Boundary:_ `packages/ai-core/src/chat/adapt-history.ts`, `packages/ai-core/src/chat/adapt-history.test.ts`
   _Depends:_ 9
   _Requirements:_ 3.3
   _Traces:_ REQ-003, C11
-- [ ] 17.3 `chat/metadata.ts`・`request-schema.ts`・`index.ts`: `buildResponseMetadata`、`chatRequestSchema`/`agentRequestSchema`（`z.strictObject`）、`./chat` の公開API + `metadata.test.ts`（使用量の写し替え、`run` と `toolsCalled` の有無）・`request-schema.test.ts`（未知フィールド・カタログ外のモデル ID・未知のペルソナ ID の拒否）
+- [x] 17.3 `chat/metadata.ts`・`request-schema.ts`・`index.ts`: `buildResponseMetadata`、`chatRequestSchema`/`agentRequestSchema`（`z.strictObject`）、`./chat` の公開API + `metadata.test.ts`（使用量の写し替え、`run` と `toolsCalled` の有無）・`request-schema.test.ts`（未知フィールド・カタログ外のモデル ID・未知のペルソナ ID の拒否）
   _Boundary:_ `packages/ai-core/src/chat/metadata.ts`, `packages/ai-core/src/chat/metadata.test.ts`, `packages/ai-core/src/chat/request-schema.ts`, `packages/ai-core/src/chat/request-schema.test.ts`, `packages/ai-core/src/chat/index.ts`
   _Depends:_ 17.1, 17.2, 16
   _Requirements:_ 3.7, 3.10, 5.6
   _Traces:_ REQ-003, REQ-005, C11
 
 ### Implementation Notes
+
+- ペルソナ定義ファイル（`general-assistant.ts` など）はデータ（`id`/`version`/`title`/`instructions`）だけを export し、`personas/index.ts` が `render` 付きの凍結済みテンプレートに組み立てる（定義側から描画関数を import する循環参照を避けるため）。`render(vars)` の `vars` は `modelName`（カタログの表示名）と `today`（Clock から得た `YYYY-MM-DD`）だけで、どちらもリクエスト本文からは受け取らない。プロンプト本文を変えたら `version` を上げる。`adaptHistoryForModel` は生成元プロバイダを assistant メッセージの `metadata.provider`（17.3 の `ResponseMetadata.provider`）から判定し、生成元が不明な assistant メッセージと全 user パートは「別プロバイダ」扱いでプロバイダ固有フィールドを必ず除く（クライアントが送った `providerMetadata` を任意オプション注入として通さない）。推論は同じプロバイダかつ `capabilities.reasoning` のときだけ残す。
+- 不完全なツール呼び出し（`input-streaming`/`input-available`）は、結果のない tool-call をプロバイダが拒否するため、同じプロバイダでも常に除く。承認系の状態（`approval-*`、`output-denied`）は SDK の承認フローに必要なので残す。別プロバイダが実行したツール（`providerExecuted`）と `custom` パートは除く。変換で空（`step-start` だけ）になったメッセージは送らない。
+- `buildResponseMetadata` の入力に `persona`（`id`/`version`）と `disabledTools` を追加し、`usage` は任意にした（`start` ではモデル名とペルソナだけ、`finish` で `part.totalUsage` を渡し、`useChat` が2つをマージする）。`toolsCalled` はトップレベルに置き（Req 5.6）、明示の値、なければ `run.toolsCalled`、どちらもなければキーを省く。`DefaultChatTransport` は既定で本文に `trigger`（`submit-message`/`regenerate-message`）と `messageId` を付けて送る（`HttpChatTransport.sendMessages` で確認）ため、plan どおりの4フィールドだけの `z.strictObject` では既定の `useChat` の送信がすべて 400 になる。この2フィールドは任意で受け付けて Route では使わず、`role: "system"` は拒否する。メッセージはエンベロープだけを strict に検査し、part の中身の検証は C15 の Route の `validateUIMessages` に任せる。
 
 ---
 

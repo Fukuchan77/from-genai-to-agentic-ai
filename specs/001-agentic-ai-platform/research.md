@@ -270,7 +270,7 @@ New feature（greenfield、full discovery）。リポジトリにはソースコ
 ### ADR-7: モデル切り替え時の履歴変換は、UI パートの許可リストで行う
 
 - **Context**: Req 3.3、Review H-5。`convertToModelMessages` の `ignoreIncompleteToolCalls` は、不完全なツール呼び出しを除くだけで、推論やプロバイダ固有メタデータは除かない。
-- **Decision**: 送信直前に `adaptHistoryForModel(messages, target)` を適用する。切り替え先と異なるプロバイダが生成した推論パートと `providerMetadata` を除き、画像入力に非対応のモデルへは画像パートを「画像は省略されました」というテキストに置き換える。変換はサーバーで送信時にだけ行い、クライアントの表示用履歴は変えない。
+- **Decision**: 送信直前に `adaptHistoryForModel(messages, target)` を適用する。切り替え先と異なるプロバイダが生成した推論パートと `providerMetadata` を除き、画像入力に非対応のモデルへは画像パートを「画像は省略されました」というテキストに置き換える。変換はサーバーで送信時にだけ行い、クライアントの表示用履歴は変えない。結果のないツール呼び出し（`input-streaming` / `input-available`）も、同じプロバイダであっても除く（プロバイダが結果のない tool-call を拒否するため）。生成元のプロバイダは assistant メッセージの `metadata.provider` から判定し、生成元が不明なメッセージと user のパートは別プロバイダとして扱う。推論は同じプロバイダで、かつ切り替え先が `capabilities.reasoning` を持つときだけ残す（2026-10-07、T-17.2 で追記）。
 - **Consequences**: 変換規則は純粋関数で、単体テストで網羅できる。
 
 ### ADR-8: 要約は UI メッセージストリームのデータパートで逐次配信する

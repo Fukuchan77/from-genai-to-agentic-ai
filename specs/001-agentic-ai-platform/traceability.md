@@ -69,14 +69,14 @@ ID 規約は `tasks.md` の「ID 対応表」を参照する（この spec の p
 |---|---|---|---|---|
 | 3.1 | C15 | T-22.1, T-22.2 |  |  |
 | 3.2 | C6, C15 | T-14.3, T-22.3 | T-14.3: `gateway.test.ts`（`availableModels` が現在の実行モードと認証情報のそろったプロバイダのモデルだけを返す。D9） | T-14.3: `1d8b91e` |
-| 3.3 | C11, C15, C19 | T-17.2, T-22.1, T-27.2 |  |  |
+| 3.3 | C11, C15, C19 | T-17.2, T-22.1, T-27.2 | T-17.2: `adapt-history.test.ts` 22件（別プロバイダ・推論非対応での推論の除外、プロバイダ固有フィールドの除去（user パートは常に）、画像非対応モデルへの画像の置き換え、結果のないツール呼び出しの除外、承認系の状態の保持、入力を変えない。`convertToModelMessages` の出力に推論・署名・画像データが残らない） | T-17.2: `30bc262` |
 | 3.4 | C15 | T-22.2 |  |  |
 | 3.5 | C15 | T-22.1, T-22.2 |  |  |
 | 3.6 | C15 | T-22.1, T-22.4 |  |  |
-| 3.7 | C11, C15 | T-17.3, T-22.4 |  |  |
+| 3.7 | C11, C15 | T-17.3, T-22.4 | T-17.3: `metadata.test.ts` 13件（モデル ID・表示名・プロバイダの写し、使用量の写し替え（キャッシュ読み出し・推論、報告された 0 の保持、未報告の合計は 0）、`start` で usage なし、JSON 化可能で凍結） | T-17.3: `6f7a049` |
 | 3.8 | C13, C15 | T-20.1, T-20.3, T-22.1 |  |  |
 | 3.9 | C6, C15 | T-14.3, T-22.1, T-22.3 | T-14.3: `gateway.test.ts`（要求機能に非対応のモデルを呼び出し前に拒否） | T-14.3: `1d8b91e` |
-| 3.10 | C11, C15 | T-17.1, T-17.3, T-22.3 |  |  |
+| 3.10 | C11, C15 | T-17.1, T-17.3, T-22.3 | T-17.1: `personas.test.ts` 23件（ID の一意性、semver、描画結果、未知の ID の `PlatformError`、凍結）、T-17.3: `request-schema.test.ts` 49件（chat / agent の両スキーマで未知のフィールド・カタログ外のモデル ID・未知のペルソナ ID・`system` ロールの拒否、`DefaultChatTransport` の `trigger`/`messageId` の受け付け、`./chat` の公開 API）、`metadata.test.ts`（`personaId`/`personaVersion`） | T-17.1: `a753e4b`、T-17.3: `6f7a049`、`175a05b` |
 | 3.11 | C14, C15 | T-21.1, T-21.2, T-22.1 |  |  |
 
 ## Requirement 4: 構造化出力と要約パイプライン
@@ -105,7 +105,7 @@ ID 規約は `tasks.md` の「ID 対応表」を参照する（この spec の p
 | 5.3 | C9 | T-15.4 | T-15.4: `tools.test.ts` 25件（Open-Meteo の fixture・HTTP 状態・signal の伝播、Web 検索の fixture プロバイダと最大5件、レート表の検証） | T-15.4: `ab7a569` |
 | 5.4 | C9, C16 | T-15.2, T-23.1, T-23.4 | T-15.2: `tool-set.test.ts` 10件（キー未設定の Web 検索が `disabled` に入り `requiredEnv: ["TAVILY_API_KEY"]`、`read-only` 以外の拒否、`GuardedToolSet` の型と凍結） | T-15.2: `c7cfd13` |
 | 5.5 | C16 | T-23.2, T-23.3 |  |  |
-| 5.6 | C8, C11, C16 | T-16.3, T-17.3, T-23.4 | T-16.3: `guarded-agent.test.ts`（`toolsCalled` が呼び出し順・重複込み、知識のみの回答で空、`finish` だけに `run` のメタデータ） | T-16.3: `2140b87` |
+| 5.6 | C8, C11, C16 | T-16.3, T-17.3, T-23.4 | T-16.3: `guarded-agent.test.ts`（`toolsCalled` が呼び出し順・重複込み、知識のみの回答で空、`finish` だけに `run` のメタデータ）、T-17.3: `metadata.test.ts`（`toolsCalled` をトップレベルに置く。明示の値を優先、`run` から、ツールなしの回答で `[]`、素のチャットではキーなし） | T-16.3: `2140b87`、T-17.3: `6f7a049` |
 | 5.7 | C9, C10 | T-10.1, T-15.3 | T-10.1: `clock.test.ts` 3件（fake の決定論的進行・期限での `TimeoutError`）、T-15.3: `tools.test.ts`（現在時刻ツールが注入した Clock を使う。`Date.now()` に置き換えると2件失敗する PROVE） | T-10.1: `fb60281`、T-15.3: `65e0f16` |
 | 5.8 | C9 | T-15.1 | T-15.1: `define-tool.test.ts` 22件（例外・タイムアウトのツール結果化、`ToolExecutionError` の summary/nextAction、想定外の例外の message を出さない） | T-15.1: `90bc262` |
 
@@ -158,6 +158,7 @@ Task 列に記載する。
 
 ## Gaps
 
+- 2026-10-07 の `/sdd-ship`（T-17.1〜T-17.3）では、要件ギャップは検出しなかった。ai-core の gate テストに `src/chat` の4ファイル 107件（`personas` 23、`adapt-history` 22、`metadata` 13、`request-schema` 49）が加わり、`src/chat` の行カバレッジは100%（分岐 98.24%）。spec drift として、plan の `POST /api/chat` の本文（4フィールドの `z.strictObject`）では `DefaultChatTransport` が既定で付ける `trigger`・`messageId` のために既定の `useChat` の送信がすべて 400 になることを検出し、2フィールドを任意で受け付けるよう HTTP API の表を改めた。plan C11（`PersonaVars`・`PERSONA_IDS`・`isPersonaId`・`DEFAULT_PERSONA_ID`、`adaptHistoryForModel` の規則、`buildResponseMetadata` の `persona`・`disabledTools`・任意の `usage`、エンベロープだけの検査と `validateUIMessages`）、Data Model の応答メタデータ（`usage` の省略、`toolsCalled` の行）、C15 の Route の注意、research.md ADR-7（結果のないツール呼び出しの除外、生成元の判定）を実装に合わせた。`metadata.provider` はクライアントが改ざんできる値であり、画像以外のファイルはそのまま送られる（plan C11 の制約に記録。対応が要るかは T-22 で判断する）。
 - 2026-10-07 の `/sdd-ship`（T-16.1〜T-16.4）では、要件ギャップは検出しなかった。ai-core の gate テストに `src/agents` の3ファイル 55件（`stop-conditions` 18、`stop-reason` 14、`guarded-agent` 23）が加わり、`src/agents` の行カバレッジは100%（`guarded-agent.ts` の分岐 88.09%）。spec drift として、AI SDK v7 では UI ストリームの `finish` が `onEnd` より先に届き、中断は `onError` ではなく `abort` パートで通知されるため、plan C8 と research.md ADR-6 のサマリの確定経路（「`onEnd` または `onError` の先に呼ばれた方」）が実装と食い違っていた。plan C8（停止条件の引数、`createRunStopConditions`、`StopReasonInput`、確定経路、`GuardedAgent` の追加のメンバー、公開 API）、Data Model（`AgentRunSummary.error`）、ADR-6 を改訂した。`guarded.agent.generate()` / `.stream()` を直接呼んでエラーになると `done` が解決しないこと、`streamText` の既定のエラー処理が生のエラーを `console.error` に出すことは、T-23.1（C16 の Route）で扱う。
 - 2026-10-07 の `/sdd-ship`（T-15.1〜T-15.5）では、要件ギャップは検出しなかった。ai-core の gate テストに `src/aci` の4ファイル 91件（`define-tool` 22、`tool-set` 10、`calculator` 34、`tools` 25）が加わり、`src/aci` の行カバレッジは100%。spec drift として、plan C9 に未定義だった `ToolAvailability`（`FeatureId` → boolean と `requiredFeature`）、`AnyAciTool`・`BuiltToolSet`・`GuardedToolSet<TOOLS>` の形、中断とエラーのツール結果化の規則、`ConfigError` の対象、ツール名と天気の入力・URL、追加の公開 API を、plan C9 と Error Handling に記録した。Web 検索ツールはキーがなくても `WebSearchProvider` を要する（T-20.1 の `platform.ts` が渡す）。`rates.json` の `with { type: "json" }` を Next/Turbopack でビルドできるかは T-20 以降で確認する。
 - 2026-10-07 の `/sdd-ship`（T-14.1〜T-14.6）では、要件ギャップは検出しなかった。W2 から引き継いだ D9（明示指定したモデル ID と実行モードの整合）は T-14.1 / T-14.3 で `ModelSelectionError` として実装し、plan C6（`GatewayDeps`・`ModelOption`・検査の順序・エラー）、Error Handling、File Structure を実装に合わせた。ai-core の gate テストは 114件から150件に増えた（`gateway.test.ts` 28件、`ollama-preflight.test.ts` 8件。`catalog.local.test.ts` 2件は理由付き skip）。`gateway.ts` の未到達の分岐（`withRecording` の中の `mode === "mock"`。設定が `mock` での録画を禁じるための防御）が1つ残る。`module/1-1` のタグはローカルにだけあり、push と再作成は T-29.4 で行う。

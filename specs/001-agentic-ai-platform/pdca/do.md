@@ -3247,3 +3247,54 @@ GREEN 後、7件すべての新規テストについて独立した deliberate b
 - Spec drift: plan C8 の停止条件の引数（`stepLimit(n)`・`tokenBudget(n)`・`deadline(clock, ms)`）、`StopReasonInput` の形、サマリの確定経路（ステップ3・5）と ADR-6 の「`onEnd` または `onError` の先に呼ばれた方」が、AI SDK v7 の実際の順序・通知と食い違っていた。plan C8（`createRunStopConditions`、`StopReasonInput`、確定経路の7項目、`messageMetadata`・`onError`・`startedAt`、`MAX_AGENT_TOOLS`、公開 API）、Data Model（`AgentRunSummary.error` のキーは常にあり、`message` は 200 文字で切る）、research.md ADR-6 を改訂した。
 - Risks: `guarded.agent.generate()` / `.stream()` を直接呼んでエラーになると `done` が解決しない（M1 の Route は `createAgentUIStreamResponse` を使う）。`streamText` の既定の `onError` は生のエラーを `console.error` に出し、`ToolLoopAgentSettings` から変えられない（T-23.1 で `no-sensitive-logging` との整合を確認）。observer の例外は記録せずに握りつぶす。
 - Mechanical fixes: tasks.md（16.1〜16.4 を `[x]`、Implementation Notes、進捗）、traceability.md（5.1・5.6・6.1・6.2・6.3・6.5 の Test/Commit、Gaps）。
+
+### 2026-10-07 Task 17.1〜17.2 RED / GREEN / PROVE Evidence
+
+- Objective: 3種のペルソナのテンプレートと、モデル切り替え時の履歴変換（ADR-7）。
+
+**RED evidence**:
+
+- 17.1: `pnpm exec vitest run src/chat/personas` → `./general-assistant` が見つからない（0件実行）。
+- 17.2: `Cannot find module './adapt-history'`。
+
+**PROVE evidence**（stub を当てて失敗を確認し、復元）:
+
+- 17.1: `version: "1.0"` → `expected '1.0' to match /^(0|[1-9]\d*)…/`。strict-reviewer の ID を `"python-mentor"` に重複 → 「has unique ids」を含む5件。`render` が vars を無視 → `expected '…' to contain 'モデル名: Mock Chat'` ほか3件。`getPersona` が throw しない → `expected undefined to be an instance of PlatformError`・`expected function to throw`。`Object.freeze` を除去 → `expected false to be true`。`isPersonaId` を大文字小文字を区別しない比較に → 「narrows only listed ids」。「Python の基礎文法は説明しない」を削除 → python-mentor の内容のテスト。
+- 17.2: 推論を常に残す → 7件（`expected ['step-start','reasoning','text'] to deeply equal ['step-start','text']`）。推論の機能を無視 → 「drops reasoning when the target model has no reasoning capability」。プロバイダ固有フィールドを除かない → 5件（`expected {…, providerMetadata} to deeply equal { type:'text', text:'猫の画像です。' }`）。画像の判定を `startsWith("image/")` だけに → 最上位の `image` のテスト。`input-streaming` だけを除く → input-available のケース。別プロバイダの `providerExecuted` ツール・`custom` パートを残す → それぞれ失敗。step-start だけのメッセージを残す → `expected ['u1','a1','u2'] to deeply equal ['u1','u2']`。パートをその場で変更 → 入力を変えないテスト。
+- 17.2 で当初生き残った stub 2件: assistant だけを対象にする guard の除去と、同じプロバイダで同じパートのオブジェクトを再利用する stub。テストを1件ずつ加え、user の metadata のテストと `expected { type: 'step-start' } not to be …`（同じプロバイダでも新しいオブジェクト）で失敗するようにした。
+
+**Verification**:
+
+- 17.1 23/23、17.2 22/22（`convertToModelMessages` の出力に推論・署名・画像データがないことの確認を含む）。`tsc`・biome は clean。`src/chat/personas` 100%、`adapt-history.ts` lines 100% / branches 97.43%（未到達は29行目の、metadata がオブジェクトでない場合の guard）。
+- ワーカーの最終 `mise run gate`: model-ID 81 files、repository rules 8規則すべて成功（`no-sensitive-logging` 60 files）、root `executed=257 passed=257`、ai-core `159 passed | 2 skipped`、`failed=0`、All files lines 94.56%。
+- 統合コミット: 17.1 `a753e4b`、17.2 `30bc262`。
+
+### 2026-10-07 Task 17.3 RED / GREEN / PROVE Evidence
+
+- Objective: `buildResponseMetadata`、`chatRequestSchema` / `agentRequestSchema`（`z.strictObject`）、`./chat` の公開 API。`package.json#exports` の `./chat` は既にあった。
+
+**RED evidence**:
+
+- `metadata.test.ts`: `Cannot find module './metadata'`。
+- `request-schema.test.ts`: `Cannot find module './request-schema'`。
+- 公開 API のテスト（`request-schema.test.ts` 内で `@platform/ai-core/chat` を import）: `Cannot find package '@platform/ai-core/chat'`。
+
+**GREEN**: `metadata.test.ts` 13件、`request-schema.test.ts` 49件（`describe.each` で全ケースを chat / agent の両スキーマに対して実行）。`vitest run src/chat` 107 passed。
+
+**PROVE evidence**（スクリプトで1つずつ当てて復元）:
+
+- `metadata.ts`（11種）: cacheRead の写しを除去 →「maps the AI SDK usage…」「keeps a reported zero」。`=== undefined` を falsy の検査に →「keeps a reported zero instead of dropping it」。`?? 0` を除去 →「counts unreported input and output totals as zero」。`run.toolsCalled` を無視 →「carries the run and reports its tools…」「reports an empty tool list… (Req 5.6)」。優先順位を入れ替え →「prefers explicit toolsCalled over the run's list」。常に `usage` キーを出す →「leaves usage out for the stream's start chunk」。`disabledTools: []` に固定 →「lists the tools that were not registered (Req 5.4)」。freeze を除去 →「returns a JSON-serialisable value…」。`modelName = entry.id` →「copies the model identity…」。`run` を落とす →「carries the run…」。常に `toolsCalled` を出す →「has no run and no toolsCalled」。
+- `request-schema.ts`（11種、各スキーマで1回ずつ失敗）: 最上位の `strictObject` を `object` →「rejects an unknown top-level field」。メッセージの `strictObject` を `object` →「rejects an unknown field on a message」。modelId を任意の文字列 → カタログのテストと `constructor` / `toString` / `__proto__` のケース。personaId を任意の文字列 →「rejects an unknown persona ID」。`system` ロールを許可 →「rejects a client-supplied system message」。`trigger` / `messageId` を除去 → `DefaultChatTransport` のテストと「rejects an unknown trigger」。`messages.min(1)` を除去 →「rejects no messages」。パートの `looseObject` を `object` →「keeps every part's fields」。ID の最大長を除去 →「rejects an over-long id」。日本語のモデル・ペルソナのエラー文を除去 → `/モデル/`・`/ペルソナ/` の照合。
+- `index.ts`: `buildResponseMetadata` の export を除く →「exposes personas, history adaptation, response metadata and the request schemas」。
+- テストにモデル ID のリテラルはない（`Object.keys(MODEL_CATALOG)`、`listModels()`、`PERSONA_IDS` から取る）。`AgentRunSummary` の型は公開サブパス `@platform/ai-core/agents` から import し、16.4 の `_Verify:_` を満たす。
+
+**Verification**（ワーカーの最終 `mise run gate`、exit 0。Tasks: 4 successful）:
+
+- root 257 passed（1 expected fail）。ai-core Test Files 38 passed、Tests 523 passed / 4 skipped、`executed=523 passed=523 failed=0`。All files stmts 96.36% / lines 97.63%、`src/chat` 100 / 98.24 / 100 / 100、`metadata.ts` 100%。
+- 統合コミット: `6f7a049`（metadata）、`175a05b`（request schemas と `./chat`）。
+
+### 2026-10-07 Task 17 Validation and Ship
+
+- Spec drift: (1) plan の `POST /api/chat` の本文は4フィールドの `z.strictObject` で、`DefaultChatTransport` が既定で付ける `trigger`・`messageId` を拒否する（既定の `useChat` の送信がすべて 400 になる）。2フィールドを任意で受け付け、Route では使わないことにした（代案の `prepareSendMessagesRequest` での除去は採らない）。(2) plan C11 の `buildResponseMetadata` のシグネチャに `persona`・`disabledTools` がなく、`usage` が必須だった。(3) ADR-7 の Decision に、結果のないツール呼び出しの除外と生成元の判定がなかった。plan C11・Data Model（応答メタデータ）・HTTP API・C15、research.md ADR-7 を実装に合わせた。
+- Risks: `metadata.provider` はクライアントが改ざんできる（Route で `metadata.modelId` のカタログ照合を加えるかは T-22 で判断）。画像以外のファイルパートはそのまま送られる。strict なエンベロープは、AI SDK が `UIMessage` に最上位のフィールドを加えると更新まで拒否する。メッセージ件数・長さ・画像の上限は C14 に任せ、ここでは重複させない。
+- Mechanical fixes: tasks.md（17.1〜17.3 を `[x]`、Implementation Notes、進捗）、traceability.md（3.3・3.7・3.10・5.6 の Test/Commit、Gaps）。
