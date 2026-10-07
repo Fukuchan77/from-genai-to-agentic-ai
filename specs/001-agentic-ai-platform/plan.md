@@ -143,12 +143,15 @@ flowchart LR
 
 - **Responsibility**: 用途とモデル ID から、実行モードに応じた `LanguageModel` / `EmbeddingModel` を返す。返す前に、認証情報・接続・機能への対応を検査する。
 - **Public interface**:
-  - `createModelGateway(deps: GatewayDeps): ModelGateway`
-  - `gateway.resolve(request: { purpose: ModelPurpose; modelId?: ModelId; require?: readonly Capability[] }): Promise<ResolvedModel>`（`ResolvedModel = { model: LanguageModel; entry: ModelEntry; mode: RunMode }`）
-  - `gateway.resolveEmbedding(request): Promise<ResolvedEmbeddingModel>`
-  - `gateway.availableModels(): readonly ModelOption[]`（認証情報が揃っているプロバイダのモデルだけを返す。Req 3.2 の一覧に使う）
-  - エラー: `ProviderCredentialsMissingError`（2.6）、`OllamaUnavailableError`（2.7）、`CapabilityUnsupportedError`（2.9）
-- **Owns**: プロバイダファクトリの対応表（`providers.ts`: anthropic / openai / azure / google / ollama）、Ollama の事前検査（`GET {baseUrl}/api/tags` で接続とモデルの取得済みを確認し、結果を短時間キャッシュする）、ミドルウェアの合成（録画時だけ `recordingMiddleware` を `wrapLanguageModel` で合成する）。
+  - `createModelGateway(deps: GatewayDeps): ModelGateway`（`GatewayDeps = { config: PlatformConfig; mock?: { scenarios?; cassettes?; embeddingDimensions? }; recording?: { store?; redactor? }; providers?: ProviderFactories; fetcher?: HttpFetcher; clock?: Clock }`。`mock` の既定は、シナリオが `M1_2_SCENARIOS` + `M1_3_SCENARIOS`、カセットが `fixtures/cassettes/`、埋め込みの次元が 768（`embeddinggemma` に合わせる）。`AI_RECORD=1` では、`store` を注入しなければ `fixtures/cassettes/` に保存する。既定の `Redactor` は `process.env` ではなく `config.credentials` から作る。`providers`・`fetcher`・`clock` はテストでの注入用）
+  - `gateway.resolve(request: { purpose: ModelPurpose; modelId?: ModelId; require?: readonly Capability[] }): Promise<ResolvedModel>`（`ResolvedModel = { model: LanguageModelV4; entry: ModelEntry; mode: RunMode }`。`LanguageModelV4` は `LanguageModel` に代入できる）
+  - `gateway.resolveEmbedding(request?: { modelId?: ModelId }): Promise<ResolvedEmbeddingModel>`
+  - `gateway.availableModels(): readonly ModelOption[]`（`ModelOption = { id, displayName, provider, capabilities, contextWindow }`。現在の実行モードを `modes` に含み、認証情報が揃っているプロバイダのモデルだけを返す。Req 3.2 の一覧に使う）
+  - **検査の順序**（すべてモデルの生成より前）: カタログと実行モード（D9）→ 機能（2.9）→ 認証情報（2.6）→ Ollama の事前検査（2.7）。`resolve` と `resolveEmbedding` は、解決する entry の `modes` に現在の実行モードが含まれることを最初に検査する。`AI_MODEL_*` で明示指定した ID も要求の `modelId` も同じ扱いで、ゲートウェイの生成時には検査しない。このため、`local` で `live` 専用の ID を指定しても Ollama へは接続しない（2026-10-04、W2 `/sdd-validate-impl` の D9。2026-10-07、T-14.1 で実装）。
+  - エラー: `ProviderCredentialsMissingError`（2.6、`provider`・`envVars`）、`OllamaUnavailableError`（2.7、`baseUrl`・`reason: "unreachable" | "http-status" | "invalid-response" | "model-missing"`）、`CapabilityUnsupportedError`（2.9）、`ModelSelectionError`（D9 等。`code: "invalid-request"`、`reason: "unknown-model" | "mode-mismatch" | "no-default" | "purpose-mismatch"`、`details` は `{ reason, mode, modelId?, modes?, provider?, purpose? }`。日本語のメッセージにモデル ID、現在の実行モード、カタログ上の `modes` を含める）
+  - 公開 API（`@platform/ai-core/models`）の値の export はプロバイダ SDK（Zod を含む）・C7 のモックランタイム・`node:fs`・`node:crypto` を読み込む。クライアントのコンポーネントは `import type` だけを使う（C20 のクライアントバンドル検査で確認する）。
+  - Azure はカタログの ID（例: `catalog: live.azure.chat`）をそのままデプロイメント名として使う。学習者の Azure のデプロイメントは同じ名前にする必要がある（解説に記す。C22）。
+- **Owns**: プロバイダファクトリの対応表（`providers.ts`: anthropic / openai / azure / google / ollama）、Ollama の事前検査（`GET {baseUrl}/api/tags` で接続とモデルの取得済みを確認する。成功した結果だけを 5 秒キャッシュし、失敗はキャッシュしない（タイムアウト 2 秒、Clock 注入）。同時に来た検査は1回の取得を共有する。`OLLAMA_BASE_URL` は末尾の `/api` の有無をどちらも受け付け、`ollama-ai-provider-v2` には `${server}/api` を渡す）、ミドルウェアの合成（録画時だけ `recordingMiddleware` を `wrapLanguageModel` で合成する。`recordedWith` は実行モード、時刻は `Clock` から取る。埋め込みはカセットの形式が LanguageModel 専用のため録画しない）。
 - **Does NOT own**: シナリオとカセットの中身（C7）、リクエスト単位のレート制限（C14）、テレメトリの登録（004）。
 - **Requirements**: 2.1, 2.2, 2.3, 2.6, 2.7, 2.9, 2.10, 3.2
 
@@ -617,7 +620,7 @@ erDiagram
 | `packages/ai-core/src/models/providers.ts` | Create | プロバイダ ID からモデル実装を生成するファクトリの対応表。 |
 | `packages/ai-core/src/models/ollama-preflight.ts` | Create | Ollama の接続と必要モデルの事前検査。 |
 | `packages/ai-core/src/models/gateway.ts` | Create | `createModelGateway`、機能・認証情報の検査、録画ミドルウェアの合成。 |
-| `packages/ai-core/src/models/errors.ts` | Create | `ProviderCredentialsMissingError`、`OllamaUnavailableError`、`CapabilityUnsupportedError`。 |
+| `packages/ai-core/src/models/errors.ts` | Create | `ProviderCredentialsMissingError`、`OllamaUnavailableError`、`CapabilityUnsupportedError`、`ModelSelectionError`（D9）。 |
 | `packages/ai-core/src/models/index.ts` | Create | `./models` の公開 API。 |
 | `packages/ai-core/src/models/catalog.test.ts` | Create | カタログの整合性（既定モデルの実在、機能と用途の一致、`live` の単価の存在）と、同梱カセットの `modelId` がカタログに実在することを検証する。 |
 | `packages/ai-core/src/models/gateway.test.ts` | Create | モード別の解決、各エラーの内容、ネットワークなしで `mock` が動くことを検証する。 |
@@ -826,6 +829,7 @@ erDiagram
 - `live` で選択プロバイダの API キーが未設定 → LLM を呼ばずに `ProviderCredentialsMissingError`（`provider`、`envVars`）。UI のモデル一覧からも除外する（2.6、3.2）
 - `local` で Ollama に接続できない、またはモデルが未取得 → `OllamaUnavailableError`（`baseUrl`、`ollama serve` / `ollama pull <model>` の案内）（2.7）
 - モデルが要求機能（ツール、構造化出力、推論、画像入力、埋め込み）に非対応 → 呼び出し前に `CapabilityUnsupportedError`（`capability`、`modelId`）（2.9、3.9）
+- 解決するモデルがカタログにない、現在の実行モードで選べない（`AI_MODEL_*` で `live` 専用の ID を `local` に指定した等）、そのモードに既定がない、用途が合わない → モデルを生成する前に `ModelSelectionError`（`invalid-request`、`reason`）。`local` でも Ollama へは接続しない（C6、2026-10-04 の D9）
 - `mock` で一致するシナリオもカセットもない → `MockFixtureMissingError`（`key`、近い候補）。ネットワークへはフォールバックしない（2.14）
 - テスト中にモックされていない接続（`fetch`、TCP、名前解決）→ `NetworkBlockedError`（接続先）でテストを失敗させる（2.11）
 - 録画時に秘密値を含む要求 → 伏せ字にしてから保存する。ヘッダーは保存しない（2.13）

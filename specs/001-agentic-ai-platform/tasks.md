@@ -81,7 +81,7 @@
 |---|---|---|---|
 | W1 基盤 | 1 ツールチェーン、2 CI、3 ローカル依存サービス、4 テスト基盤、5 リポジトリ規約検査 | 完了（2026-09-27。敵対的レビュー2ラウンド） | [tasks-comp-w1.md](tasks-comp-w1.md) |
 | W2 ai-core の土台 | 6 ai-core scaffold、7 eval-suite scaffold、8 apps/web scaffold、9 ModelCatalog、10 Ports、11 testing ヘルパ、12 PlatformConfig、13 MockRuntime | 完了（2026-09-30。敵対的レビュー3ラウンド、2026-10-04 の検証で追加の修正） | [tasks-comp-w2.md](tasks-comp-w2.md) |
-| W3 ai-core の機能 | 14 ModelGateway、15 AciToolkit、16 GuardedAgent、17 ChatCore、18 SummaryPipeline、19 評価スイート | 着手（現在の波） | 本ファイル |
+| W3 ai-core の機能 | 14 ModelGateway、15 AciToolkit、16 GuardedAgent、17 ChatCore、18 SummaryPipeline、19 評価スイート | 着手（現在の波。14 完了） | 本ファイル |
 | W4 apps/web | 21 RequestGuard、20 AppShell、22 ChatFeature、23 ToolAgentFeature、24 SummaryFeature | 未着手 | [tasks-w4.md](tasks-w4.md) |
 | W5 E2E・解説・最終統合 | 25 E2E 生成・検査スクリプト、26 E2E 基盤、27 E2E シナリオ、28 解説ドキュメント、29 最終統合と NFR 検証 | 未着手 | [tasks-w5.md](tasks-w5.md) |
 
@@ -129,33 +129,33 @@ _Depends:_ 9, 11, 12, 13
 _Requirements:_ 1.13, 1.14, 2.1, 2.2, 2.3, 2.6, 2.7, 2.9, 2.10, 2.13, 3.2, 3.9, 7.11
 _Traces:_ REQ-001, REQ-002, REQ-003, REQ-007, C6, C22
 
-- [ ] 14.1 `models/errors.ts`・`providers.ts`・`gateway.ts`: エラー型（`ProviderCredentialsMissingError`・`OllamaUnavailableError`・`CapabilityUnsupportedError`）、プロバイダファクトリの対応表（anthropic/openai/azure/google/`ollama-ai-provider-v2`）、`createModelGateway` の `resolve` の骨格（`mock` はシナリオモデル、`live` は認証情報を検査してから生成）。解決するカタログの entry の `modes` に現在の実行モードが含まれることを検査し、含まれなければ拒否する（`AI_MODEL_*` で明示指定した ID も対象。C4 の `loadPlatformConfig` はカタログに実在するかだけを検査するため。2026-10-04、W2 `/sdd-validate-impl` の D9。エラーの型は実装時に決めて plan C6 に記録する）+ `gateway.test.ts`（モード別の解決、`ProviderCredentialsMissingError` のプロバイダ名と変数名、ネットワークなしで `mock` が動く、`local` で `live` 専用の ID を `AI_MODEL_CHAT` に指定すると拒否する）
+- [x] 14.1 `models/errors.ts`・`providers.ts`・`gateway.ts`: エラー型（`ProviderCredentialsMissingError`・`OllamaUnavailableError`・`CapabilityUnsupportedError`）、プロバイダファクトリの対応表（anthropic/openai/azure/google/`ollama-ai-provider-v2`）、`createModelGateway` の `resolve` の骨格（`mock` はシナリオモデル、`live` は認証情報を検査してから生成）。解決するカタログの entry の `modes` に現在の実行モードが含まれることを検査し、含まれなければ拒否する（`AI_MODEL_*` で明示指定した ID も対象。C4 の `loadPlatformConfig` はカタログに実在するかだけを検査するため。2026-10-04、W2 `/sdd-validate-impl` の D9。エラーの型は実装時に決めて plan C6 に記録する）+ `gateway.test.ts`（モード別の解決、`ProviderCredentialsMissingError` のプロバイダ名と変数名、ネットワークなしで `mock` が動く、`local` で `live` 専用の ID を `AI_MODEL_CHAT` に指定すると拒否する）
   _Boundary:_ `packages/ai-core/src/models/errors.ts`, `packages/ai-core/src/models/providers.ts`, `packages/ai-core/src/models/gateway.ts`, `packages/ai-core/src/models/gateway.test.ts`
   _Depends:_ 9, 12, 13
   _Requirements:_ 2.1, 2.2, 2.6
   _Traces:_ REQ-002, C6
-- [ ] 14.2 `models/ollama-preflight.ts`: `GET {baseUrl}/api/tags` による接続とモデル取得済みの事前検査（短時間キャッシュ）+ `ollama-preflight.test.ts`、`gateway.ts` の `local` の解決 + `gateway.test.ts` に `OllamaUnavailableError`（接続先 URL と起動方法の案内）を追加
+- [x] 14.2 `models/ollama-preflight.ts`: `GET {baseUrl}/api/tags` による接続とモデル取得済みの事前検査（短時間キャッシュ）+ `ollama-preflight.test.ts`、`gateway.ts` の `local` の解決 + `gateway.test.ts` に `OllamaUnavailableError`（接続先 URL と起動方法の案内）を追加
   _Boundary:_ `packages/ai-core/src/models/ollama-preflight.ts`, `packages/ai-core/src/models/ollama-preflight.test.ts`, `packages/ai-core/src/models/gateway.ts`, `packages/ai-core/src/models/gateway.test.ts`
   _Depends:_ 14.1
   _Requirements:_ 2.3, 2.7
   _Traces:_ REQ-002, C6
-- [ ] 14.3 `gateway.ts`: 機能への対応の検査（`CapabilityUnsupportedError`）、`resolveEmbedding`、`availableModels`（現在の実行モードを `modes` に含み、認証情報のそろったプロバイダのものだけ。D9）、録画時だけの `recordingMiddleware` の合成 + `gateway.test.ts` に各ケースを追加
+- [x] 14.3 `gateway.ts`: 機能への対応の検査（`CapabilityUnsupportedError`）、`resolveEmbedding`、`availableModels`（現在の実行モードを `modes` に含み、認証情報のそろったプロバイダのものだけ。D9）、録画時だけの `recordingMiddleware` の合成 + `gateway.test.ts` に各ケースを追加
   _Boundary:_ `packages/ai-core/src/models/gateway.ts`, `packages/ai-core/src/models/gateway.test.ts`
   _Depends:_ 14.2
   _Requirements:_ 2.9, 2.10, 2.13, 3.2, 3.9
   _Traces:_ REQ-002, REQ-003, C6
-- [ ] 14.4 `models/index.ts`: `./models` の公開API（クライアントへ渡すのは Zod を含まない型だけ）
+- [x] 14.4 `models/index.ts`: `./models` の公開API（クライアントへ渡すのは Zod を含まない型だけ）
   _Boundary:_ `packages/ai-core/src/models/index.ts`
   _Depends:_ 14.3
   _Requirements:_ 2.1
   _Traces:_ REQ-002, C6
   _Verify:_ 17・19・20 のテストが公開サブパス `@platform/ai-core/models` から import して通る
-- [ ] 14.5 `models/catalog.local.test.ts`: `local` 限定で、既定モデルが実際にツール呼び出しと構造化出力に応答することを確認する（`describeLocal`。Ollama がなければ理由付きでスキップ）
+- [x] 14.5 `models/catalog.local.test.ts`: `local` 限定で、既定モデルが実際にツール呼び出しと構造化出力に応答することを確認する（`describeLocal`。Ollama がなければ理由付きでスキップ）
   _Boundary:_ `packages/ai-core/src/models/catalog.local.test.ts`
   _Depends:_ 14.4, 11
   _Requirements:_ 1.13, 1.14, 2.3
   _Traces:_ REQ-001, REQ-002, C6, C18
-- [ ] 14.6 完成タグ `module/1-1`: モジュール 1-1（Req 1、2 のリファレンス実装: モノレポ基盤、品質ゲート、実行モード、モデルカタログ、ゲートウェイ、モック）が完了した統合ブランチのコミットに、注釈付きタグをローカルで付ける（plan C22）。タグの push は 29.4 で人間の承認後に行う
+- [x] 14.6 完成タグ `module/1-1`: モジュール 1-1（Req 1、2 のリファレンス実装: モノレポ基盤、品質ゲート、実行モード、モデルカタログ、ゲートウェイ、モック）が完了した統合ブランチのコミットに、注釈付きタグをローカルで付ける（plan C22）。タグの push は 29.4 で人間の承認後に行う
   _Boundary:_ git タグのみ（ファイルの変更なし）
   _Depends:_ 1〜13, 14.1, 14.2, 14.3, 14.4, 14.5
   _Requirements:_ 7.11
@@ -163,6 +163,11 @@ _Traces:_ REQ-001, REQ-002, REQ-003, REQ-007, C6, C22
   _Verify:_ タグのコミットで `mise run gate`（その時点の構成）が成功する。タグのメッセージに、そのコミットに含まれる後続モジュールの途中の実装（並列に進めた 15〜18）を列挙する
 
 ### Implementation Notes
+
+- D9 のモード検査は `ModelSelectionError`（`code: "invalid-request"`、`reason` は `unknown-model` / `mode-mismatch` / `no-default` / `purpose-mismatch`）で拒否する。`AI_MODEL_*` の ID も要求の `modelId` も、`resolve` の最初の検査で同じように扱う。検査の順序は、カタログと実行モード → 機能（2.9）→ 認証情報（2.6）→ Ollama の事前検査（2.7）とし、すべてモデル生成の前に行う。このため、`local` で `live` 専用の ID を指定しても Ollama へは接続しない。
+- Ollama の事前検査は、成功した `/api/tags` の一覧だけを 5 秒キャッシュする。失敗はキャッシュしないので、`ollama serve` を起動すれば次の要求で回復する。同時に来た検査は1回の取得を共有し、タイムアウトは注入した `Clock` の `timeoutSignal(2000)` で付ける。`OLLAMA_BASE_URL` は末尾の `/api` の有無をどちらも受け付け、`ollama-ai-provider-v2` には `${server}/api` を渡す。
+- 録画は `config.recording` が真のときだけ `wrapLanguageModel` で合成する（`recordedWith` は実行モード、時刻は `Clock` から取る）。既定の `Redactor` は `process.env` ではなく `config.credentials` から作る（C4 の「`process.env` を読むのは既定引数の1か所」を守るため）。埋め込みは録画の対象外とした（カセットの形式が LanguageModel 専用のため）。
+- 14.6: 注釈付きタグ `module/1-1` を 14.5 の統合コミット `f671813` にローカルで付けた（メッセージは「module/1-1: reference implementation of module 1-1 (Req 1, 2)」に続けて、含むもの（タスク 1〜13、14.1〜14.5）、並列に進めた後続モジュールの途中の実装は W2 以外なし、含まないもの（C19 の E2E、C22 の解説）、29.4 で人間の承認後に push する旨）。作業環境は使い捨てのためタグは失われうる。29.4 は同じコミットと同じメッセージで作り直す。`f671813` を `main` に残すため、W3 の PR はマージコミットで取り込む（squash / rebase しない）。
 
 ---
 

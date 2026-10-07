@@ -3092,3 +3092,57 @@ GREEN 後、7件すべての新規テストについて独立した deliberate b
 - 境界: 修正した3つのテストファイルは T-11.2・T-13.3・T-13.4 の `_Boundary:_` 内。T-21・T-21.1 の `_Boundary:_` への `packages/ai-core/package.json` の追加は、未着手のタスクの計画の変更である。
 - 監査の未対応項目（L-1〜L-8、D2、D4〜D10）は LOW / Info で、GO を妨げない。D9 は T-14.1 / T-14.3 で扱う。
 - Ship: テストの修正は `bdc1584` test(ai-core): harden W2 local-only, recording, and scenario ambiguity tests。traceability.md の件数（`local-only.test.ts` 6件、`resolve.test.ts` 8件）、Commit 列と Gaps を更新した。
+
+### 2026-10-07 Task 14 Started（W3 の並列実装）
+
+- Objective: `createModelGateway`（`resolve`・`resolveEmbedding`・`availableModels`）、Ollama の事前検査、録画の合成、`./models` の公開 API、`local` 限定のカタログ確認を実装し、`module/1-1` のタグを付ける。W2 の D9（明示指定したモデル ID と実行モードの整合）もここで扱う。
+- 実施: W3 の大タスク 14〜19 を、境界の重ならないワーカーに分けて並列に実装し、統合ブランチ `claude/project-thread-xt048t` に取り込んだ（以下の SHA は統合後のもの）。Task 14 のワーカーは 14.1〜14.5 を担当し、14.6 はコーディネーターが行った。
+- SCAN baseline: W2 の再検証時点で ai-core `executed=114 passed=114 failed=0 skipped=2`。
+
+### 2026-10-07 Task 14.1〜14.5 RED / GREEN / PROVE Evidence
+
+**RED evidence**:
+
+- 14.1 `gateway.test.ts`: `Cannot find module ./errors` / `./gateway`。
+- 14.2: `Cannot find module './ollama-preflight'`、`gateway.test.ts` の `local` の3件が失敗。
+- 14.3: 追加した13件が失敗。
+- 14.4: 単独のテストなし。一時の `src/models/zz-subpath.test.ts` で `@platform/ai-core/models` を型と値の両方で import し、Vitest と `tsc` が通ることと、value export 17件（inline snapshot）を確認した。ファイルは削除し、コミットしていない。
+
+**GREEN**:
+
+- 14.1: 10/10、14.2: 28/28、14.3: 43/43（`models/` の焦点テスト。`--coverage.enabled=false`）。
+- Coverage: `gateway.ts` lines 100%、`ollama-preflight.ts` 100%、`providers.ts` 92.85%、`errors.ts` 100%。
+
+**PROVE evidence**（壊す → 失敗 → 復元）:
+
+- 14.1: モード検査を `if (false)` → D9 の2件が「promise resolved … instead of rejecting」。`assertCredentials` を除去 → OpenAI・Azure の認証情報の2件。用途を `"chat"` に固定 → `expected 'mock:chat' to be 'mock:structured'`。カタログ検査を除去 → `expected TypeError … to match { name: 'ModelSelectionError' }`。
+- 14.2: キャッシュを除去 → キャッシュのテスト（「resolved undefined instead of rejecting」）。`??=` を `=` → 同時検査のテスト（2回目の fetch で TypeError）。`:latest` の正規化を除去 → タグなし名のテスト（model-missing）。HTTP 状態の検査を除去 → http-status のテスト。タイムアウトのシグナルを除去 → `expected undefined to be an instance of AbortSignal`。ゲートウェイの事前検査の呼び出しを除去 → `local` の3件。
+- 14.3: 機能検査を無効化 → 3件。`purpose-mismatch` の検査を無効化 → 1件。`availableModels` の認証情報フィルタを除去 → `expected [Array(6)] to deeply equal ['claude-sonnet-4-6']`。モードのフィルタをカタログ全体に置き換え → 3件。録画を合成しない → 2件、常に合成 → 「recording off」の1件。`recordedWith` を `"live"` に固定 → `local` の録画のテスト。`createRedactor({})` → `expected … not to contain 'test-anthropic-key'`。埋め込みの次元の設定を無視 → `expected length 8 but got 768`。
+- 14.5: `AI_TEST_RUN_MODE=local AI_TEST_SUITE=local`（Ollama なし）→ `executed=0 passed=0 failed=0 skipped=2`、理由 `Ollama is unavailable at http://127.0.0.1:11434: fetch failed. Start it with \`ollama serve\`.`。gate では `Local tests require AI_TEST_RUN_MODE=local.`。`describeLocal` を `describe` に置き換えると、2件とも `OllamaUnavailableError` の日本語のメッセージで失敗する（本体が実際に検査している）。
+
+**Verification**（ワーカーの最終 `mise run gate`、exit 0）:
+
+- Biome 106 files、model-ID 82 files、repository rules 8規則すべて走査件数 > 0（`no-sensitive-logging` 61、`ai-core-no-ui-deps` 55 等）、typecheck 4 tasks（ai-core 57 files）。
+- root `executed=257 passed=257 failed=0 skipped=0`。ai-core `Tests 150 passed | 4 skipped (154)`、`executed=150 passed=150 failed=0 skipped=4`（理由 `Local tests require AI_TEST_RUN_MODE=local.` 4件。`*.local.test.ts` は gate の glob `src/**/*.test.ts` にも一致し、理由付き skip として数える W2 の設計どおり）、All files lines 95.35%。
+- 統合コミット: 14.1 `c8b60e8`、14.2 `f633ca3`、14.3 `1d8b91e`、14.4 `96450e6`、14.5 `f671813`。pre-commit（biome、gitleaks staged、check:model-ids）は毎回実行した。`--no-verify` は使っていない。
+
+### 2026-10-07 Task 14.6 完成タグ `module/1-1`
+
+- `git tag -a module/1-1 f671813`（ローカル、注釈付き）。対象は 14.5 の統合コミットで、W3 の 15〜18 の実装は含まない（統合順で 16.1 の `0fb44ee` 以降）。
+- メッセージ:
+  ```
+  module/1-1: reference implementation of module 1-1 (Req 1, 2)
+
+  Includes: monorepo foundation, quality gate, run modes, model catalog, ModelGateway, MockRuntime (tasks 1-13, 14.1-14.5).
+  Also includes partial work of modules running in parallel at this commit: none beyond W2.
+  Not included: E2E (C19) and module docs (C22).
+  Push in task 29.4 after human approval.
+  ```
+- gate: 14.5 のワーカーの最終 `mise run gate`（上記、exit 0）を、タグのコミットの時点の構成での確認とした。
+- 制約: 作業環境は使い捨てで、タグは失われうる。29.4 は同じコミット（`f671813`）と上記のメッセージで作り直してから検証・push する。`f671813` を `main` に残すため、W3 の PR はマージコミットで取り込む（squash / rebase しない）。
+
+### 2026-10-07 Task 14 Validation and Ship
+
+- Spec drift: plan C6 に `GatewayDeps` の形、`resolveEmbedding` の引数、`ModelOption`、検査の順序、`ModelSelectionError`（D9 のエラー型。tasks の 14.1 で「実装時に決めて plan C6 に記録する」としていたもの）、事前検査のキャッシュの具体値（成功だけを 5 秒、タイムアウト 2 秒）がなかった。plan C6・Error Handling・File Structure を実装に合わせた。
+- Risks: `./models` の value export はプロバイダ SDK・`node:fs`・`node:crypto` を読み込むため、クライアントは `import type` だけを使う（C20 のクライアントバンドル検査で確認）。Azure のデプロイメント名はカタログの ID と同じにする必要がある（解説 C22 で扱う）。`gateway.ts` の防御的な分岐1つは未到達。
+- Mechanical fixes: tasks.md（14.1〜14.6 を `[x]`、Implementation Notes、進捗）、traceability.md（1.13・1.14・2.1・2.2・2.3・2.6・2.7・2.9・2.10・2.13・3.2・3.9・7.11 の Test/Commit、Gaps）。
