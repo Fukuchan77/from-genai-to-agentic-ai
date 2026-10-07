@@ -21,8 +21,8 @@ const definedTools = new WeakSet<object>();
  * false. `buildToolSet` uses it so the name check, timeout and `ToolOutcome` conversion cannot be
  * bypassed.
  */
-export function isDefinedAciTool(value: unknown): boolean {
-	return typeof value === "object" && value !== null && definedTools.has(value);
+export function isDefinedAciTool(value: object): boolean {
+	return definedTools.has(value);
 }
 const TIMEOUT_NEXT_ACTION = "入力を小さくして再試行するか、ツールを使わずに回答してください。";
 const FAILURE_NEXT_ACTION = "入力を見直して再試行するか、ツールを使わずに回答してください。";
