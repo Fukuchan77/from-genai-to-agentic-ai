@@ -33,5 +33,11 @@ export {
 	summaryInputSchema,
 	summarySchema,
 } from "./schema";
-export { type LoadedSource, loadSource, type SourceDeps, type SourceSegment } from "./source";
+export {
+	ARTICLE_FETCH_LIMITS,
+	type LoadedSource,
+	loadSource,
+	type SourceDeps,
+	type SourceSegment,
+} from "./source";
 export { estimateTokens, TOKEN_SAFETY_FACTOR } from "./tokens";

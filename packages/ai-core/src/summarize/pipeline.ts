@@ -219,6 +219,7 @@ export async function* summarizeSource(
 	const source = await loadSource(input, {
 		http: deps.http,
 		transcripts: deps.transcripts,
+		...(deps.clock ? { clock: deps.clock } : {}),
 		...(deps.abortSignal ? { signal: deps.abortSignal } : {}),
 	});
 	yield* streamSummary(planSummary(source, deps.entry), deps);

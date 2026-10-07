@@ -1,10 +1,13 @@
+import { Buffer } from "node:buffer";
 import { createRequire } from "node:module";
 import { Readability } from "@mozilla/readability";
 import { PlatformError } from "../errors";
-import type { HttpFetcher, TranscriptSource } from "../ports";
-import { TranscriptSourceError } from "../ports";
+import type { Clock, HttpFetcher, HttpResponse, TranscriptSource } from "../ports";
+import { systemClock, TranscriptSourceError } from "../ports";
+import { raceWithAbort } from "../ports/abort";
 import { SourceFetchError, TranscriptUnavailableError } from "./errors";
 import { parseYoutubeVideoId, type SummaryInput } from "./schema";
+import { fetchableUrl } from "./url-guard";
 
 export interface SourceSegment {
 	readonly text: string;
@@ -23,7 +26,21 @@ export interface SourceDeps {
 	readonly http: HttpFetcher;
 	readonly transcripts: TranscriptSource;
 	readonly signal?: AbortSignal;
+	/** Times the article fetch out ({@link ARTICLE_FETCH_LIMITS}). Defaults to `systemClock`. */
+	readonly clock?: Clock;
 }
+
+/** Bounds of one article fetch (W3 review M6). */
+export const ARTICLE_FETCH_LIMITS = Object.freeze({
+	/** The whole fetch, redirects and body included. */
+	timeoutMs: 15_000,
+	/** UTF-8 bytes of the response body. */
+	maxBodyBytes: 5 * 1024 * 1024,
+	/** Redirects followed (each location is checked before it is fetched). */
+	maxRedirects: 5,
+});
+
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 
 // jsdom ships no type declarations and `@types/jsdom` is not a declared dependency, so the module
 // is loaded through `require` against the minimal surface used here.
@@ -128,27 +145,75 @@ function extractArticle(html: string, url: string): { text: string; title?: stri
 }
 
 function isPlainText(headers: Readonly<Record<string, string>>): boolean {
-	const contentType = Object.entries(headers).find(
-		([name]) => name.toLowerCase() === "content-type",
-	)?.[1];
-	return contentType?.toLowerCase().startsWith("text/plain") ?? false;
+	return headerValue(headers, "content-type")?.toLowerCase().startsWith("text/plain") ?? false;
 }
 
-async function loadArticle(url: string, deps: SourceDeps): Promise<LoadedSource> {
-	let response: Awaited<ReturnType<HttpFetcher["fetch"]>>;
+function headerValue(headers: Readonly<Record<string, string>>, name: string): string | undefined {
+	return Object.entries(headers).find(([key]) => key.toLowerCase() === name)?.[1];
+}
+
+interface FetchSignals {
+	readonly caller: AbortSignal | undefined;
+	readonly timeout: AbortSignal;
+	readonly combined: AbortSignal;
+}
+
+async function fetchOnce(url: string, http: HttpFetcher, signals: FetchSignals) {
 	try {
-		response = await deps.http.fetch(url, deps.signal ? { signal: deps.signal } : undefined);
+		// Redirects are followed by `loadArticle` so every location passes the URL guard first.
+		// The race also bounds a fetcher that ignores its signal.
+		const request = http.fetch(url, { signal: signals.combined, redirect: "manual" });
+		// An abandoned request's later rejection must not surface as an unhandled rejection.
+		request.catch(() => undefined);
+		return await raceWithAbort(request, signals.combined);
 	} catch (cause) {
-		if (deps.signal?.aborted) throw deps.signal.reason;
+		if (signals.caller?.aborted) throw signals.caller.reason;
+		if (signals.timeout.aborted) throw new SourceFetchError("timeout");
 		if (cause instanceof PlatformError) throw cause;
 		throw new SourceFetchError("network");
 	}
+}
+
+/**
+ * Fetches an article URL. Only http(s) URLs to public hosts are fetched, redirects included
+ * (literal checks, see `url-guard.ts`); the fetch is bounded in time and body size.
+ */
+async function fetchArticle(
+	url: string,
+	deps: SourceDeps,
+): Promise<{ readonly response: HttpResponse; readonly finalUrl: string }> {
+	const timeout = (deps.clock ?? systemClock).timeoutSignal(ARTICLE_FETCH_LIMITS.timeoutMs);
+	const signals: FetchSignals = {
+		caller: deps.signal,
+		timeout,
+		combined: deps.signal ? AbortSignal.any([deps.signal, timeout]) : timeout,
+	};
+	let target = url;
+	for (let redirects = 0; ; redirects += 1) {
+		if (!fetchableUrl(target)) throw new SourceFetchError("disallowed-url");
+		const response = await fetchOnce(target, deps.http, signals);
+		const location = headerValue(response.headers, "location");
+		if (!REDIRECT_STATUSES.has(response.status) || location === undefined) {
+			return { response, finalUrl: target };
+		}
+		if (redirects >= ARTICLE_FETCH_LIMITS.maxRedirects) {
+			throw new SourceFetchError("http-status", { status: response.status });
+		}
+		target = new URL(location, target).href;
+	}
+}
+
+async function loadArticle(url: string, deps: SourceDeps): Promise<LoadedSource> {
+	const { response, finalUrl } = await fetchArticle(url, deps);
 	if (response.status < 200 || response.status > 299) {
 		throw new SourceFetchError("http-status", { status: response.status });
 	}
+	if (Buffer.byteLength(response.body, "utf8") > ARTICLE_FETCH_LIMITS.maxBodyBytes) {
+		throw new SourceFetchError("too-large");
+	}
 	const extracted = isPlainText(response.headers)
 		? { text: normalizeText(response.body) }
-		: extractArticle(response.body, url);
+		: extractArticle(response.body, finalUrl);
 	if (!extracted.text) throw new SourceFetchError("empty-body");
 	return { kind: "article", ...extracted };
 }

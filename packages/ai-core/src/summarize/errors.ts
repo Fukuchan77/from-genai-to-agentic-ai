@@ -1,6 +1,12 @@
 import { PlatformError } from "../errors";
 
-export type SourceFetchFailureReason = "http-status" | "empty-body" | "network";
+export type SourceFetchFailureReason =
+	| "http-status"
+	| "empty-body"
+	| "network"
+	| "disallowed-url"
+	| "timeout"
+	| "too-large";
 
 export type TranscriptUnavailableReason = "no-captions" | "private" | "fetch-failed";
 
@@ -12,6 +18,12 @@ function sourceFetchMessage(reason: SourceFetchFailureReason, status?: number): 
 			return "本文が空のため要約できません。";
 		case "network":
 			return "ネットワークエラーのため記事を取得できませんでした。";
+		case "disallowed-url":
+			return "この URL は取得できません。http / https の公開されたアドレスの記事だけを要約できます。";
+		case "timeout":
+			return "記事の取得が時間内に終わりませんでした。";
+		case "too-large":
+			return "記事が大きすぎるため取得できません。";
 	}
 }
 

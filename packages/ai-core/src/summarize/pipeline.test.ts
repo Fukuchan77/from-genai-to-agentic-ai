@@ -15,8 +15,10 @@ import {
 import type { LanguageModelV4StreamPart } from "../mock/recording";
 import { defaultModelFor, getModelEntry } from "../models/catalog";
 import type { ModelEntry, ProviderId, RunMode } from "../models/types";
+import { createFakeClock } from "../ports";
 // The public surface (`@platform/ai-core/summarize`) is exercised through the index.
 import {
+	ARTICLE_FETCH_LIMITS,
 	type LoadedSource,
 	loadSource,
 	OUTPUT_RESERVE_TOKENS,
@@ -540,6 +542,30 @@ describe("summarize and summarizeSource", () => {
 		await expect(
 			summarize(plan, { model: scenarioModel(), entry: mockEntry }),
 		).rejects.toBeInstanceOf(SummaryValidationError);
+	});
+
+	it("times the article fetch out through the injected clock", async () => {
+		const clock = createFakeClock();
+		const model = scenarioModel();
+		const pending = (async () => {
+			for await (const _event of summarizeSource(
+				{ kind: "article", url: "https://example.test/slow" },
+				{
+					model,
+					entry: mockEntry,
+					http: { fetch: () => new Promise(() => undefined) },
+					transcripts: createFixtureTranscriptSource(fixtures.transcripts),
+					clock,
+				},
+			)) {
+				// No event is expected.
+			}
+		})().catch((caught: unknown) => caught);
+
+		clock.advanceBy(ARTICLE_FETCH_LIMITS.timeoutMs);
+
+		await expect(pending).resolves.toMatchObject({ reason: "timeout" });
+		expect(model.doStreamCalls).toHaveLength(0);
 	});
 
 	it.each([
