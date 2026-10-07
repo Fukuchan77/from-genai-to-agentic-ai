@@ -131,10 +131,13 @@ async function executeWithGuards<INPUT, OUTPUT>(
 /**
  * Defines a tool with a required risk class. Conversion to an AI SDK `Tool` happens later with a
  * `ToolRuntime`, which supplies the clock and the configured timeout.
+ *
+ * Declared as a const arrow function: the `tool-risk-declared` repo rule treats every
+ * `defineAciTool(` / `defineAciTool<...>(` token sequence as a call, a function declaration included.
  */
-export function defineAciTool<INPUT, OUTPUT>(
+export const defineAciTool = <INPUT, OUTPUT>(
 	definition: AciToolDefinition<INPUT, OUTPUT>,
-): AciTool<INPUT, OUTPUT> {
+): AciTool<INPUT, OUTPUT> => {
 	assertValidDefinition(definition);
 	return Object.freeze({
 		name: definition.name,
@@ -153,4 +156,4 @@ export function defineAciTool<INPUT, OUTPUT>(
 			});
 		},
 	});
-}
+};
