@@ -1,5 +1,6 @@
 import { simulateReadableStream } from "ai";
 import { MockLanguageModelV4 } from "ai/test";
+import { createOllama } from "ollama-ai-provider-v2";
 import { beforeAll, describe, expect, it } from "vitest";
 import {
 	createFixtureHttpFetcher,
@@ -363,6 +364,56 @@ describe("streamSummary: validation and regeneration", () => {
 		expect(error).not.toBeInstanceOf(SummaryValidationError);
 		expect(model.doStreamCalls).toHaveLength(1);
 		expect(events.filter((event) => event.type === "restart")).toEqual([]);
+	});
+});
+
+describe("streamSummary: Ollama context length", () => {
+	const ollamaEntry = structuredEntry("local", "ollama");
+
+	it("runs every Ollama call with num_ctx set to the catalog context window", async () => {
+		const model = scenarioModel();
+		const line = "fixture:summary-split エージェントの評価と安全なツール利用について説明します。";
+		const longText = Array.from({ length: 300 }, (_, index) => `${index} ${line}`).join("\n");
+		const smallOllama: ModelEntry = { ...ollamaEntry, contextWindow: 8_000 };
+		const plan = planSummary(transcript(longText), smallOllama);
+
+		await collect(plan, { model, entry: smallOllama });
+
+		expect(plan.strategy).toBe("staged");
+		expect(model.doStreamCalls).toHaveLength(plan.chunks.length + 1);
+		for (const call of model.doStreamCalls) {
+			expect(call.providerOptions).toEqual({ ollama: { options: { num_ctx: 8_000 } } });
+		}
+	});
+
+	it("sends num_ctx in the request body of the real Ollama provider", async () => {
+		const bodies: unknown[] = [];
+		const fetch = async (_url: RequestInfo | URL, init?: RequestInit) => {
+			bodies.push(JSON.parse(String(init?.body)));
+			// 400 is not retried, so exactly one request is made.
+			return new Response(JSON.stringify({ error: "stop here" }), { status: 400 });
+		};
+		const provider = createOllama({ baseURL: "http://ollama.test/api", fetch });
+
+		const { error } = await collectUntilError(planSummary(transcript("本文です。"), ollamaEntry), {
+			model: provider.languageModel(ollamaEntry.id),
+			entry: ollamaEntry,
+		});
+
+		expect(error).toBeInstanceOf(Error);
+		expect(bodies).toHaveLength(1);
+		expect(bodies[0]).toMatchObject({ options: { num_ctx: ollamaEntry.contextWindow } });
+	});
+
+	it("sets no provider options for other providers", async () => {
+		const model = scenarioModel();
+
+		await collect(planSummary(transcript("fixture:summary-full 本文です。"), anthropicEntry), {
+			model,
+			entry: anthropicEntry,
+		});
+
+		expect(model.doStreamCalls[0]?.providerOptions).toBeUndefined();
 	});
 });
 
