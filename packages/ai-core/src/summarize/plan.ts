@@ -93,21 +93,42 @@ export function chunkBudgetTokens(source: LoadedSource, entry: ModelEntry): numb
 	return contextBudgetTokens(entry) - chunkOverheadTokens(source);
 }
 
+/**
+ * End of the longest prefix of `characters[start..]` (by code point, at least one) that still fits
+ * the budget. Token counts grow almost linearly with length, so each probe is placed by
+ * interpolation from the last one instead of bisecting the rest of the line; a search then needs
+ * a few tokenizations of about the piece's size (W3 review M6: bisection re-tokenized up to the
+ * whole remaining text about 20 times per piece, seconds for a 2 MB single-line body).
+ * `low` always fits (the empty prefix at first) and `high` never does (one past the end at first).
+ */
+export function fittingEnd(characters: readonly string[], start: number, budget: number): number {
+	let low = start;
+	let lowTokens = 0;
+	let high = characters.length + 1;
+	let probe = start + budget;
+	while (high - low > 1) {
+		const end = Math.min(high - 1, Math.max(low + 1, probe));
+		const tokens = estimateTokens(characters.slice(start, end).join(""));
+		if (tokens <= budget) {
+			low = end;
+			lowTokens = tokens;
+		} else {
+			high = end;
+		}
+		probe = low + Math.floor(((budget - lowTokens) * (end - start)) / tokens);
+	}
+	return Math.max(low, start + 1);
+}
+
 // Splits one overlong line at the longest prefix (by code point) that still fits the budget.
 function hardSplit(line: string, budget: number): string[] {
 	const characters = Array.from(line);
 	const pieces: string[] = [];
 	let start = 0;
 	while (start < characters.length) {
-		let low = start + 1;
-		let high = characters.length;
-		while (low < high) {
-			const middle = Math.ceil((low + high) / 2);
-			if (estimateTokens(characters.slice(start, middle).join("")) <= budget) low = middle;
-			else high = middle - 1;
-		}
-		pieces.push(characters.slice(start, low).join(""));
-		start = low;
+		const end = fittingEnd(characters, start, budget);
+		pieces.push(characters.slice(start, end).join(""));
+		start = end;
 	}
 	return pieces;
 }

@@ -1,5 +1,5 @@
 import { countTokens } from "gpt-tokenizer";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { PlatformError } from "../errors";
 import { defaultModelFor, getModelEntry } from "../models/catalog";
 import type { ModelEntry } from "../models/types";
@@ -7,6 +7,7 @@ import {
 	CONTEXT_USAGE_RATIO,
 	chunkBudgetTokens,
 	contextBudgetTokens,
+	fittingEnd,
 	formatSourceText,
 	OUTPUT_RESERVE_TOKENS,
 	planSummary,
@@ -14,6 +15,19 @@ import {
 } from "./plan";
 import type { LoadedSource } from "./source";
 import { estimateTokens, TOKEN_SAFETY_FACTOR } from "./tokens";
+
+// Counts the text the planner tokenizes, to pin the cost of splitting (W3 review M6).
+const tokenized = vi.hoisted(() => ({ characters: 0 }));
+vi.mock("./tokens", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("./tokens")>();
+	return {
+		...actual,
+		estimateTokens: (text: string) => {
+			tokenized.characters += text.length;
+			return actual.estimateTokens(text);
+		},
+	};
+});
 
 const mockEntry = getModelEntry(defaultModelFor("mock", "mock", "structured"));
 
@@ -163,5 +177,65 @@ describe("planSummary", () => {
 			code: "capability-unsupported",
 			details: { modelId: mockEntry.id, contextWindow: 5_000 },
 		});
+	});
+});
+
+describe("fittingEnd", () => {
+	function estimateOf(characters: readonly string[], start: number, end: number): number {
+		return estimateTokens(characters.slice(start, end).join(""));
+	}
+
+	const samples = {
+		japanese: paragraph.repeat(12),
+		english: "Agents use tools, evaluate the results and continue. ".repeat(12),
+		spaces: `${"a".repeat(7)}${" ".repeat(40)}`.repeat(12),
+		mixed: `${paragraph}x${"0123456789".repeat(5)} tail ${"あ".repeat(30)}`.repeat(4),
+		emoji: "🙂👍🏽 絵文字 ".repeat(40),
+	};
+
+	// Token counts are not monotonic in length ("Age" can cost more than "Agents"), so the contract
+	// is a prefix that fits and cannot be extended by one character, as with the former bisection.
+	it.each(Object.entries(samples))(
+		"returns a fitting prefix that one more character would overflow for %s text",
+		(_name, text) => {
+			const characters = Array.from(text);
+			for (const budget of [1, 2, 3, 7, 20, 55, 130]) {
+				for (const start of [0, 1, 17]) {
+					const end = fittingEnd(characters, start, budget);
+					const label = `budget ${budget}, start ${start}, end ${end}`;
+					expect(end, label).toBeGreaterThan(start);
+					if (end > start + 1) {
+						expect(estimateOf(characters, start, end), label).toBeLessThanOrEqual(budget);
+					}
+					if (end < characters.length) {
+						expect(estimateOf(characters, start, end + 1), label).toBeGreaterThan(budget);
+					}
+				}
+			}
+		},
+	);
+
+	it("returns the end of the line when the rest fits", () => {
+		const characters = Array.from("短い");
+		expect(fittingEnd(characters, 0, 1_000)).toBe(2);
+		expect(fittingEnd(characters, 1, 1_000)).toBe(2);
+	});
+
+	it("takes at least one character even when it alone exceeds the budget", () => {
+		expect(fittingEnd(Array.from("🙂🙂"), 0, 1)).toBe(1);
+	});
+
+	it("tokenizes text in proportion to the line, not quadratically", () => {
+		const line = "word ".repeat(40_000);
+		const source: LoadedSource = { kind: "transcript", text: line };
+		const entry = entryWithContext(8_000);
+		tokenized.characters = 0;
+
+		const plan = planSummary(source, entry);
+
+		expect(plan.chunks.length).toBeGreaterThan(10);
+		expect(plan.chunks.join("")).toBe(line);
+		// Bisection over the rest of the line tokenized about 30 times the line here.
+		expect(tokenized.characters).toBeLessThan(line.length * 8);
 	});
 });
