@@ -14,3 +14,10 @@ overrides:
   # GHSA-q8mj-m7cp-5q26, GHSA-x5fp-wj9c-mxmx, and GHSA-4mjr-xmp4-gh2g. Remove once Stryker ships a
   # typed-rest-client release that depends on qs >=6.16.0.
   "typed-rest-client>qs": "^6.16.0"
+
+# @stryker-mutator/vitest-runner 10.0.0 joins suite and test names with a space when it builds the
+# per-mutant testNamePattern, but Vitest 5 matches the pattern against "suite > test". Every
+# filtered mutant run then executes zero tests and every non-static mutant survives. The patch joins
+# with " > " in both places that build test names. Remove once Stryker supports Vitest 5.
+patchedDependencies:
+  '@stryker-mutator/vitest-runner@10.0.0': patches/@stryker-mutator__vitest-runner@10.0.0.patch
