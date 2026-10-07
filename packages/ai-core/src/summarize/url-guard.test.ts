@@ -92,8 +92,50 @@ describe("fetchableUrl", () => {
 		expect(isBlockedHostname("[::1:0:0:1]")).toBe(false);
 		expect(isBlockedHostname("[::fffe:7f00:1]")).toBe(false);
 		expect(isBlockedHostname("[64:ff9b::808:808]")).toBe(false);
-		expect(isBlockedHostname("[64:ff9b:1::7f00:1]")).toBe(false);
+		expect(isBlockedHostname("[64:ff9b:0:1::7f00:1]")).toBe(false);
+		expect(isBlockedHostname("[64:ff9b:2::7f00:1]")).toBe(false);
 		expect(isBlockedHostname("[65:ff9b::7f00:1]")).toBe(false);
+	});
+
+	// W3 review r2 N7: LAN names and the IPv6 forms that embed (or tunnel to) an IPv4 address.
+	it.each([
+		"http://router.lan/",
+		"http://ROUTER.LAN./",
+		"http://lan/",
+		"http://myhost.home.arpa/",
+		"http://home.arpa/",
+		// SIIT ::ffff:0:0/96 (RFC 6145) with a blocked IPv4 address
+		"http://[::ffff:0:7f00:1]/",
+		"http://[::ffff:0:a9fe:a9fe]/",
+		// 6to4 2002::/16 (RFC 3056) whose embedded IPv4 address is blocked
+		"http://[2002:7f00:1::]/",
+		"http://[2002:a00:1::1]/",
+		"http://[2002:c0a8:101:1::1]/",
+		// local-use NAT64 64:ff9b:1::/48 (RFC 8215): never a public destination
+		"http://[64:ff9b:1::7f00:1]/",
+		"http://[64:ff9b:1::808:808]/",
+		"http://[64:ff9b:1:ffff:ffff:ffff:ffff:ffff]/",
+		// Teredo 2001::/32 (RFC 4380): the client IPv4 address is obfuscated, so all of it
+		"http://[2001::1]/",
+		"http://[2001:0:4136:e378:8000:63bf:3fff:fdd2]/",
+		"http://[2001:0:ffff:ffff:ffff:ffff:ffff:ffff]/",
+	])("rejects the LAN name or IPv4-embedding IPv6 address %s", (url) => {
+		expect(fetchableUrl(url)).toBeUndefined();
+	});
+
+	it.each([
+		"https://plan.example.com/",
+		"https://my.atlan/",
+		"https://home.arpa.example.com/",
+		"https://[::ffff:0:808:808]/",
+		"https://[::ffff:1:7f00:1]/",
+		"https://[::fffe:0:7f00:1]/",
+		"https://[2002:808:808::1]/",
+		"https://[2003:7f00:1::]/",
+		"https://[2001:1::1]/",
+		"https://[2001:4860:4860::8888]/",
+	])("accepts the public name or address %s next to the N7 ranges", (url) => {
+		expect(fetchableUrl(url)?.href).toBe(new URL(url).href);
 	});
 
 	it("treats an unparsable IPv6 literal as blocked", () => {

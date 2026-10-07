@@ -5,15 +5,20 @@
  * the checks run on `URL.hostname`.
  *
  * Limit: names are not resolved (the HttpFetcher port has no DNS step), so a public name whose DNS
- * record points to a private address (including DNS rebinding) is not caught here.
+ * record points to a private address (including DNS rebinding) is not caught here. The server-side
+ * HttpFetcher (W4 task 20.1) applies the same address rules to the resolved address at connect time.
  */
 
 const ALLOWED_PROTOCOLS = new Set(["http:", "https:"]);
 
 /** Names that always mean this machine, the LAN or a cloud metadata service. */
 const BLOCKED_NAMES = new Set(["localhost", "metadata.google.internal"]);
-/** Special-use suffixes: loopback (RFC 6761), mDNS (RFC 6762) and private use (ICANN, 2024). */
-const BLOCKED_SUFFIXES = [".localhost", ".local", ".internal"];
+/**
+ * Special-use domains, blocked themselves and with any subdomain: loopback (RFC 6761), mDNS
+ * (RFC 6762), private use (ICANN, 2024), home networks (RFC 8375) and the customary `lan` that home
+ * routers serve (W3 review r2 N7).
+ */
+const BLOCKED_DOMAINS = ["localhost", "local", "internal", "home.arpa", "lan"];
 
 /** IPv4 ranges that are not public unicast: [network, prefix length]. */
 const BLOCKED_IPV4_RANGES: readonly (readonly [string, number])[] = [
@@ -77,10 +82,20 @@ function isBlockedIpv6(groups: readonly number[]): boolean {
 	const upperSixZero = groups.slice(0, 6).every((group) => group === 0);
 	// ::, ::1 and the deprecated IPv4-compatible ::a.b.c.d form.
 	if (upperSixZero) return true;
-	// IPv4-mapped ::ffff:a.b.c.d and NAT64 64:ff9b::a.b.c.d reach the embedded IPv4 address.
+	// IPv4-mapped ::ffff:a.b.c.d, SIIT ::ffff:0:a.b.c.d (RFC 6145) and NAT64 64:ff9b::a.b.c.d reach
+	// the embedded IPv4 address.
 	const mapped = groups.slice(0, 5).every((group) => group === 0) && groups[5] === 0xffff;
+	const siit =
+		groups.slice(0, 4).every((group) => group === 0) && groups[4] === 0xffff && groups[5] === 0;
 	const nat64 = first === 0x64 && groups[1] === 0xff9b && groups.slice(2, 6).every((g) => g === 0);
-	if (mapped || nat64) return isBlockedIpv4(embeddedIpv4(groups));
+	if (mapped || siit || nat64) return isBlockedIpv4(embeddedIpv4(groups));
+	// 6to4 2002:a.b.c.d::/48 (RFC 3056) tunnels to the IPv4 address in its second and third groups.
+	if (first === 0x2002) return isBlockedIpv4((groups[1] ?? 0) * 0x10000 + (groups[2] ?? 0));
+	// Local-use NAT64 64:ff9b:1::/48 (RFC 8215) is never a public destination, and its embedded
+	// address sits where the operator's prefix length puts it; Teredo 2001::/32 (RFC 4380) carries
+	// an obfuscated client address. Both are refused whole (W3 review r2 N7).
+	if (first === 0x64 && groups[1] === 0xff9b && groups[2] === 1) return true;
+	if (first === 0x2001 && groups[1] === 0) return true;
 	return (
 		(first & 0xfe00) === 0xfc00 || // unique local fc00::/7 (incl. fd00:ec2::254 metadata)
 		(first & 0xffc0) === 0xfe80 || // link-local fe80::/10
@@ -99,7 +114,9 @@ export function isBlockedHostname(hostname: string): boolean {
 	const ipv4 = ipv4ToNumber(host);
 	if (ipv4 !== undefined) return isBlockedIpv4(ipv4);
 	if (BLOCKED_NAMES.has(host)) return true;
-	if (BLOCKED_SUFFIXES.some((suffix) => host.endsWith(suffix))) return true;
+	if (BLOCKED_DOMAINS.some((domain) => host === domain || host.endsWith(`.${domain}`))) {
+		return true;
+	}
 	// A single-label name is resolved through the local search domains, i.e. on the LAN.
 	return !host.includes(".");
 }
