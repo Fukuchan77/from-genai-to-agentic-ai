@@ -3171,7 +3171,7 @@ GREEN 後、7件すべての新規テストについて独立した deliberate b
 **Verification**（ワーカーの最終 `mise run gate`、exit 0）:
 
 - model-ID 87 files、repository rules 8規則すべて走査件数 > 0。root `executed=257 passed=257`。ai-core `Tests 205 passed | 2 skipped`、`executed=205 passed=205 failed=0`。lines 95.83%、`src/aci` 100%、`src/aci/tools` lines 100%（`calculator.ts` statements 99.12%）。
-- 統合コミット: 15.1 `90bc262`、15.2 `c7cfd13`、15.3 `65e0f16`、15.4 `ab7a569`、15.5 `e5dd66b`。fixture は既存の `fixtures/http/weather.json`（東京）と `fixtures/web-search/agentic-ai.json` で足り、異常系と大阪はテスト内で組み立てた。
+- 統合コミット: 15.1 `90a1b03`、15.2 `c7cfd13`、15.3 `65e0f16`、15.4 `ab7a569`、15.5 `e5dd66b`。fixture は既存の `fixtures/http/weather.json`（東京）と `fixtures/web-search/agentic-ai.json` で足り、異常系と大阪はテスト内で組み立てた。
 
 ### 2026-10-07 Task 15 Validation and Ship
 
@@ -3467,25 +3467,25 @@ GREEN 後、7件すべての新規テストについて独立した deliberate b
 
 単一ファイルの実行は `pnpm --dir packages/ai-core exec vitest run <file>`。PROVE のバックアップは `mktemp` の一意な名前で取り、`cmp` で復元を確認した。
 
-**N1**（`c44a2c6`、`chat/adapt-history.ts`）:
+**N1**（`2f06c44`、`chat/adapt-history.ts`）:
 
 - RED: 実際の `createOpenAI` / `createAnthropic` に fetch を注入し、同じプロバイダの履歴（推論 `REASONING ABOUT USER SECRET PLAN`）を `generateText` で送るテストを追加。`AI_SDK_LOG_WARNINGS` を収集関数に差し替えて検査し、OpenAI が `Non-OpenAI reasoning parts are not supported. Skipping reasoning part: {"type":"reasoning","text":"REASONING ABOUT USER SECRET PLAN"}.` で失敗した（Anthropic は警告に本文を含めず、修正前から合格）。
 - GREEN: `reasoning`・`reasoning-file` は出所に関係なく常に除く。出所の判定（偽装・カタログ外・矛盾する provider・非オブジェクト）のテストはプロバイダ実行のツールパートに移した。テストは 36件。
 - PROVE: 旧規則（`sameProvider && target.capabilities.reasoning ? copy : undefined`）に戻す → 6件失敗（4プロバイダの推論除外、provider フィールドのテスト、OpenAI の警告 `not to contain 'REASONING ABOUT USER SECRET PLAN'`）。矛盾する provider の検査と assistant 以外の除外を外す → 2件失敗。
 
-**N5**（`ef2484f`、`summarize/source.ts`）:
+**N5**（`c8da4d5`、`summarize/source.ts`）:
 
 - RED: `location: "http://["` の 302 → `expected TypeError: Invalid URL { …(3) } to be an instance of SourceFetchError`。
 - GREEN: `resolveLocation` が `new URL` の失敗を `SourceFetchError("disallowed-url")` にする（解析できない行き先は「取得できる公開の http(s) URL」ではない。`network` は再試行すべき一時的な通信の失敗を示すため使わない）。2回目の取得はしない。
 - PROVE: catch で `TypeError("Invalid URL")` を投げ直す → `expected TypeError: Invalid URL to be an instance of SourceFetchError`。
 
-**N6**（`7accbd5`、`summarize/plan.test.ts` のみ）:
+**N6**（`48299db`、`summarize/plan.test.ts` のみ）:
 
 - テスト: 統合の見積もりが「空のプロンプトの生のトークン数 + 部分要約ごとの行 + 1」の 1.2 倍の切り上げに一致、whole とチャンクの overhead が実際の空のプロンプトの推定に一致、チャンク予算 = 予算 − チャンクの overhead、8,192 のコンテキストの段階計画で各チャンクのプロンプト全体が予算内。
 - PROVE: `- overhead` → `+ overhead` で2件、空の統合プロンプトに部分要約を入れる → 2件、`+ 1` → `- 1` で1件、whole の空のテキストを `"Stryker was here!"` → 1件。
 - `pnpm exec stryker run --mutate packages/ai-core/src/summarize/plan.ts`: 指摘の `206:49`・`209:23`・`99:9` と `63:13` が kill。plan.ts 84.97 → 91.30（killed 131、survived 16）。残る生存は `promptText` の等価に近い変異（47・49・51）、初回の probe（114）、行の詰め込み（134・149・155・156・162）、エラー文言（192）。
 
-**N7**（`6beaa8e`、`summarize/url-guard.ts`）:
+**N7**（`03962c2`、`summarize/url-guard.ts`）:
 
 - RED: 15件失敗（`router.lan`、`ROUTER.LAN.`、`myhost.home.arpa`、`home.arpa`、SIIT 2件、6to4 3件、ローカル用 NAT64 3件、Teredo 3件）。
 - GREEN: `BLOCKED_DOMAINS`（`localhost`・`local`・`internal`・`home.arpa`・`lan` とそのサブドメイン）。SIIT `::ffff:0:0/96` は埋め込みの IPv4、6to4 `2002::/16` は第2・第3グループの IPv4 で判定。ローカル用 NAT64 `64:ff9b:1::/48`（公開の宛先にならず、埋め込みの位置が運用者のプレフィックス長で変わる）と Teredo `2001::/32`（クライアントの IPv4 が難読化されている）は丸ごと拒否。既存の境界テスト `[64:ff9b:1::7f00:1]` 許可を拒否側へ移し、隣接する公開の名前とアドレス（`my.atlan`、`[2002:808:808::1]`、`[2003:7f00:1::]`、`[2001:1::1]` 等）の許可テストを追加。テストは 82件。
@@ -3495,8 +3495,17 @@ GREEN 後、7件すべての新規テストについて独立した deliberate b
 
 ### 2026-10-07 Final Verification After Round 2 Fix
 
-- コミット: N1 `c44a2c6`、N5 `ef2484f`、N6 `7accbd5`、N7 `6beaa8e`。
+- コミット: N1 `2f06c44`、N5 `c8da4d5`、N6 `48299db`、N7 `03962c2`。
 - `mise run gate` → exit 0: root `executed=257 passed=257`。ai-core `executed=687 passed=687 failed=0 skipped=4`、lines 97.85%（`src/chat` 100%、`src/summarize` 100%）。eval-suite `executed=3 passed=3 skipped=1`。9規則すべて走査件数 > 0。
 - `mise run test:mutation` → exit 0、スコア 91.60（閾値 70）。summarize 92.31、plan.ts 91.30。
 - 文書: research ADR-7（Decision・Consequences）、plan C11・C12・C13・Error Handling、tasks.md の 17・18 のノートと進捗、tasks-w4 の 20.1、tasks-w5 の 29.2、traceability の 3.3・4.6・4.7 と Gaps を更新した。
 - 未対応: レビューが N1 の Fix で併せて提案した、サーバー側で `globalThis.AI_SDK_LOG_WARNINGS` を warning の `type` だけを記録する関数に差し替える方針は、推論を送らなくなったことで N1 の経路はなくなったため入れていない（他の警告に生のプロンプトが入る経路が見つかれば C13 の `platform.ts` で行う）。
+
+### 2026-10-07 W3 Adversarial Review Round 3: APPROVE
+
+- 記録: `.sdd/reviews/001-agentic-ai-platform-impl-w3-review-2026-10-07-r3.md`（新規コンテキストの `sdd-reviewer`、HEAD `41e5285`）。
+- r2 の N1・N5・N6・N7 は修正済み。旧い振る舞いに戻すとテストが失敗することをレビュアが独立に確かめた（N1 6件、N5 1件、N7 2〜3件、N6 は名指しの変異体 `206:49`・`209:23`・`99:9` が kill）。N2・N3・N4 は W4 20.1・W5 29.2 のテスト付きの要件として記録済み。
+- `mise run gate -- --force` → exit 0（root 257/257、ai-core 687 passed / 4 skipped、eval-suite 3 passed / 1 skipped）。`mise run test:mutation` → 91.60。
+- 新規は LOW 3件。R3-1（plan C13・tasks-w4 20.1 の接続時検査の2つの誤り）と R3-2（統合前の SHA の引用）は文書を修正した。R3-3（公開経路のない特殊用途アドレス）は traceability の Gaps に受け入れた制約として記録した。
+- PR #25 の CI（`gate`・`secret-scan`・`audit`・`mutation`・`ci-status`）は `41e5285` で成功。W3 の移行条件（全サブタスク `[x]`、Implementation Notes、19.3 の結線、gate と `ci-status` の成功、敵対的レビューの記録）を満たしたので、W3 を保管し W4 へ移る。
+
