@@ -1,5 +1,7 @@
-import { convertToModelMessages, type UIMessage } from "ai";
-import { describe, expect, it } from "vitest";
+import { createAnthropic } from "@ai-sdk/anthropic";
+import { createOpenAI } from "@ai-sdk/openai";
+import { convertToModelMessages, generateText, type LanguageModel, type UIMessage } from "ai";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { defaultModelFor, getModelEntry } from "../models/catalog";
 import type { ModelEntry } from "../models/types";
 import { adaptHistoryForModel, IMAGE_OMITTED_TEXT } from "./adapt-history";
@@ -10,13 +12,6 @@ const anthropic = getModelEntry(defaultModelFor("live", "anthropic", "chat"));
 const openai = getModelEntry(defaultModelFor("live", "openai", "chat"));
 const ollama = getModelEntry(defaultModelFor("local", "ollama", "chat"));
 const google = getModelEntry(defaultModelFor("live", "google", "chat"));
-
-function withCapabilities(
-	entry: ModelEntry,
-	capabilities: Partial<ModelEntry["capabilities"]>,
-): ModelEntry {
-	return { ...entry, capabilities: { ...entry.capabilities, ...capabilities } };
-}
 
 type Part = UIMessage["parts"][number];
 
@@ -75,36 +70,50 @@ function conversation(): UIMessage[] {
 }
 
 describe("adaptHistoryForModel: reasoning", () => {
+	// Reasoning is replayable only with provider metadata, which is always stripped, so it never
+	// reaches any model (W3 review r2 N1). The displayed history is untouched.
+	it.each([
+		["anthropic", anthropic],
+		["openai", openai],
+		["ollama", ollama],
+		["google", google],
+	])("drops reasoning even when %s generated it and is the target", (_label, target) => {
+		const messages = [
+			assistant(
+				"a1",
+				target,
+				{ type: "step-start" },
+				{ type: "reasoning", text: "考え中", providerMetadata: ANTHROPIC_META },
+				{ type: "reasoning-file", mediaType: "image/png", url: "data:image/png;base64,AAAA" },
+				{ type: "text", text: "答え" },
+			),
+		];
+		expect(adaptHistoryForModel(messages, target)[0]?.parts).toEqual([
+			{ type: "step-start" },
+			{ type: "text", text: "答え" },
+		]);
+	});
+
 	it("drops reasoning produced by a different provider", () => {
 		const result = adaptHistoryForModel(conversation(), openai);
 		const parts = result[1]?.parts ?? [];
 		expect(parts.map((part) => part.type)).toEqual(["step-start", "text"]);
 	});
+});
 
-	it("keeps reasoning text, without its provider metadata, when the provider is unchanged", () => {
-		const result = adaptHistoryForModel(conversation(), anthropic);
-		expect(result[1]?.parts).toEqual([
-			{ type: "step-start" },
-			{ type: "reasoning", text: "考え中" },
-			{ type: "text", text: "猫の画像です。" },
-		]);
-	});
+describe("adaptHistoryForModel: origin of provider-executed tools", () => {
+	const providerTool: Part = {
+		type: "dynamic-tool",
+		toolName: "web_search",
+		toolCallId: "c1",
+		state: "output-available",
+		input: { query: "q" },
+		output: [],
+		providerExecuted: true,
+	};
 
-	it("drops reasoning when the target model has no reasoning capability", () => {
-		const target = withCapabilities(anthropic, { reasoning: false });
-		const result = adaptHistoryForModel(conversation(), target);
-		expect(result[1]?.parts.some((part) => part.type === "reasoning")).toBe(false);
-	});
-
-	it("drops reasoning of assistant messages whose origin is unknown", () => {
-		const messages = [
-			assistant(
-				"a1",
-				undefined,
-				{ type: "reasoning", text: "考え中" },
-				{ type: "text", text: "答え" },
-			),
-		];
+	it("drops provider-executed tools of assistant messages whose origin is unknown", () => {
+		const messages = [assistant("a1", undefined, providerTool, { type: "text", text: "答え" })];
 		expect(adaptHistoryForModel(messages, anthropic)[0]?.parts).toEqual([
 			{ type: "text", text: "答え" },
 		]);
@@ -117,45 +126,35 @@ describe("adaptHistoryForModel: reasoning", () => {
 		["a provider claim that contradicts the model", { provider: "openai", modelId: anthropic.id }],
 		["a non-string model ID", { provider: "anthropic", modelId: 42 }],
 		["an inherited property name as model ID", { provider: "anthropic", modelId: "toString" }],
-	])("drops reasoning when the client metadata is %s", (_label, metadata) => {
+		["not an object", "anthropic"],
+		["null", null],
+	])("drops provider-executed tools when the client metadata is %s", (_label, metadata) => {
 		const messages = [
-			assistantWithMetadata(
-				metadata,
-				{ type: "reasoning", text: "考え中" },
-				{ type: "text", text: "答え" },
-			),
+			assistantWithMetadata(metadata, providerTool, { type: "text", text: "答え" }),
 		];
 		expect(adaptHistoryForModel(messages, anthropic)[0]?.parts).toEqual([
 			{ type: "text", text: "答え" },
 		]);
 	});
 
-	it("keeps reasoning when only the model ID names a catalog model of the target's provider", () => {
+	it("keeps provider-executed tools when only the model ID names a catalog model of the target's provider", () => {
 		const messages = [
-			assistantWithMetadata(
-				{ modelId: anthropic.id },
-				{ type: "reasoning", text: "考え中" },
-				{ type: "text", text: "答え" },
-			),
+			assistantWithMetadata({ modelId: anthropic.id }, providerTool, {
+				type: "text",
+				text: "答え",
+			}),
 		];
 		expect(adaptHistoryForModel(messages, anthropic)[0]?.parts).toEqual([
-			{ type: "reasoning", text: "考え中" },
+			providerTool,
 			{ type: "text", text: "答え" },
 		]);
 	});
 
-	it("drops reasoning-file parts from another provider", () => {
-		const messages = [
-			assistant(
-				"a1",
-				google,
-				{ type: "reasoning-file", mediaType: "image/png", url: "data:image/png;base64,AAAA" },
-				{ type: "text", text: "答え" },
-			),
+	it("drops provider-executed tools from user messages, whatever their metadata", () => {
+		const messages: UIMessage[] = [
+			{ id: "u1", role: "user", metadata: { modelId: anthropic.id }, parts: [providerTool] },
 		];
-		expect(adaptHistoryForModel(messages, anthropic)[0]?.parts).toEqual([
-			{ type: "text", text: "答え" },
-		]);
+		expect(adaptHistoryForModel(messages, anthropic)).toEqual([]);
 	});
 });
 
@@ -275,12 +274,7 @@ describe("adaptHistoryForModel: provider metadata", () => {
 		const serialized = JSON.stringify(result[0]?.parts);
 		expect(serialized).not.toContain("cacheControl");
 		expect(serialized).not.toContain("file-1");
-		expect(result[0]?.parts.map((part) => part.type)).toEqual([
-			"reasoning",
-			"text",
-			"file",
-			"tool-calculator",
-		]);
+		expect(result[0]?.parts.map((part) => part.type)).toEqual(["text", "file", "tool-calculator"]);
 	});
 
 	it("strips providerMetadata from source parts of another provider", () => {
@@ -446,4 +440,109 @@ describe("adaptHistoryForModel: messages", () => {
 		expect(serialized).not.toContain("data:image/png");
 		expect(serialized).toContain(IMAGE_OMITTED_TEXT);
 	});
+});
+
+describe("adaptHistoryForModel: replay through the real provider adapters (W3 review r2 N1)", () => {
+	const REASONING = "REASONING ABOUT USER SECRET PLAN";
+
+	const OPENAI_RESPONSE = {
+		id: "resp_1",
+		created_at: 0,
+		model: "m",
+		output: [
+			{
+				type: "message",
+				role: "assistant",
+				id: "msg_1",
+				content: [{ type: "output_text", text: "ok", annotations: [] }],
+			},
+		],
+		usage: { input_tokens: 1, output_tokens: 1 },
+		incomplete_details: null,
+	};
+
+	const ANTHROPIC_RESPONSE = {
+		id: "msg_1",
+		type: "message",
+		role: "assistant",
+		model: "m",
+		content: [{ type: "text", text: "ok" }],
+		stop_reason: "end_turn",
+		stop_sequence: null,
+		usage: { input_tokens: 1, output_tokens: 1 },
+	};
+
+	/** A fetch that records each request body and answers with a fixed JSON response. */
+	function jsonFetch(body: unknown, requests: string[]): typeof fetch {
+		return async (_input, init) => {
+			requests.push(String(init?.body));
+			return new Response(JSON.stringify(body), {
+				status: 200,
+				headers: { "content-type": "application/json" },
+			});
+		};
+	}
+
+	const TARGETS: Record<string, [ModelEntry, (requests: string[]) => LanguageModel]> = {
+		openai: [
+			openai,
+			(requests) =>
+				createOpenAI({ apiKey: "unit-test", fetch: jsonFetch(OPENAI_RESPONSE, requests) })(
+					openai.id,
+				),
+		],
+		anthropic: [
+			anthropic,
+			(requests) =>
+				createAnthropic({ apiKey: "unit-test", fetch: jsonFetch(ANTHROPIC_RESPONSE, requests) })(
+					anthropic.id,
+				),
+		],
+	};
+
+	const globals = globalThis as { AI_SDK_LOG_WARNINGS?: unknown };
+	let previousLogger: unknown;
+	let logged: unknown[];
+
+	beforeEach(() => {
+		previousLogger = globals.AI_SDK_LOG_WARNINGS;
+		logged = [];
+		globals.AI_SDK_LOG_WARNINGS = (options: unknown) => {
+			logged.push(options);
+		};
+	});
+
+	afterEach(() => {
+		globals.AI_SDK_LOG_WARNINGS = previousLogger;
+	});
+
+	it.each(Object.keys(TARGETS))(
+		"replays a same-provider history to %s without logging or sending the reasoning text",
+		async (name) => {
+			const [target, createModel] = TARGETS[name] ?? [];
+			if (target === undefined || createModel === undefined) throw new Error(name);
+			const requests: string[] = [];
+			const history = [
+				user("u1", { type: "text", text: "質問" }),
+				assistant(
+					"a1",
+					target,
+					{ type: "step-start" },
+					{ type: "reasoning", text: REASONING },
+					{ type: "text", text: "前回の答え" },
+				),
+				user("u2", { type: "text", text: "続き" }),
+			];
+
+			await generateText({
+				model: createModel(requests),
+				messages: await convertToModelMessages(adaptHistoryForModel(history, target)),
+			});
+
+			expect(requests).toHaveLength(1);
+			expect(requests[0]).toContain("前回の答え");
+			expect(requests[0]).not.toContain(REASONING);
+			expect(JSON.stringify(logged)).not.toContain(REASONING);
+		},
+	);
 });

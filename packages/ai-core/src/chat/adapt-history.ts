@@ -62,10 +62,11 @@ function adaptPart(part: Part, { target, sameProvider }: PartContext): Part | un
 	switch (part.type) {
 		case "reasoning":
 		case "reasoning-file":
-			// Reasoning is only meaningful to the provider that produced it, and only useful to a model
-			// that reasons. Its signature is provider metadata, so a provider that needs one (Anthropic)
-			// drops the replayed reasoning with a warning instead of failing.
-			return sameProvider && target.capabilities.reasoning ? copy : undefined;
+			// Reasoning is replayable only with its provider metadata (Anthropic's signature, OpenAI's
+			// item id / encrypted content), which is always stripped above. Without it every provider
+			// skips the part, and OpenAI logs the whole part, raw reasoning text included, as a warning
+			// (W3 review r2 N1). So reasoning never reaches the model; the displayed history keeps it.
+			return undefined;
 		case "custom":
 			// A custom part's content is its provider metadata, which is always stripped.
 			return undefined;
@@ -89,10 +90,11 @@ function adaptPart(part: Part, { target, sameProvider }: PartContext): Part | un
  * Applied on the server right before `convertToModelMessages`, so the learner's displayed history
  * keeps everything. The history is client-supplied, so provider fields (`providerMetadata`,
  * `providerReference`, `callProviderMetadata`, `resultProviderMetadata`) and `custom` parts are
- * always dropped. Reasoning and provider-executed tool parts survive only when the message's
- * `metadata.modelId` is a catalog model of the target's provider (and, for reasoning, the target
- * reasons); images become a text placeholder for a model without image input; tool calls without
- * a result are dropped. A message left with no
+ * always dropped. Reasoning parts are always dropped too: without the stripped metadata no
+ * provider can replay them. Provider-executed tool parts survive only when the message's
+ * `metadata.modelId` is a catalog model of the target's provider; images become a text
+ * placeholder for a model without image input; tool calls without a result are dropped. A message
+ * left with no
  * sendable part is dropped. The input is never mutated: messages and parts are shallow copies,
  * nested values (tool input/output, data payloads) are shared and must be treated as read-only.
  */
