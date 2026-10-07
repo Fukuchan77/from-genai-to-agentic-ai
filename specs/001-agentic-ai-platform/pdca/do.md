@@ -3298,3 +3298,39 @@ GREEN 後、7件すべての新規テストについて独立した deliberate b
 - Spec drift: (1) plan の `POST /api/chat` の本文は4フィールドの `z.strictObject` で、`DefaultChatTransport` が既定で付ける `trigger`・`messageId` を拒否する（既定の `useChat` の送信がすべて 400 になる）。2フィールドを任意で受け付け、Route では使わないことにした（代案の `prepareSendMessagesRequest` での除去は採らない）。(2) plan C11 の `buildResponseMetadata` のシグネチャに `persona`・`disabledTools` がなく、`usage` が必須だった。(3) ADR-7 の Decision に、結果のないツール呼び出しの除外と生成元の判定がなかった。plan C11・Data Model（応答メタデータ）・HTTP API・C15、research.md ADR-7 を実装に合わせた。
 - Risks: `metadata.provider` はクライアントが改ざんできる（Route で `metadata.modelId` のカタログ照合を加えるかは T-22 で判断）。画像以外のファイルパートはそのまま送られる。strict なエンベロープは、AI SDK が `UIMessage` に最上位のフィールドを加えると更新まで拒否する。メッセージ件数・長さ・画像の上限は C14 に任せ、ここでは重複させない。
 - Mechanical fixes: tasks.md（17.1〜17.3 を `[x]`、Implementation Notes、進捗）、traceability.md（3.3・3.7・3.10・5.6 の Test/Commit、Gaps）。
+
+### 2026-10-07 Task 18 RED / GREEN / PROVE Evidence
+
+- Objective: 記事・YouTube・字幕テキストの取得、全文／分割の判断、プロバイダ別のキャッシュ指定、最大2回の再生成、`partial` / `restart` / `final` / `meta` のイベント列。
+- 順序: 18.4 を 18.3 より先に行った（`plan.ts` が実際のプロンプトの組み立てから指示文のトークン数を測るため）。18.6 で v7 が `messages` 内の system メッセージを `AI_InvalidPromptError` で拒否することが分かり、`prompts.ts` を `{ instructions, messages }` を返す `build*Prompt` に変え、`cache-policy.test.ts` と `plan.ts` も合わせた。
+- テストの実行: `pnpm --filter @platform/ai-core exec vitest run --coverage.enabled=false <file>`。
+
+**RED evidence**: 全サブタスクで、実装より先にテストファイルがあり `Cannot find module './<x>'`（schema・source・cache-policy・plan・retry・pipeline）。
+
+**PROVE evidence**（sed で stub を当て、テストを実行し、復元）:
+
+- 18.1 `schema.test.ts`（47件）: `.length(3)` → `.min(2)` で「2件・4件の要点」が `expected true to be false`。YouTube のホスト検査を除去 → `expected 'dQw4w9WgXcQ' to be undefined`。`issuesByAttempt.at(-1)` → `.at(0)` で `expected ['keyPoints: too small'] to deeply equal ['title: too big']`。`chapters.min(1)` を除去 → `expected [] to deeply equal ['chapters']`。`strictObject` → `object` で未知フィールドのテスト。
+- 18.2 `source.test.ts`（21件、13.6 の fixture を `loadFixtureSet` で使う）: 状態の検査を除去 → `expected { kind: 'article', text: 'Not Found' } to be an instance of SourceFetchError`。`PlatformError` の素通しを除去 → `expected SourceFetchError … to be an instance of MockFixtureMissingError`。中断の再 throw を除去 → `expected SourceFetchError … to be DOMException`。字幕の失敗をすべて fetch-failed に → no-captions・private のテスト。空の segment の除外を除去 → `expected { … text: '' } to match { reason: 'no-captions' }`。除外要素の検査の除去は、Readability が自分で script を除くため初回は生き残った。「ナビゲーションだけの文書」のケースを加え、`expected { text: 'ホーム' } …` で失敗するようにした。
+- 18.4 `cache-policy.test.ts`（15件）: 自動系を none に → openai・azure・google のテスト。再送でソースパートを変える →「keeps the cached source part identical」。`</source>` の無害化を除去 → `expected ['</source>', '</source>'] to have a length of 1`。anthropic でカタログの `promptCache: "none"` を無視 → `expected { mode: 'explicit' } to deeply equal { mode: 'none' }`。
+- 18.3 `plan.test.ts`（9件）: whole/staged の `<=` を `<` → `expected 'staged' to be 'whole'`。安全係数 1.1 → `expected 1.1 to be 1.2`。出力予約 4000 → `expected 4000 to be 4096`。長い行を強制分割しない → 強制分割のテスト。1行1チャンク → `expected 400 to be ≤ 9`。最小予算の検査を除去 → `PlatformError` が投げられない。秒を切り捨てない → `'[90.7s]' vs '[90s]'`。浮動小数の丸めの guard が stub で生き残ったため、2〜3M までの整数で `Math.ceil(n*1.2)` / `Math.floor(n*0.8)` が変わらないことを確かめて guard を除いた。
+- 18.5 `retry.test.ts`（7件）: ループの上限を `<= MAX_REGENERATIONS` → 3回目の成功のテストが失敗し、エラーが「2 回」。`restart` を出さない → `expected ['partial-1','partial-2'] …`。前回の issues を渡さない → 呼び出しの検査。最後の issues だけを保持 →「1 回失敗」（3 の代わり）。
+- 18.6 `pipeline.test.ts`（21件）: 常に partial を出す → staged のテスト。ポリシーに関係なくキャッシュ読み出しを記録 → mock の meta の deep-equal。restart を捨てる → `expected [] to deeply equal [{ type: 'restart' … }]`。プロバイダのエラーを検証失敗として扱う → `expected SummaryValidationError … to be Error: provider down`。チャプターを要求しない → チャプターのテスト。再生成でフィードバックを落とす → 再生成のテスト。入力トークンを合計しない → staged の meta。
+- fixture の不足はテスト内で補った（`fixtures/` は変えていない）: `chunkSize: 8` の streamed シナリオ、フィードバックの文言で一致する「再生成で有効になる」シナリオ（共有の一覧には入れない。入れると `m1-3/validation-retry` も有効になるため）、統合の呼び出し用のシナリオ、`fixture:summary-chapters` を含む YouTube ソース。
+
+**Verification**（ワーカーの最終 `mise run gate`、exit 0）:
+
+- model-ID 90 files、repository rules 8規則すべて走査件数 > 0（`no-deprecated-object-api`・`guarded-agent-only`・`no-sensitive-logging` 各69）、typecheck 成功。root `executed=257 passed=257`。ai-core 24 test files、`executed=234 passed=234`、skipped 2。All files lines 95.97%、`src/summarize` stmts 98.99 / branches 88.2 / funcs 100 / lines 100。
+- 統合コミット: 18.1 `50653b6`、18.2 `e1b66ed`、18.4 `ff72071`、18.3 `1d33288`、18.5 `bc0f92d`、18.6 `ecb35bf`。
+
+### 2026-10-07 `output-invalid` の追加（コーディネーター、`1367ee4`）
+
+- 問題: `PlatformErrorCode` に「プロバイダには届いたが出力がスキーマを満たさない」を表すコードがなく、18.1 は境界外の `src/errors.ts` を変えられないため、`SummaryValidationError` が `provider-unavailable` を使っていた（呼び出し元が到達不能なプロバイダと区別できない）。
+- RED: `errors.test.ts` の語彙の完全一致と、`schema.test.ts` に加えた `expect(error.code).toBe("output-invalid")` が `Expected: "output-invalid" Received: "provider-unavailable"` で失敗。
+- GREEN: `PLATFORM_ERROR_CODES` に `output-invalid` を加え、`SummaryValidationError` が使う。errors と summarize の焦点テスト 123 passed。gate の ai-core 438 passed。
+- 文書: plan の Interfaces（語彙と HTTP 状態の対応。`output-invalid` は 502）、HTTP API の `/api/summarize` 行、C12、Error Handling、File Structure に反映した。
+
+### 2026-10-07 Task 18 Validation and Ship
+
+- Spec drift: plan C12 の `streamSummary(plan, deps)` の `deps` の形、`summarizeSource` ほかの追加の公開 API、v7 の system メッセージの制約によるプロンプトの形、分割の予算と最小チャンク、`SummaryMeta` の集計の範囲（実測・キャッシュ読み出しは全呼び出しの合計、`attempts` は最終の呼び出し）、YouTube ID の形式（fixture のため 1〜64 文字）、`SummaryValidationError` のコードが plan になかった。plan C12・Data Model・HTTP API・Error Handling・File Structure を実装に合わせた。
+- Risks: `jsdom` の `createRequire` での読み込みは Next/Turbopack では未確認（T-24）。チャンクの詰め方は行ごとのトークン数の合計で、チャンクごとに再トークン化しない（安全係数 1.2 で吸収）。チャンクが非常に多いときの統合プロンプトの予算は未検査。Stryker の対象 `summarize/plan.ts`・`retry.ts` はワーカーの時点では未実行（19.3 の後の `mise run test:mutation` で plan 82.61%、retry 100%）。
+- Mechanical fixes: tasks.md（18.1〜18.6 を `[x]`、Implementation Notes、進捗）、traceability.md（4.1〜4.12 の Test/Commit、Gaps）。

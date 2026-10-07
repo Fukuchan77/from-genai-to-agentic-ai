@@ -250,8 +250,13 @@ flowchart LR
 - **Public interface**:
   - `summarySchema`（Zod: `title`、`keyPoints`（ちょうど3件）、`tags`、`actionItems`、`chapters?`（`heading`、`startSeconds`））、`summarizeRequestSchema`（`z.strictObject`。`id`、`input: SummaryInput`、`modelId`。`POST /api/summarize` の本文）
   - `loadSource(input: SummaryInput, deps: SourceDeps): Promise<LoadedSource>`（`SummaryInput = { kind: "article"; url } | { kind: "youtube"; url } | { kind: "transcript"; text }`）。エラー: `SourceFetchError`（`reason: "http-status" | "empty-body" | "network"`、`status?`）、`TranscriptUnavailableError`（`reason: "no-captions" | "private" | "fetch-failed"`）
-  - `planSummary(source: LoadedSource, entry: ModelEntry): SummaryPlan`（`strategy: "whole" | "staged"`、`estimatedInputTokens`、`chunks`。ADR-9）
-  - `streamSummary(plan: SummaryPlan, deps: SummaryDeps): AsyncIterable<SummaryEvent>`（`partial` / `restart` / `final` / `meta` のイベント。検証失敗時は最大2回まで再生成し、それでも失敗したら `SummaryValidationError`（検証エラーの一覧を含む））
+  - `planSummary(source: LoadedSource, entry: ModelEntry): SummaryPlan`（`strategy: "whole" | "staged"`、`estimatedInputTokens`、`chunks`。ADR-9。予算は `contextWindow` の 80%（`CONTEXT_USAGE_RATIO`）から出力の予約 `OUTPUT_RESERVE_TOKENS`（4,096）を引いた値で、推定値に安全係数 1.2 を掛けて比べ、境界ちょうどは `whole`。チャンクは行ごとのトークン数（と改行1つ）を足して詰め、1行が予算を超えるときは強制的に分ける。チャンクの予算が 256 トークン（`MIN_CHUNK_TOKENS`）未満なら `PlatformError("capability-unsupported")`）
+  - `streamSummary(plan: SummaryPlan, deps: { model: LanguageModel; entry: ModelEntry; abortSignal? }): AsyncIterable<SummaryEvent>`（`SummaryDeps`。ゲートウェイではなく、C6 で解決済みのモデルとそのカタログの entry を受け取る。`partial` / `restart` / `final` / `meta` のイベント。検証失敗時は最大2回（`MAX_REGENERATIONS`）まで再生成し、それでも失敗したら `SummaryValidationError`（`code: "output-invalid"`、検証エラーの一覧を含む））
+  - `summarizeSource(input: SummaryInput, deps: SummaryDeps & SourceDeps): AsyncIterable<SummaryEvent>`（`loadSource` → `planSummary` → `streamSummary` を1回で行う。ソースの失敗は LLM を呼ぶ前に投げる。C17 の Route の入口）
+  - **生成の実装**（2026-10-07、T-18.6）: 構造化出力は `streamText` + `Output.object` で、`partialOutputStream` を `partial` として送る。`await result.output` が `NoObjectGeneratedError` で失敗したときは、`error.text` を自前で JSON 解析・スキーマ検証して `path: message` 形式の issues（`formatSchemaIssues`）を作る。生成本文を含む `cause` は使わず、エラーにも入れない。プロバイダのエラーは再生成せずにそのまま投げる。`streamText` の既定の `onError` はエラーを console に出すため、no-op の収集関数で置き換える。`staged` では各チャンクの部分要約（再生成の規則は同じ。イベントは出さない）の後、統合の呼び出しだけが `partial` / `restart` を送る。`restart.attempt` はこれから始まる試行の番号（2 か 3）。`maxOutputTokens` は `min(4096, entry.maxOutputTokens)`。
+  - **プロンプト**: AI SDK v7 の `streamText` は `messages` 内の system メッセージを `AI_InvalidPromptError` で拒否するため、`build*Prompt` は `{ instructions, messages }`（`SummaryPrompt`）を返す。長文のソースは user メッセージの先頭のテキストパートに `<source>` で区切って置き（ソース中の `</source>` は無害化する）、再生成時の検証エラーは後ろに別パートとして足す。キャッシュ対象の先頭部分は再送しても変わらない。分割判断の指示文のトークン数は、空のソースで実際のプロンプトを組み立てて推定する。
+  - スキーマの補助: `summarySchemaFor({ withChapters })`（時刻付きのソースはチャプターを1件以上必須にし、それ以外はチャプターのないスキーマを使う。モデルに任意項目を求めない）、`SUMMARY_LIMITS`（字幕テキストは 200,000 文字まで。Web では本文 512 KiB の上限が先に効く）、`summaryInputSchema`、`parseYoutubeVideoId(url)`（YouTube のホストだけを受け付け、ID は `[A-Za-z0-9_-]{1,64}`。実際の ID は11文字だが、13.6 の fixture の ID（`m1-agentic-ai` 等）を受け付けるため。解析できない URL は `PlatformError("invalid-request")` で、要約リクエストのスキーマも拒否する）。
+  - 本文抽出: `jsdom` は型定義がなく `@types/jsdom` も依存にないため、`createRequire(import.meta.url)("jsdom")` で読み込み、使う面だけをローカルの interface で型付けする。`jsdom` は `innerText` を実装しないので、Readability の結果をブロック要素ごとに改行してテキストにする。Readability は失敗時も文書から script を除くため、代替経路でも script の本文は混ざらない。
   - **Req 4.3 と 4.5 の境界**: `partial` は描画のための暫定値（`DeepPartial<Summary>`）で、スキーマ検証を経ていない。「要約オブジェクト」として UI とライブラリ利用者へ返すのは、スキーマ検証を通過した `final` だけとする。UI は `final` を受け取るまでカードを「生成中」として表示し、`restart` を受け取ったら暫定表示を破棄する。ライブラリ利用者向けの `summarize()`（`streamSummary` を最後まで消費する関数）は `final` だけを返す。
   - `cachePolicyFor(entry: ModelEntry): CachePolicy`（`anthropic`: 長文パートに `providerOptions.anthropic.cacheControl`、`openai` / `azure` / `google`: 自動キャッシュのため記録のみ、`ollama` / `mock`: なし）
 - **Owns**: 要約スキーマ、本文抽出（`@mozilla/readability` + `jsdom`）、YouTube URL の解析、トークン推定（`gpt-tokenizer`）、分割と統合のプロンプト。
@@ -447,10 +452,10 @@ erDiagram
 | | actionItems | `string[]`（0〜10件） | |
 | | chapters | `{ heading: string; startSeconds: number }[]`（任意） | タイムスタンプ付きの入力のときだけ必須にする（Req 4.10） |
 | SummaryMeta | strategy | `"whole" \| "staged"` | Req 4.12 |
-| | estimatedInputTokens / actualInputTokens | `number` / `number \| undefined` | 判断に用いた推定値と実測値 |
+| | estimatedInputTokens / actualInputTokens | `number` / `number \| undefined` | 判断に用いた推定値と実測値。実測値は全 LLM 呼び出し（チャンク、統合、再生成）の合計 |
 | | chunks | `number` | `whole` のとき 1 |
-| | cacheReadTokens | `number \| undefined` | Req 4.8 |
-| | attempts | `1 \| 2 \| 3` | 検証失敗による再生成を含む（Req 4.4） |
+| | cacheReadTokens | `number \| undefined` | Req 4.8。全 LLM 呼び出しの合計。キャッシュの指定がないプロバイダ（`ollama`・`mock`）では記録しない |
+| | attempts | `1 \| 2 \| 3` | 検証失敗による再生成を含む（Req 4.4）。最終の要約を作った呼び出しの試行回数 |
 | LoadedSource | kind / text / title? / segments? | `"article" \| "youtube" \| "transcript"` / `string` / `string` / `{ text: string; startSeconds: number }[]` | 字幕はセグメントを保持してチャプター生成に使う |
 
 **Mock の fixture（C7）** — `packages/ai-core/fixtures/` 配下に JSON で保存する。
@@ -481,10 +486,11 @@ erDiagram
 |---|---|---|---|
 | `POST /api/chat` | `{ id: string; messages: UIMessage[]（role は user / assistant のみ）; modelId: CatalogModelId; personaId: PersonaId; trigger?: "submit-message" \| "regenerate-message"; messageId?: string }`（`trigger`・`messageId` は `DefaultChatTransport` が既定で付けるため受け付け、Route は使わない。2026-10-07、T-17.3） | `text`、`reasoning`（`sendReasoning: true`）、`file`、`messageMetadata: ResponseMetadata` | 400 `invalid-request` / `limit-exceeded` / `capability-unsupported`（画像非対応モデルへの画像送信など）、413 `payload-too-large`、429 `rate-limited`、503 `provider-unavailable`（Ollama 未起動、認証情報なし） |
 | `POST /api/agent/tools` | 同上 | 上記 + `tool-<name>` パート（`input-streaming` → `input-available` → `output-available` / `output-error`）、`messageMetadata.run: AgentRunSummary` | 同上 |
-| `POST /api/summarize` | `{ id: string; input: SummaryInput; modelId: ModelId }` | `data-summary`（`DeepPartial<Summary>`、同じ `id` で上書き）、`data-summary-meta`（`SummaryMeta`）、`data-summary-restart`（`{ attempt: number; issues: string[] }`） | 上記 + 422 `source-unavailable`（`reason: "http-status" \| "empty-body" \| "network" \| "no-captions" \| "private" \| "fetch-failed"`、`status?`）。いずれも LLM を呼ぶ前に返す（Req 4.7、4.11） |
+| `POST /api/summarize` | `{ id: string; input: SummaryInput; modelId: ModelId }` | `data-summary`（`DeepPartial<Summary>`、同じ `id` で上書き）、`data-summary-meta`（`SummaryMeta`）、`data-summary-restart`（`{ attempt: number; issues: string[] }`） | 上記 + 422 `source-unavailable`（`reason: "http-status" \| "empty-body" \| "network" \| "no-captions" \| "private" \| "fetch-failed"`、`status?`）。いずれも LLM を呼ぶ前に返す（Req 4.7、4.11）。再生成を使い切った検証失敗は 502 `output-invalid`（プロバイダには届いたが、出力がスキーマを満たさない。`provider-unavailable` の 503 と区別する。通常はストリームの開始後に起きるため、下記のストリームのエラーとして `code` を送る） |
 
 - `/api/chat` は `request.signal` を `abortSignal` として `streamText` に渡す。`/api/agent/tools` はリクエストごとに `createGuardedAgent({ ..., signal: request.signal })` を呼び、合成済みの `guarded.abortSignal`（学習者の停止と実行時間上限）を `createAgentUIStreamResponse` に渡す。クライアントの `stop()` でサーバー側の生成とツールが中断する（Req 3.5、6.3）。
 - ストリームの途中で起きたエラーは、`onError` で `PlatformError` の `code` と日本語のメッセージだけに変換して送る（内部の詳細は送らない）。
+- `PlatformErrorCode` の閉じた語彙（`src/errors.ts` の `PLATFORM_ERROR_CODES`）: `invalid-request`（400）、`capability-unsupported`（400）、`provider-unavailable`（503）、`source-unavailable`（422）、`output-invalid`（502。2026-10-07、T-18 の `SummaryValidationError` のために追加）。括弧内は、`apps/web/lib/server/errors.ts` がストリームの開始前の失敗を JSON で返すときの HTTP 状態。
 
 ### 環境変数（`.env.example` に名前だけを列挙する）
 
@@ -614,8 +620,8 @@ erDiagram
 | `packages/ai-core/package.json` | Create | 依存（ai、@ai-sdk/*、ollama-ai-provider-v2、zod、@tavily/core、@mozilla/readability、jsdom、youtubei.js、gpt-tokenizer）とサブパス `exports`。M1 の依存は scaffold のタスクで一度に宣言する（後続のタスクが並列に `package.json` とロックファイルを編集しないため）。`./errors` のサブパスだけは T-21.1 が加える（依存を変えないため、ロックファイルは更新しない）。 |
 | `packages/ai-core/tsconfig.json` | Create | ベース設定の継承。 |
 | `packages/ai-core/vitest.config.ts` | Create | node 環境、`setup-hermetic`・`global-setup-local`・`gate-reporter` の登録、カバレッジを常に有効にした 80% の閾値（C18）。Stryker もこの設定を使う。 |
-| `packages/ai-core/src/errors.ts` | Create | `PlatformError` 基底クラスと、閉じた語彙の `PlatformErrorCode`。 |
-| `packages/ai-core/src/errors.test.ts` | Create | `code`・`message`・`details` の保持と、`instanceof` による判別を検証する。 |
+| `packages/ai-core/src/errors.ts` | Create | `PlatformError` 基底クラスと、閉じた語彙の `PlatformErrorCode`（`invalid-request`・`capability-unsupported`・`provider-unavailable`・`source-unavailable`・`output-invalid`）。 |
+| `packages/ai-core/src/errors.test.ts` | Create | `code`・`message`・`details` の保持と、`instanceof` による判別、語彙の完全一致を検証する。 |
 | `packages/ai-core/src/config/env-schema.ts` | Create | 環境変数の Zod スキーマと既定値。 |
 | `packages/ai-core/src/config/feature-requirements.ts` | Create | 機能 ID と必須環境変数の対応表。 |
 | `packages/ai-core/src/config/defaults.ts` | Create | 停止条件・レート制限・入力上限の既定値。 |
@@ -859,7 +865,7 @@ erDiagram
 - 記事の取得が HTTP エラー、または抽出した本文が空 → LLM を呼ばずに 422 `source-unavailable`（`reason`、`status`）（4.7）
 - YouTube の字幕が取得できない（字幕なし、非公開、取得エラー）→ LLM を呼ばずに 422 `source-unavailable`（`reason`）（4.11）
 - 字幕に時刻がない入力（字幕テキストの直接入力）→ チャプターを任意項目として扱い、チャプターなしで要約する（4.10 は時刻付きの字幕だけが対象）
-- 要約がスキーマ検証に失敗 → 最大2回まで再生成し（`data-summary-restart` で UI を初期化）、3回目も失敗したら `SummaryValidationError`（検証エラーの一覧）（4.4）。それまでに描画した部分オブジェクトは暫定表示であり、確定した要約としては扱わない（4.3、C12 の境界）
+- 要約がスキーマ検証に失敗 → 最大2回まで再生成し（`data-summary-restart` で UI を初期化）、3回目も失敗したら `SummaryValidationError`（`code: "output-invalid"`、検証エラーの一覧。生成本文は含めない）（4.4）。それまでに描画した部分オブジェクトは暫定表示であり、確定した要約としては扱わない（4.3、C12 の境界）
 - 入力がコンテキスト上限の 80%（推定値に安全係数を掛けた値）を超える → 分割して段階的に要約する。チャンクの部分要約の失敗も同じ再生成規則に従う（4.6、4.12）
 - `mock` の埋め込みで検索精度を比較しようとした → `*.local.test.ts` 以外では精度比較をしない規約とし、解説に注意を明記する（2.16）
 - 比較・品質評価のテストを `local` なしで実行 → 理由付きの「スキップ」として報告し、合格に数えない（1.14）

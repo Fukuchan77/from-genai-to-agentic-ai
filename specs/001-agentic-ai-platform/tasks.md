@@ -81,7 +81,7 @@
 |---|---|---|---|
 | W1 基盤 | 1 ツールチェーン、2 CI、3 ローカル依存サービス、4 テスト基盤、5 リポジトリ規約検査 | 完了（2026-09-27。敵対的レビュー2ラウンド） | [tasks-comp-w1.md](tasks-comp-w1.md) |
 | W2 ai-core の土台 | 6 ai-core scaffold、7 eval-suite scaffold、8 apps/web scaffold、9 ModelCatalog、10 Ports、11 testing ヘルパ、12 PlatformConfig、13 MockRuntime | 完了（2026-09-30。敵対的レビュー3ラウンド、2026-10-04 の検証で追加の修正） | [tasks-comp-w2.md](tasks-comp-w2.md) |
-| W3 ai-core の機能 | 14 ModelGateway、15 AciToolkit、16 GuardedAgent、17 ChatCore、18 SummaryPipeline、19 評価スイート | 着手（現在の波。14〜17 完了） | 本ファイル |
+| W3 ai-core の機能 | 14 ModelGateway、15 AciToolkit、16 GuardedAgent、17 ChatCore、18 SummaryPipeline、19 評価スイート | 着手（現在の波。14〜18 完了） | 本ファイル |
 | W4 apps/web | 21 RequestGuard、20 AppShell、22 ChatFeature、23 ToolAgentFeature、24 SummaryFeature | 未着手 | [tasks-w4.md](tasks-w4.md) |
 | W5 E2E・解説・最終統合 | 25 E2E 生成・検査スクリプト、26 E2E 基盤、27 E2E シナリオ、28 解説ドキュメント、29 最終統合と NFR 検証 | 未着手 | [tasks-w5.md](tasks-w5.md) |
 
@@ -298,38 +298,42 @@ _Depends:_ 9, 10, 11, 13
 _Requirements:_ 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 4.7, 4.8, 4.9, 4.10, 4.11, 4.12
 _Traces:_ REQ-004, C12
 
-- [ ] 18.1 `summarize/schema.ts`・`errors.ts`: 要約スキーマ（`title`/`keyPoints`ちょうど3件/`tags`/`actionItems`/`chapters?`）、`summarizeRequestSchema`（`z.strictObject`）と `SourceFetchError`・`TranscriptUnavailableError`・`SummaryValidationError` + `schema.test.ts`（要点が3件でない、上限超過、要約リクエストの未知フィールドの拒否）
+- [x] 18.1 `summarize/schema.ts`・`errors.ts`: 要約スキーマ（`title`/`keyPoints`ちょうど3件/`tags`/`actionItems`/`chapters?`）、`summarizeRequestSchema`（`z.strictObject`）と `SourceFetchError`・`TranscriptUnavailableError`・`SummaryValidationError` + `schema.test.ts`（要点が3件でない、上限超過、要約リクエストの未知フィールドの拒否）
   _Boundary:_ `packages/ai-core/src/summarize/schema.ts`, `packages/ai-core/src/summarize/schema.test.ts`, `packages/ai-core/src/summarize/errors.ts`
   _Depends:_ 9
   _Requirements:_ 4.1, 4.3, 4.10
   _Traces:_ REQ-004, C12
-- [ ] 18.2 `summarize/source.ts`: 記事本文抽出（`@mozilla/readability` + `jsdom`）、YouTube URL 解析と字幕取得、字幕テキストの直接入力の受付 + テスト（13.6 の fixture 実装で、HTTP失敗・空本文・字幕なしでLLMを呼ばないこと）
+- [x] 18.2 `summarize/source.ts`: 記事本文抽出（`@mozilla/readability` + `jsdom`）、YouTube URL 解析と字幕取得、字幕テキストの直接入力の受付 + テスト（13.6 の fixture 実装で、HTTP失敗・空本文・字幕なしでLLMを呼ばないこと）
   _Boundary:_ `packages/ai-core/src/summarize/source.ts`, `packages/ai-core/src/summarize/source.test.ts`
   _Depends:_ 18.1, 10, 13
   _Requirements:_ 4.1, 4.2, 4.7, 4.9, 4.11
   _Traces:_ REQ-004, C12
-- [ ] 18.3 (P) `summarize/tokens.ts`・`plan.ts`: `gpt-tokenizer` によるトークン推定（安全係数1.2）と全文/分割の判断（コンテキスト上限の80%境界）+ テスト
+- [x] 18.3 (P) `summarize/tokens.ts`・`plan.ts`: `gpt-tokenizer` によるトークン推定（安全係数1.2）と全文/分割の判断（コンテキスト上限の80%境界）+ テスト
   _Boundary:_ `packages/ai-core/src/summarize/tokens.ts`, `packages/ai-core/src/summarize/plan.ts`, `packages/ai-core/src/summarize/plan.test.ts`
   _Depends:_ 18.1
   _Requirements:_ 4.6, 4.12
   _Traces:_ REQ-004, C12
-- [ ] 18.4 (P) `summarize/cache-policy.ts`・`prompts.ts`: プロバイダ別のプロンプトキャッシュ指定方法（`anthropic`明示/自動系は記録のみ/`ollama`・`mock`はなし）と要約・部分要約・統合のプロンプト + `cache-policy.test.ts`
+- [x] 18.4 (P) `summarize/cache-policy.ts`・`prompts.ts`: プロバイダ別のプロンプトキャッシュ指定方法（`anthropic`明示/自動系は記録のみ/`ollama`・`mock`はなし）と要約・部分要約・統合のプロンプト + `cache-policy.test.ts`
   _Boundary:_ `packages/ai-core/src/summarize/cache-policy.ts`, `packages/ai-core/src/summarize/cache-policy.test.ts`, `packages/ai-core/src/summarize/prompts.ts`
   _Depends:_ 18.1
   _Requirements:_ 4.8
   _Traces:_ REQ-004, C12
-- [ ] 18.5 (P) `summarize/retry.ts`: スキーマ検証失敗時の最大2回までの再生成 + テスト（1回目・2回目の成功、3回目失敗時のエラー内容）
+- [x] 18.5 (P) `summarize/retry.ts`: スキーマ検証失敗時の最大2回までの再生成 + テスト（1回目・2回目の成功、3回目失敗時のエラー内容）
   _Boundary:_ `packages/ai-core/src/summarize/retry.ts`, `packages/ai-core/src/summarize/retry.test.ts`
   _Depends:_ 18.1
   _Requirements:_ 4.4
   _Traces:_ REQ-004, C12
-- [ ] 18.6 `summarize/pipeline.ts`・`index.ts`: `streamSummary`（`partial`/`restart`/`final`/`meta` のイベント列、`final` だけを検証済み要約として扱う）+ テスト（13.6 の `m1-3` シナリオと 11 のモックモデルで、部分オブジェクトの順序、チャプターの生成、キャッシュ読み出し量の記録）
+- [x] 18.6 `summarize/pipeline.ts`・`index.ts`: `streamSummary`（`partial`/`restart`/`final`/`meta` のイベント列、`final` だけを検証済み要約として扱う）+ テスト（13.6 の `m1-3` シナリオと 11 のモックモデルで、部分オブジェクトの順序、チャプターの生成、キャッシュ読み出し量の記録）
   _Boundary:_ `packages/ai-core/src/summarize/pipeline.ts`, `packages/ai-core/src/summarize/index.ts`, `packages/ai-core/src/summarize/pipeline.test.ts`
   _Depends:_ 18.2, 18.3, 18.4, 18.5, 11, 13
   _Requirements:_ 4.3, 4.5, 4.8, 4.10, 4.12
   _Traces:_ REQ-004, C12
 
 ### Implementation Notes
+
+- AI SDK v7 の `streamText` は `messages` 内の system メッセージを `AI_InvalidPromptError` で拒否するため、要約プロンプトは `{ instructions, messages }`（`SummaryPrompt`）で返す。長文のソースは user メッセージの先頭のテキストパートに `<source>` で区切って置き、Anthropic ではそのパートだけに `providerOptions.anthropic.cacheControl` を付ける。再生成時の検証エラーは後ろに別パートとして足すので、キャッシュ対象の先頭部分は再送しても変わらない。分割判断の指示文トークンは、空のソースで実際のプロンプトを組み立てて推定し、プロンプトを変更しても判断がずれないようにした。
+- 構造化出力は `streamText` + `Output.object` で、`partialOutputStream` を `partial` イベントとして送る。`await result.output` が `NoObjectGeneratedError` で失敗したときは、`error.text` を自前で JSON 解析・スキーマ検証して `path: message` 形式の issues を作る。生成本文を含む `cause` は使わず、エラーにも入れない。プロバイダのエラーは再生成せずにそのまま投げる。既定の `onError` はエラーを console に出すため、no-op の収集関数で置き換えた。staged では各チャンクの部分要約（再生成規則は同じ、イベントは出さない）の後、統合の呼び出しだけが `partial` / `restart` を送る。再生成を使い切った `SummaryValidationError` は、当初は合うコードがなく `provider-unavailable` を使っていたため、`PlatformErrorCode` に `output-invalid` を加えて区別した（コーディネーターの修正 `1367ee4`）。
+- jsdom には型定義がなく `@types/jsdom` も宣言済みの依存にないため、`createRequire(import.meta.url)("jsdom")` で読み込み、使う面だけをローカルの interface で型付けした。jsdom は `innerText` を実装しないので、Readability の結果（`serializer: (node) => node`）をブロック要素ごとに改行してテキスト化する。Readability は失敗時も文書を変更する（script を除去する）ため、本文抽出が失敗したときの代替経路でも script の本文は混ざらない。
 
 ---
 

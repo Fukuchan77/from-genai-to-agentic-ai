@@ -83,18 +83,18 @@ ID 規約は `tasks.md` の「ID 対応表」を参照する（この spec の p
 
 | Requirement | Design | Task | Test | Commit |
 |---|---|---|---|---|
-| 4.1 | C12 | T-18.1, T-18.2 |  |  |
-| 4.2 | C12 | T-18.2 |  |  |
-| 4.3 | C12 | T-18.1, T-18.6 |  |  |
-| 4.4 | C12 | T-18.5 |  |  |
-| 4.5 | C12, C17 | T-18.6, T-24.2 |  |  |
-| 4.6 | C12 | T-18.3 |  |  |
-| 4.7 | C12, C17 | T-18.2, T-24.1 |  |  |
-| 4.8 | C12, C17 | T-18.4, T-18.6, T-24.3 |  |  |
-| 4.9 | C12 | T-18.2 |  |  |
-| 4.10 | C12, C17 | T-18.1, T-18.6, T-24.3 |  |  |
-| 4.11 | C12, C17 | T-18.2, T-24.1, T-24.3 |  |  |
-| 4.12 | C12, C17 | T-18.3, T-18.6, T-24.3 |  |  |
+| 4.1 | C12 | T-18.1, T-18.2 | T-18.1: `schema.test.ts` 47件（要点がちょうど3件、文字数・件数の上限、チャプターの必須化、要約リクエストの未知フィールドの拒否、YouTube のホストの検査）、T-18.2: `source.test.ts` 21件（記事・YouTube・字幕テキストの3種の入力） | T-18.1: `50653b6`、T-18.2: `e1b66ed` |
+| 4.2 | C12 | T-18.2 | T-18.2: `source.test.ts`（13.6 の記事 fixture から Readability で本文を抽出、ナビゲーションだけの文書） | T-18.2: `e1b66ed` |
+| 4.3 | C12 | T-18.1, T-18.6 | T-18.1: `schema.test.ts`（`summarySchema` と `summarySchemaFor`）、T-18.6: `pipeline.test.ts` 21件（`final` だけが検証済みの要約、`partial` の順序） | T-18.1: `50653b6`、T-18.6: `ecb35bf` |
+| 4.4 | C12 | T-18.5 | T-18.5: `retry.test.ts` 7件（1回目・2回目の失敗後の成功、3回失敗で全試行の issues を持つ `SummaryValidationError`、`restart` イベント、前回の issues の引き継ぎ）、`schema.test.ts`（`SummaryValidationError` の `code` が `output-invalid`） | T-18.5: `bc0f92d`、修正（T-18.1/T-18.5）: `1367ee4` |
+| 4.5 | C12, C17 | T-18.6, T-24.2 | T-18.6: `pipeline.test.ts`（`partial` → `final` → `meta` の順序、`chunkSize` のある streamed シナリオで複数の `partial`） | T-18.6: `ecb35bf` |
+| 4.6 | C12 | T-18.3 | T-18.3: `plan.test.ts` 9件（80% の境界で `whole`／超過で `staged`、安全係数 1.2、出力予約 4096、長い行の強制分割、チャンクの詰め方、最小予算 256 未満の `capability-unsupported`） | T-18.3: `1d33288` |
+| 4.7 | C12, C17 | T-18.2, T-24.1 | T-18.2: `source.test.ts`（HTTP 失敗・空本文で `SourceFetchError`、LLM を呼ばない。中断の再 throw、`PlatformError` の素通し） | T-18.2: `e1b66ed` |
+| 4.8 | C12, C17 | T-18.4, T-18.6, T-24.3 | T-18.4: `cache-policy.test.ts` 15件（`anthropic` は先頭のソースパートだけに `cacheControl`、自動系は記録のみ、`ollama`・`mock` はなし、カタログの `promptCache: "none"` を優先、再送でソースパートが変わらない、`</source>` の無害化）、T-18.6: `pipeline.test.ts`（キャッシュ読み出し量の記録。指定のないプロバイダでは記録しない） | T-18.4: `ff72071`、T-18.6: `ecb35bf` |
+| 4.9 | C12 | T-18.2 | T-18.2: `source.test.ts`（字幕テキストの直接入力の受け付け） | T-18.2: `e1b66ed` |
+| 4.10 | C12, C17 | T-18.1, T-18.6, T-24.3 | T-18.1: `schema.test.ts`（時刻付きのソースでチャプターが1件以上）、T-18.6: `pipeline.test.ts`（`fixture:summary-chapters` の YouTube ソースでチャプターを生成） | T-18.1: `50653b6`、T-18.6: `ecb35bf` |
+| 4.11 | C12, C17 | T-18.2, T-24.1, T-24.3 | T-18.2: `source.test.ts`（字幕なし・非公開・取得失敗を `TranscriptUnavailableError` に写像、空の segment の除外、LLM を呼ばない） | T-18.2: `e1b66ed` |
+| 4.12 | C12, C17 | T-18.3, T-18.6, T-24.3 | T-18.3: `plan.test.ts`（判断に用いた推定トークン数の記録）、T-18.6: `pipeline.test.ts`（`meta` の戦略・チャンク数・全呼び出しの入力トークンの合計） | T-18.3: `1d33288`、T-18.6: `ecb35bf` |
 
 ## Requirement 5: ツール呼び出しと ToolLoopAgent
 
@@ -158,6 +158,7 @@ Task 列に記載する。
 
 ## Gaps
 
+- 2026-10-07 の `/sdd-ship`（T-18.1〜T-18.6）では、要件ギャップは検出しなかった。ai-core の gate テストに `src/summarize` の6ファイル 120件（`schema` 47、`source` 21、`cache-policy` 15、`plan` 9、`retry` 7、`pipeline` 21）が加わり、`src/summarize` の行カバレッジは100%（分岐 88.2%）。`PlatformErrorCode` に「出力がスキーマを満たさない」を表すコードがなく `SummaryValidationError` が `provider-unavailable` を使っていたため、`output-invalid` を語彙に加えて使うよう修正した（`1367ee4`。HTTP の写像は 502）。spec drift として、plan C12 の `streamSummary(plan, deps)` の `deps`、追加の公開 API（`summarizeSource`、`summarySchemaFor`、`parseYoutubeVideoId` 等）、v7 が system メッセージを `messages` に置けないことによるプロンプトの形、分割と予算の具体値、`SummaryMeta` の集計の範囲を、plan C12・Data Model・HTTP API・Error Handling に記録した。`jsdom` の `createRequire` での読み込みは Next/Turbopack では未確認（`serverExternalPackages` には含まれる。T-24 で確認する）。チャンクが非常に多いときの統合プロンプトの予算は検査していない。
 - 2026-10-07 の `/sdd-ship`（T-17.1〜T-17.3）では、要件ギャップは検出しなかった。ai-core の gate テストに `src/chat` の4ファイル 107件（`personas` 23、`adapt-history` 22、`metadata` 13、`request-schema` 49）が加わり、`src/chat` の行カバレッジは100%（分岐 98.24%）。spec drift として、plan の `POST /api/chat` の本文（4フィールドの `z.strictObject`）では `DefaultChatTransport` が既定で付ける `trigger`・`messageId` のために既定の `useChat` の送信がすべて 400 になることを検出し、2フィールドを任意で受け付けるよう HTTP API の表を改めた。plan C11（`PersonaVars`・`PERSONA_IDS`・`isPersonaId`・`DEFAULT_PERSONA_ID`、`adaptHistoryForModel` の規則、`buildResponseMetadata` の `persona`・`disabledTools`・任意の `usage`、エンベロープだけの検査と `validateUIMessages`）、Data Model の応答メタデータ（`usage` の省略、`toolsCalled` の行）、C15 の Route の注意、research.md ADR-7（結果のないツール呼び出しの除外、生成元の判定）を実装に合わせた。`metadata.provider` はクライアントが改ざんできる値であり、画像以外のファイルはそのまま送られる（plan C11 の制約に記録。対応が要るかは T-22 で判断する）。
 - 2026-10-07 の `/sdd-ship`（T-16.1〜T-16.4）では、要件ギャップは検出しなかった。ai-core の gate テストに `src/agents` の3ファイル 55件（`stop-conditions` 18、`stop-reason` 14、`guarded-agent` 23）が加わり、`src/agents` の行カバレッジは100%（`guarded-agent.ts` の分岐 88.09%）。spec drift として、AI SDK v7 では UI ストリームの `finish` が `onEnd` より先に届き、中断は `onError` ではなく `abort` パートで通知されるため、plan C8 と research.md ADR-6 のサマリの確定経路（「`onEnd` または `onError` の先に呼ばれた方」）が実装と食い違っていた。plan C8（停止条件の引数、`createRunStopConditions`、`StopReasonInput`、確定経路、`GuardedAgent` の追加のメンバー、公開 API）、Data Model（`AgentRunSummary.error`）、ADR-6 を改訂した。`guarded.agent.generate()` / `.stream()` を直接呼んでエラーになると `done` が解決しないこと、`streamText` の既定のエラー処理が生のエラーを `console.error` に出すことは、T-23.1（C16 の Route）で扱う。
 - 2026-10-07 の `/sdd-ship`（T-15.1〜T-15.5）では、要件ギャップは検出しなかった。ai-core の gate テストに `src/aci` の4ファイル 91件（`define-tool` 22、`tool-set` 10、`calculator` 34、`tools` 25）が加わり、`src/aci` の行カバレッジは100%。spec drift として、plan C9 に未定義だった `ToolAvailability`（`FeatureId` → boolean と `requiredFeature`）、`AnyAciTool`・`BuiltToolSet`・`GuardedToolSet<TOOLS>` の形、中断とエラーのツール結果化の規則、`ConfigError` の対象、ツール名と天気の入力・URL、追加の公開 API を、plan C9 と Error Handling に記録した。Web 検索ツールはキーがなくても `WebSearchProvider` を要する（T-20.1 の `platform.ts` が渡す）。`rates.json` の `with { type: "json" }` を Next/Turbopack でビルドできるかは T-20 以降で確認する。
