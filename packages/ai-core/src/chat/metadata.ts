@@ -15,8 +15,9 @@ export interface ResponseUsage {
 /**
  * The `messageMetadata` of an assistant message (plan "応答メタデータ（C11）"). Sent with the UI
  * stream's `start` chunk (identity only) and `finish` chunk (with `usage`, and `run` on the agent
- * route); the client merges the two. `provider` is also what `adaptHistoryForModel` reads to decide
- * whether reasoning and provider metadata may be replayed, so the field name must not change.
+ * route); the client merges the two. `modelId` (checked against the catalog, together with
+ * `provider`) is also what `adaptHistoryForModel` reads to decide whether reasoning may be replayed,
+ * so the field names must not change.
  */
 export interface ResponseMetadata {
 	readonly modelId: ModelId;
