@@ -1,6 +1,6 @@
 import { PlatformError } from "../errors";
 import type { ModelEntry } from "../models/types";
-import { buildChunkMessages, buildSummaryMessages } from "./prompts";
+import { buildChunkPrompt, buildSummaryPrompt, type SummaryPrompt } from "./prompts";
 import type { LoadedSource } from "./source";
 import { countTextTokens, estimateFromCount, estimateTokens } from "./tokens";
 
@@ -36,14 +36,13 @@ function withChapters(source: LoadedSource): boolean {
 	return Boolean(source.segments?.length);
 }
 
-function messagesText(messages: ReturnType<typeof buildSummaryMessages>): string {
-	return messages
-		.flatMap((message) =>
-			typeof message.content === "string"
-				? [message.content]
-				: message.content.flatMap((part) => (part.type === "text" ? [part.text] : [])),
-		)
-		.join("\n");
+function promptText(prompt: SummaryPrompt): string {
+	const parts = prompt.messages.flatMap((message) =>
+		typeof message.content === "string"
+			? [message.content]
+			: message.content.flatMap((part) => (part.type === "text" ? [part.text] : [])),
+	);
+	return [prompt.instructions, ...parts].join("\n");
 }
 
 // The prompt overhead is measured from the real prompts with an empty source, so a change to the
@@ -53,8 +52,8 @@ const NO_CACHE = { cachePolicy: { mode: "none", recordsCacheReads: false } } as 
 /** Estimated tokens of the system prompt, delimiters, title and instruction of a whole summary. */
 export function wholeOverheadTokens(source: LoadedSource): number {
 	return estimateTokens(
-		messagesText(
-			buildSummaryMessages(
+		promptText(
+			buildSummaryPrompt(
 				{ text: "", withChapters: withChapters(source), ...titleOf(source) },
 				NO_CACHE,
 			),
@@ -64,8 +63,8 @@ export function wholeOverheadTokens(source: LoadedSource): number {
 
 function chunkOverheadTokens(source: LoadedSource): number {
 	return estimateTokens(
-		messagesText(
-			buildChunkMessages(
+		promptText(
+			buildChunkPrompt(
 				// A wide index keeps the estimate valid for any chunk number.
 				{
 					text: "",

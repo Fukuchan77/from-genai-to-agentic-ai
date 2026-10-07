@@ -16,6 +16,12 @@ const CHAPTER_INSTRUCTION =
 const INTEGRATION_CHAPTER_INSTRUCTION =
 	"chapters は、部分要約の chapters を開始時刻の順にまとめ、重複を除いてください。";
 
+/** AI SDK v7 takes the system prompt as `instructions`; `messages` holds the user turn only. */
+export interface SummaryPrompt {
+	readonly instructions: string;
+	readonly messages: ModelMessage[];
+}
+
 export interface PromptOptions {
 	readonly cachePolicy: CachePolicy;
 	/** Validation issues of the previous attempt; added after the cached source part. */
@@ -42,7 +48,7 @@ function feedbackText(issues: readonly string[]): string {
 	].join("\n");
 }
 
-function messages(source: string, instruction: string, options: PromptOptions): ModelMessage[] {
+function buildPrompt(source: string, instruction: string, options: PromptOptions): SummaryPrompt {
 	const sourcePart: TextPart = {
 		type: "text",
 		text: source,
@@ -52,10 +58,7 @@ function messages(source: string, instruction: string, options: PromptOptions): 
 	};
 	const parts: TextPart[] = [sourcePart, { type: "text", text: instruction }];
 	if (options.feedback?.length) parts.push({ type: "text", text: feedbackText(options.feedback) });
-	return [
-		{ role: "system", content: SUMMARY_SYSTEM_PROMPT },
-		{ role: "user", content: parts },
-	];
+	return { instructions: SUMMARY_SYSTEM_PROMPT, messages: [{ role: "user", content: parts }] };
 }
 
 export function summaryInstruction(withChapters: boolean): string {
@@ -80,8 +83,8 @@ export function integrationInstruction(withChapters: boolean): string {
 }
 
 /** Whole-text summary (strategy `whole`). */
-export function buildSummaryMessages(input: SourceText, options: PromptOptions): ModelMessage[] {
-	return messages(
+export function buildSummaryPrompt(input: SourceText, options: PromptOptions): SummaryPrompt {
+	return buildPrompt(
 		sourceBlock(input.text, input.title),
 		summaryInstruction(input.withChapters),
 		options,
@@ -89,11 +92,11 @@ export function buildSummaryMessages(input: SourceText, options: PromptOptions):
 }
 
 /** Partial summary of one chunk (strategy `staged`). */
-export function buildChunkMessages(
+export function buildChunkPrompt(
 	input: SourceText & { readonly index: number; readonly total: number },
 	options: PromptOptions,
-): ModelMessage[] {
-	return messages(
+): SummaryPrompt {
+	return buildPrompt(
 		sourceBlock(input.text, input.title),
 		chunkInstruction(input.index, input.total, input.withChapters),
 		options,
@@ -101,16 +104,16 @@ export function buildChunkMessages(
 }
 
 /** Integration of the partial summaries into one summary (strategy `staged`). */
-export function buildIntegrationMessages(
+export function buildIntegrationPrompt(
 	input: {
 		readonly partials: readonly Summary[];
 		readonly title?: string;
 		readonly withChapters: boolean;
 	},
 	options: PromptOptions,
-): ModelMessage[] {
+): SummaryPrompt {
 	const text = input.partials.map((partial) => JSON.stringify(partial)).join("\n");
-	return messages(
+	return buildPrompt(
 		sourceBlock(text, input.title),
 		integrationInstruction(input.withChapters),
 		options,
