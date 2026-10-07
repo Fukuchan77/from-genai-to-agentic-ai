@@ -200,14 +200,13 @@ export interface IntegrationOptions {
 }
 
 // The prompt joins one JSON line per partial; like line packing, the raw counts of the empty
-// prompt and of each line (plus one per newline) are summed instead of re-tokenizing every group.
+// prompt and of each line (plus one for its newline) are summed instead of re-tokenizing a group.
 function integrationRawTokens(partials: readonly Summary[], options: IntegrationOptions): number {
 	const overhead = countTextTokens(
 		promptText(buildIntegrationPrompt({ partials: [], ...options }, NO_CACHE)),
 	);
 	return partials.reduce(
-		(total, partial, index) =>
-			total + countTextTokens(JSON.stringify(partial)) + (index === 0 ? 0 : 1),
+		(total, partial) => total + countTextTokens(JSON.stringify(partial)) + 1,
 		overhead,
 	);
 }
@@ -235,14 +234,16 @@ export function integrationGroups(
 	const groups: Summary[][] = [];
 	let current: Summary[] = [];
 	for (const partial of partials) {
-		if (current.length > 0 && integrationTokens([...current, partial], options) > budget) {
+		// A partial that alone overflows may push an empty group here, but the check after the
+		// push then refuses, so an empty group is never integrated.
+		if (integrationTokens([...current, partial], options) > budget) {
 			groups.push(current);
 			current = [];
 		}
 		current.push(partial);
 		if (integrationTokens(current, options) > budget) throw contextTooSmall(entry);
 	}
-	if (current.length > 0) groups.push(current);
+	groups.push(current);
 	if (partials.length > 1 && groups.length === partials.length) throw contextTooSmall(entry);
 	return groups;
 }
