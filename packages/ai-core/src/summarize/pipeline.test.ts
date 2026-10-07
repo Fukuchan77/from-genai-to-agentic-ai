@@ -1,3 +1,4 @@
+import { simulateReadableStream } from "ai";
 import { MockLanguageModelV4 } from "ai/test";
 import { beforeAll, describe, expect, it } from "vitest";
 import {
@@ -10,6 +11,7 @@ import {
 	M1_3_SCENARIOS,
 	type ScenarioDefinition,
 } from "../mock";
+import type { LanguageModelV4StreamPart } from "../mock/recording";
 import { defaultModelFor, getModelEntry } from "../models/catalog";
 import type { ModelEntry, ProviderId, RunMode } from "../models/types";
 // The public surface (`@platform/ai-core/summarize`) is exercised through the index.
@@ -334,6 +336,33 @@ describe("streamSummary: validation and regeneration", () => {
 
 		expect(error).toBe(failure);
 		expect(model.doStreamCalls).toHaveLength(1);
+	});
+
+	it("propagates an error part sent mid-stream unchanged, without regenerating", async () => {
+		class UpstreamOverloadedError extends Error {}
+		const failure = new UpstreamOverloadedError("upstream 529 overloaded");
+		const model = new MockLanguageModelV4({
+			doStream: async () => ({
+				stream: simulateReadableStream<LanguageModelV4StreamPart>({
+					chunks: [
+						{ type: "stream-start", warnings: [] },
+						{ type: "text-start", id: "t" },
+						{ type: "text-delta", id: "t", delta: '{"title":"途中' },
+						{ type: "error", error: failure },
+					],
+				}),
+			}),
+		});
+
+		const { events, error } = await collectUntilError(planSummary(transcript("x"), mockEntry), {
+			model,
+			entry: mockEntry,
+		});
+
+		expect(error).toBe(failure);
+		expect(error).not.toBeInstanceOf(SummaryValidationError);
+		expect(model.doStreamCalls).toHaveLength(1);
+		expect(events.filter((event) => event.type === "restart")).toEqual([]);
 	});
 });
 

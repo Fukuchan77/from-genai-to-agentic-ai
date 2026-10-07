@@ -104,7 +104,10 @@ async function* generateSummaryObject(
 		recordUsage(context.usage, await result.usage);
 		return { ok: true, value };
 	} catch (error) {
-		if (!NoObjectGeneratedError.isInstance(error)) throw streamErrors[0] ?? error;
+		// A provider error part (e.g. an overload sent mid-stream) also makes `output` reject with
+		// NoObjectGeneratedError; it is not a schema failure, so it is rethrown unchanged (Req 4.4).
+		if (streamErrors.length > 0) throw streamErrors[0];
+		if (!NoObjectGeneratedError.isInstance(error)) throw error;
 		if (error.usage) recordUsage(context.usage, error.usage);
 		return { ok: false, issues: issuesFromText(error.text, context.schema) };
 	}
