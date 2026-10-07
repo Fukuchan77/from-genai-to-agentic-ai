@@ -64,9 +64,7 @@ export class SummaryValidationError extends PlatformError {
 	constructor(issuesByAttempt: readonly (readonly string[])[]) {
 		const attempts = issuesByAttempt.length;
 		const issues = issuesByAttempt.at(-1) ?? [];
-		// PlatformErrorCode has no dedicated "invalid model output" code yet; the model failing to
-		// produce a valid object is reported as a provider-side failure.
-		super("provider-unavailable", `要約がスキーマ検証に ${attempts} 回失敗しました。`, {
+		super("output-invalid", `要約がスキーマ検証に ${attempts} 回失敗しました。`, {
 			attempts,
 			issues,
 			issuesByAttempt,

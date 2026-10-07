@@ -225,6 +225,7 @@ describe("summarize errors", () => {
 		const error = new SummaryValidationError([["keyPoints: too small"], ["title: too big"]]);
 
 		expect(error).toBeInstanceOf(PlatformError);
+		expect(error.code).toBe("output-invalid");
 		expect(error.attempts).toBe(2);
 		expect(error.issues).toEqual(["title: too big"]);
 		expect(error.details).toEqual({
