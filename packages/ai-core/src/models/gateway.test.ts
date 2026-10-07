@@ -1,16 +1,23 @@
-import { generateText } from "ai";
+import { embed, generateText } from "ai";
 import { describe, expect, it, vi } from "vitest";
 import { type EnvSource, loadPlatformConfig } from "../config";
 import { PlatformError } from "../errors";
+import type { RecordingStore } from "../mock/recording";
 import { createFakeClock } from "../ports/clock";
 import { createTextStreamModel } from "../testing/mock-models";
-import { defaultModelFor, listModels } from "./catalog";
+import { defaultModelFor, getModelEntry, listModels } from "./catalog";
 import {
+	CapabilityUnsupportedError,
 	ModelSelectionError,
 	OllamaUnavailableError,
 	ProviderCredentialsMissingError,
 } from "./errors";
-import { createModelGateway, type GatewayDeps } from "./gateway";
+import {
+	createModelGateway,
+	type GatewayDeps,
+	MOCK_EMBEDDING_DIMENSIONS,
+	type ModelOption,
+} from "./gateway";
 import { PROVIDER_FACTORIES, type ProviderFactories } from "./providers";
 
 const FAKE_ANTHROPIC_KEY = "test-anthropic-key";
@@ -280,5 +287,296 @@ describe("createModelGateway resolve (local)", () => {
 			reason: "model-missing",
 			message: expect.stringContaining(`ollama pull ${localChatId}`),
 		});
+	});
+});
+
+describe("createModelGateway capability checks", () => {
+	it("rejects an unsupported capability with the capability and model names", async () => {
+		const gateway = createModelGateway({ config: configFor({}) });
+		const mockChat = getModelEntry(defaultModelFor("mock", "mock", "chat"));
+
+		const error = await caught(
+			gateway.resolve({ purpose: "chat", require: ["tools", "embedding"] }),
+		);
+
+		expect(error).toBeInstanceOf(CapabilityUnsupportedError);
+		expect(error).toMatchObject({
+			code: "capability-unsupported",
+			capability: "embedding",
+			modelId: mockChat.id,
+			details: { capability: "embedding", modelId: mockChat.id },
+		});
+		expect((error as Error).message).toContain("embedding");
+		expect((error as Error).message).toContain(mockChat.displayName);
+	});
+
+	it("rejects image input on a local text-only model before contacting Ollama", async () => {
+		const fetch = vi.fn();
+		const gateway = createModelGateway({
+			config: configFor({ AI_TEST_RUN_MODE: "local" }),
+			fetcher: { fetch },
+			clock: createFakeClock(),
+		});
+
+		await expect(
+			gateway.resolve({ purpose: "chat", require: ["imageInput"] }),
+		).rejects.toMatchObject({ capability: "imageInput", modelId: localChatId });
+		await expect(
+			gateway.resolve({ purpose: "chat", require: ["promptCache"] }),
+		).rejects.toMatchObject({ capability: "promptCache" });
+		expect(fetch).not.toHaveBeenCalled();
+	});
+
+	it("accepts every capability the entry declares", async () => {
+		const gateway = createModelGateway({
+			config: configFor({ AI_TEST_RUN_MODE: "live", ANTHROPIC_API_KEY: FAKE_ANTHROPIC_KEY }),
+			providers: spyProviders(),
+		});
+
+		await expect(
+			gateway.resolve({
+				purpose: "chat",
+				require: ["tools", "structuredOutput", "reasoning", "imageInput", "promptCache"],
+			}),
+		).resolves.toMatchObject({ entry: { id: liveOnlyChatId } });
+	});
+
+	it("does not resolve an embedding model as a language model", async () => {
+		const gateway = createModelGateway({ config: configFor({}) });
+		const mockEmbeddingId = defaultModelFor("mock", "mock", "embedding");
+
+		await expect(
+			gateway.resolve({ purpose: "chat", modelId: mockEmbeddingId }),
+		).rejects.toMatchObject({
+			name: "ModelSelectionError",
+			reason: "purpose-mismatch",
+			details: { modelId: mockEmbeddingId, purpose: "chat" },
+		});
+	});
+});
+
+describe("createModelGateway resolveEmbedding", () => {
+	it("returns a deterministic embedding model in mock mode", async () => {
+		const gateway = createModelGateway({ config: configFor({}) });
+
+		const resolved = await gateway.resolveEmbedding();
+		const first = await embed({ model: resolved.model, value: "hello" });
+		const second = await embed({ model: resolved.model, value: "hello" });
+
+		expect(resolved).toMatchObject({
+			mode: "mock",
+			entry: { id: defaultModelFor("mock", "mock", "embedding") },
+		});
+		expect(first.embedding).toHaveLength(MOCK_EMBEDDING_DIMENSIONS);
+		expect(second.embedding).toEqual(first.embedding);
+	});
+
+	it("uses the configured mock dimensions", async () => {
+		const gateway = createModelGateway({
+			config: configFor({}),
+			mock: { embeddingDimensions: 8 },
+		});
+
+		const { model } = await gateway.resolveEmbedding();
+
+		expect((await embed({ model, value: "x" })).embedding).toHaveLength(8);
+	});
+
+	it("builds live and local embedding models through the provider factory", async () => {
+		const openAiEmbeddingId = defaultModelFor("live", "openai", "embedding");
+		const live = createModelGateway({
+			config: configFor({
+				AI_TEST_RUN_MODE: "live",
+				AI_LIVE_PROVIDER: "openai",
+				OPENAI_API_KEY: "test-openai-key",
+			}),
+		});
+		const localEmbeddingId = defaultModelFor("local", "ollama", "embedding");
+		const local = createModelGateway({
+			config: configFor({ AI_TEST_RUN_MODE: "local" }),
+			fetcher: {
+				fetch: vi.fn().mockResolvedValue({
+					status: 200,
+					headers: {},
+					body: JSON.stringify({ models: [{ name: localEmbeddingId }] }),
+				}),
+			},
+			clock: createFakeClock(),
+		});
+
+		const liveModel = await live.resolveEmbedding();
+		const localModel = await local.resolveEmbedding();
+
+		expect(liveModel.model.modelId).toBe(openAiEmbeddingId);
+		expect(liveModel.model.provider).toContain("openai");
+		expect(localModel).toMatchObject({ mode: "local", entry: { id: localEmbeddingId } });
+		expect(localModel.model.provider).toContain("ollama");
+	});
+
+	it("explains a provider without an embedding default", async () => {
+		const gateway = createModelGateway({
+			config: configFor({ AI_TEST_RUN_MODE: "live", ANTHROPIC_API_KEY: FAKE_ANTHROPIC_KEY }),
+		});
+
+		const error = await caught(gateway.resolveEmbedding());
+
+		expect(error).toMatchObject({
+			name: "ModelSelectionError",
+			reason: "no-default",
+			details: { mode: "live", provider: "anthropic", purpose: "embedding" },
+		});
+		expect((error as Error).message).toContain("AI_MODEL_EMBEDDING");
+	});
+
+	it("rejects a language model and checks credentials for embeddings", async () => {
+		const gateway = createModelGateway({
+			config: configFor({ AI_TEST_RUN_MODE: "live", ANTHROPIC_API_KEY: FAKE_ANTHROPIC_KEY }),
+			providers: spyProviders(),
+		});
+
+		await expect(gateway.resolveEmbedding({ modelId: liveOnlyChatId })).rejects.toMatchObject({
+			name: "CapabilityUnsupportedError",
+			capability: "embedding",
+		});
+		await expect(
+			gateway.resolveEmbedding({ modelId: defaultModelFor("live", "openai", "embedding") }),
+		).rejects.toMatchObject({ name: "ProviderCredentialsMissingError", provider: "openai" });
+	});
+});
+
+describe("createModelGateway availableModels", () => {
+	const ids = (options: readonly ModelOption[]) => options.map((option) => option.id);
+
+	it("lists only models of the current run mode (D9)", () => {
+		const mock = createModelGateway({ config: configFor({}) }).availableModels();
+		const local = createModelGateway({
+			config: configFor({ AI_TEST_RUN_MODE: "local" }),
+		}).availableModels();
+
+		expect(ids(mock)).toEqual(ids(listModels({ mode: "mock" })));
+		expect(ids(local)).toEqual(ids(listModels({ mode: "local" })));
+		expect(ids(local)).not.toContain(liveOnlyChatId);
+	});
+
+	it("lists only live providers whose credentials are configured", () => {
+		const anthropicOnly = createModelGateway({
+			config: configFor({ AI_TEST_RUN_MODE: "live", ANTHROPIC_API_KEY: FAKE_ANTHROPIC_KEY }),
+		}).availableModels();
+		const withOpenAi = createModelGateway({
+			config: configFor({
+				AI_TEST_RUN_MODE: "live",
+				ANTHROPIC_API_KEY: FAKE_ANTHROPIC_KEY,
+				OPENAI_API_KEY: "test-openai-key",
+			}),
+		}).availableModels();
+
+		expect(ids(anthropicOnly)).toEqual(ids(listModels({ mode: "live", provider: "anthropic" })));
+		expect(ids(withOpenAi)).toEqual(
+			ids(
+				listModels({ mode: "live" }).filter(
+					(entry) => entry.provider !== "azure" && entry.provider !== "google",
+				),
+			),
+		);
+		expect(ids(withOpenAi)).not.toContain(localChatId);
+	});
+
+	it("returns plain serializable options for the client", () => {
+		const [option] = createModelGateway({ config: configFor({}) }).availableModels();
+		const entry = getModelEntry(defaultModelFor("mock", "mock", "chat"));
+
+		expect(option).toEqual({
+			id: entry.id,
+			displayName: entry.displayName,
+			provider: entry.provider,
+			capabilities: entry.capabilities,
+			contextWindow: entry.contextWindow,
+		});
+		expect(JSON.parse(JSON.stringify(option))).toEqual(option);
+	});
+});
+
+describe("createModelGateway recording", () => {
+	function recordingStore() {
+		const put = vi.fn<RecordingStore["put"]>();
+		return { put };
+	}
+
+	it("records live calls as redacted cassettes when AI_RECORD=1", async () => {
+		const store = recordingStore();
+		const providers = {
+			...spyProviders(),
+			anthropic: () => ({
+				languageModel: () => createTextStreamModel(`echo ${FAKE_ANTHROPIC_KEY}`),
+				embeddingModel: (): never => {
+					throw new Error("unused");
+				},
+			}),
+		};
+		const clock = createFakeClock(Date.UTC(2026, 9, 7));
+		const gateway = createModelGateway({
+			config: configFor({
+				AI_TEST_RUN_MODE: "live",
+				ANTHROPIC_API_KEY: FAKE_ANTHROPIC_KEY,
+				AI_RECORD: "1",
+			}),
+			providers,
+			clock,
+			recording: { store },
+		});
+
+		const { model } = await gateway.resolve({ purpose: "judge" });
+		const result = await generateText({ model, prompt: "hi" });
+
+		expect(result.text).toBe(`echo ${FAKE_ANTHROPIC_KEY}`);
+		expect(store.put).toHaveBeenCalledTimes(1);
+		const [key, cassette] = store.put.mock.calls[0] ?? [];
+		expect(key).toMatch(/^llm\/[a-f0-9]{64}$/u);
+		expect(cassette).toMatchObject({
+			version: 1,
+			recordedWith: "live",
+			recordedAt: "2026-10-07T00:00:00.000Z",
+			request: { purpose: "judge" },
+		});
+		expect(JSON.stringify(cassette)).not.toContain(FAKE_ANTHROPIC_KEY);
+	});
+
+	it("records local calls with recordedWith local", async () => {
+		const store = recordingStore();
+		const gateway = createModelGateway({
+			config: configFor({ AI_TEST_RUN_MODE: "local", AI_RECORD: "1" }),
+			providers: spyProviders(),
+			fetcher: {
+				fetch: vi.fn().mockResolvedValue({
+					status: 200,
+					headers: {},
+					body: JSON.stringify({ models: [{ name: localChatId }] }),
+				}),
+			},
+			clock: createFakeClock(),
+			recording: { store },
+		});
+
+		const { model } = await gateway.resolve({ purpose: "chat" });
+		await generateText({ model, prompt: "hi" });
+
+		expect(store.put.mock.calls[0]?.[1]).toMatchObject({
+			recordedWith: "local",
+			request: { purpose: "chat" },
+		});
+	});
+
+	it("does not wrap the model when recording is off", async () => {
+		const store = recordingStore();
+		const gateway = createModelGateway({
+			config: configFor({ AI_TEST_RUN_MODE: "live", ANTHROPIC_API_KEY: FAKE_ANTHROPIC_KEY }),
+			providers: spyProviders(),
+			recording: { store },
+		});
+
+		const { model } = await gateway.resolve({ purpose: "chat" });
+		await generateText({ model, prompt: "hi" });
+
+		expect(store.put).not.toHaveBeenCalled();
 	});
 });
