@@ -3454,3 +3454,49 @@ GREEN 後、7件すべての新規テストについて独立した deliberate b
 - 挙動の変化: localhost や LAN の記事 URL（学習者自身の開発サーバーなど）は、どの実行モードでも拒否される。fixture は `example.test` だけを使う。
 - 残るリスクは traceability.md の Gaps に記録した（DNS rebinding、本文のストリーミング上限、`num_ctx` は要約だけ、Ollama のメモリ未実測、署名なしの推論の再送）。ツール結果の要約に `PlatformError.message` を入れる規約は変えていない。
 - plan C8・C9・C11・C12・C15・Data Model・Error Handling・File Structure、research ADR-6・ADR-7、tasks.md の 15〜18 のノートと T-18・T-18.2 の `_Boundary:_`（`url-guard.ts`・`url-guard.test.ts` を追加）を修正後のコードに合わせた。
+
+### 2026-10-07 W3 Adversarial Review Round 2: REQUEST_CHANGES
+
+- Review: `.sdd/reviews/001-agentic-ai-platform-impl-w3-review-2026-10-07-r2.md`
+- Round 1 の16件は、部分対応と明記したものを含めてすべて対応済みと確認された。
+- 新規 MEDIUM: M4 の修正（provider フィールドを常に除く）の結果、同じプロバイダの推論を OpenAI へ再送すると `itemId` がなく、`@ai-sdk/openai` が推論パートの JSON（生の推論テキスト）を警告に入れ、AI SDK が既定で stderr に出す（N1、原則 7 違反）。公開 DNS 名経由の内部アドレス到達（N2、記録済みのリスク）。
+- 新規 LOW: 本文上限が全量読み込み後（N3）、`num_ctx` が要約だけ（N4）、無効な `Location` で `TypeError` が漏れる（N5）、統合の見積もりと `chunkBudgetTokens` の変異が生き残る（N6）、`home.arpa`・`lan` と IPv4 埋め込みの IPv6 の一部を許可する（N7）。
+- 方針: N1・N5・N6・N7 をコードで修正。N2・N3 はポートに DNS とストリーミングの段がないため W3 では受け入れたリスクのまま、W4 の 20.1 のテスト付きの要件にする。N4 は 29.2 で実測する。
+
+### 2026-10-07 Round 2 Fix Evidence
+
+単一ファイルの実行は `pnpm --dir packages/ai-core exec vitest run <file>`。PROVE のバックアップは `mktemp` の一意な名前で取り、`cmp` で復元を確認した。
+
+**N1**（`c44a2c6`、`chat/adapt-history.ts`）:
+
+- RED: 実際の `createOpenAI` / `createAnthropic` に fetch を注入し、同じプロバイダの履歴（推論 `REASONING ABOUT USER SECRET PLAN`）を `generateText` で送るテストを追加。`AI_SDK_LOG_WARNINGS` を収集関数に差し替えて検査し、OpenAI が `Non-OpenAI reasoning parts are not supported. Skipping reasoning part: {"type":"reasoning","text":"REASONING ABOUT USER SECRET PLAN"}.` で失敗した（Anthropic は警告に本文を含めず、修正前から合格）。
+- GREEN: `reasoning`・`reasoning-file` は出所に関係なく常に除く。出所の判定（偽装・カタログ外・矛盾する provider・非オブジェクト）のテストはプロバイダ実行のツールパートに移した。テストは 36件。
+- PROVE: 旧規則（`sameProvider && target.capabilities.reasoning ? copy : undefined`）に戻す → 6件失敗（4プロバイダの推論除外、provider フィールドのテスト、OpenAI の警告 `not to contain 'REASONING ABOUT USER SECRET PLAN'`）。矛盾する provider の検査と assistant 以外の除外を外す → 2件失敗。
+
+**N5**（`ef2484f`、`summarize/source.ts`）:
+
+- RED: `location: "http://["` の 302 → `expected TypeError: Invalid URL { …(3) } to be an instance of SourceFetchError`。
+- GREEN: `resolveLocation` が `new URL` の失敗を `SourceFetchError("disallowed-url")` にする（解析できない行き先は「取得できる公開の http(s) URL」ではない。`network` は再試行すべき一時的な通信の失敗を示すため使わない）。2回目の取得はしない。
+- PROVE: catch で `TypeError("Invalid URL")` を投げ直す → `expected TypeError: Invalid URL to be an instance of SourceFetchError`。
+
+**N6**（`7accbd5`、`summarize/plan.test.ts` のみ）:
+
+- テスト: 統合の見積もりが「空のプロンプトの生のトークン数 + 部分要約ごとの行 + 1」の 1.2 倍の切り上げに一致、whole とチャンクの overhead が実際の空のプロンプトの推定に一致、チャンク予算 = 予算 − チャンクの overhead、8,192 のコンテキストの段階計画で各チャンクのプロンプト全体が予算内。
+- PROVE: `- overhead` → `+ overhead` で2件、空の統合プロンプトに部分要約を入れる → 2件、`+ 1` → `- 1` で1件、whole の空のテキストを `"Stryker was here!"` → 1件。
+- `pnpm exec stryker run --mutate packages/ai-core/src/summarize/plan.ts`: 指摘の `206:49`・`209:23`・`99:9` と `63:13` が kill。plan.ts 84.97 → 91.30（killed 131、survived 16）。残る生存は `promptText` の等価に近い変異（47・49・51）、初回の probe（114）、行の詰め込み（134・149・155・156・162）、エラー文言（192）。
+
+**N7**（`6beaa8e`、`summarize/url-guard.ts`）:
+
+- RED: 15件失敗（`router.lan`、`ROUTER.LAN.`、`myhost.home.arpa`、`home.arpa`、SIIT 2件、6to4 3件、ローカル用 NAT64 3件、Teredo 3件）。
+- GREEN: `BLOCKED_DOMAINS`（`localhost`・`local`・`internal`・`home.arpa`・`lan` とそのサブドメイン）。SIIT `::ffff:0:0/96` は埋め込みの IPv4、6to4 `2002::/16` は第2・第3グループの IPv4 で判定。ローカル用 NAT64 `64:ff9b:1::/48`（公開の宛先にならず、埋め込みの位置が運用者のプレフィックス長で変わる）と Teredo `2001::/32`（クライアントの IPv4 が難読化されている）は丸ごと拒否。既存の境界テスト `[64:ff9b:1::7f00:1]` 許可を拒否側へ移し、隣接する公開の名前とアドレス（`my.atlan`、`[2002:808:808::1]`、`[2003:7f00:1::]`、`[2001:1::1]` 等）の許可テストを追加。テストは 82件。
+- PROVE: `home.arpa`・`lan` を外す → 4件、SIIT を外す → 2件、6to4 を常に許可 → 3件・常に拒否 → 公開の `[2002:808:808::1]` で1件、ローカル用 NAT64 を許可 → 3件、Teredo を許可 → 3件、完全一致を外す → `home.arpa` で1件。
+
+**N2・N3・N4**（文書）: plan C13 と tasks-w4 の 20.1 に、本番の HttpFetcher が接続時に解決後の IP を検査すること（rebinding を含む）と、読みながら本文の上限で打ち切ることを、テスト項目付きで加えた（20.1 の `_Boundary:_` に `isBlockedHostname` の公開のための `summarize/index.ts`）。C12 と Error Handling からも参照した。N4 は tasks-w5 の 29.2 に Ollama の再読み込み時間とメモリ量の実測を加えた。
+
+### 2026-10-07 Final Verification After Round 2 Fix
+
+- コミット: N1 `c44a2c6`、N5 `ef2484f`、N6 `7accbd5`、N7 `6beaa8e`。
+- `mise run gate` → exit 0: root `executed=257 passed=257`。ai-core `executed=687 passed=687 failed=0 skipped=4`、lines 97.85%（`src/chat` 100%、`src/summarize` 100%）。eval-suite `executed=3 passed=3 skipped=1`。9規則すべて走査件数 > 0。
+- `mise run test:mutation` → exit 0、スコア 91.60（閾値 70）。summarize 92.31、plan.ts 91.30。
+- 文書: research ADR-7（Decision・Consequences）、plan C11・C12・C13・Error Handling、tasks.md の 17・18 のノートと進捗、tasks-w4 の 20.1、tasks-w5 の 29.2、traceability の 3.3・4.6・4.7 と Gaps を更新した。
+- 未対応: レビューが N1 の Fix で併せて提案した、サーバー側で `globalThis.AI_SDK_LOG_WARNINGS` を warning の `type` だけを記録する関数に差し替える方針は、推論を送らなくなったことで N1 の経路はなくなったため入れていない（他の警告に生のプロンプトが入る経路が見つかれば C13 の `platform.ts` で行う）。

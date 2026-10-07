@@ -37,13 +37,13 @@ _Traces:_ REQ-001, REQ-003, C14
 
 日本語UIのレイアウト、起動時の設定検証、依存の組み立てを1か所で行う。
 
-_Boundary:_ `apps/web/instrumentation.ts`, `apps/web/instrumentation.test.ts`, `apps/web/app/layout.tsx`, `apps/web/app/page.tsx`, `apps/web/lib/server/platform.ts`, `apps/web/lib/server/platform.test.ts`, `apps/web/components/ui/*.tsx`
+_Boundary:_ `apps/web/instrumentation.ts`, `apps/web/instrumentation.test.ts`, `apps/web/app/layout.tsx`, `apps/web/app/page.tsx`, `apps/web/lib/server/platform.ts`, `apps/web/lib/server/platform.test.ts`, `apps/web/components/ui/*.tsx`, `packages/ai-core/src/summarize/index.ts`（20.1 の `isBlockedHostname` の公開のみ）
 _Depends:_ 8, 10, 12, 13, 14, 15, 21
 _Requirements:_ 1.9, 1.10, 2.13, 3.8, 6.4, NFR-09, NFR-12
 _Traces:_ REQ-001, REQ-002, REQ-003, REQ-006, C13
 
-- [ ] 20.1 `lib/server/platform.ts`: 設定・ゲートウェイ・ポート・Clock・レート制限器・ツールの実行時設定（`ToolRuntime`: `clock` と `AGENT_TOOL_TIMEOUT_MS` 由来の `toolTimeoutMs`）の組み立て（`server-only` を import する唯一の場所）。`mock` ではポートを 13.6 の fixture 実装に、`AI_RECORD=1`（`local`/`live`）では3つのポートを 13.4 の録画用ラッパで包む + `platform.test.ts`（`mock` の設定から各依存が組み立てられる、`AI_RECORD=1` でポートが録画用ラッパになる、`ToolRuntime` に設定値が入る）
-  _Boundary:_ `apps/web/lib/server/platform.ts`, `apps/web/lib/server/platform.test.ts`
+- [ ] 20.1 `lib/server/platform.ts`: 設定・ゲートウェイ・ポート・Clock・レート制限器・ツールの実行時設定（`ToolRuntime`: `clock` と `AGENT_TOOL_TIMEOUT_MS` 由来の `toolTimeoutMs`）の組み立て（`server-only` を import する唯一の場所）。`mock` ではポートを 13.6 の fixture 実装に、`AI_RECORD=1`（`local`/`live`）では3つのポートを 13.4 の録画用ラッパで包む。`local`/`live` の本番の HttpFetcher は、(a) 接続時に名前を解決し、解決後の IP がループバック・プライベート・リンクローカル・メタデータ等（C12 の `isBlockedHostname` と同じ規則。`./summarize` から公開する）なら接続せずに `SourceFetchError("disallowed-url")` を投げ（例: undici の `Agent({ connect: { lookup } })`。解決と接続が同じ段なので DNS rebinding も防ぐ）、(b) 本文を読みながら累積バイト数を数えて `ARTICLE_FETCH_LIMITS.maxBodyBytes` を超えた時点で中断し `SourceFetchError("too-large")` を投げる（`Content-Length` が上限超なら本文を読まない）（plan C13、W3 敵対的レビュー r2 の N2・N3）+ `platform.test.ts`（`mock` の設定から各依存が組み立てられる、`AI_RECORD=1` でポートが録画用ラッパになる、`ToolRuntime` に設定値が入る、注入した resolver で公開名が `127.0.0.1`・`169.254.169.254`・`::1`・`::ffff:10.0.0.1` に解決されると接続せずに `disallowed-url`、1回目は公開・2回目は内部の IP を返す resolver（rebinding）でも接続先は検査済みの IP だけ、上限ちょうどの本文は通り1バイト超で `too-large`、上限超の `Content-Length` では本文を読まない）
+  _Boundary:_ `apps/web/lib/server/platform.ts`, `apps/web/lib/server/platform.test.ts`, `packages/ai-core/src/summarize/index.ts`（`isBlockedHostname` の公開のみ）
   _Depends:_ 8, 10, 12, 13, 14, 15, 21.2
   _Requirements:_ 1.10, 2.13, 3.8, 6.4
   _Traces:_ REQ-001, REQ-002, REQ-003, REQ-006, C13

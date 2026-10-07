@@ -270,8 +270,8 @@ New feature（greenfield、full discovery）。リポジトリにはソースコ
 ### ADR-7: モデル切り替え時の履歴変換は、UI パートの許可リストで行う
 
 - **Context**: Req 3.3、Review H-5。`convertToModelMessages` の `ignoreIncompleteToolCalls` は、不完全なツール呼び出しを除くだけで、推論やプロバイダ固有メタデータは除かない。
-- **Decision**: 送信直前に `adaptHistoryForModel(messages, target)` を適用する。履歴はクライアントが送るため、`providerMetadata`・`providerReference`・`callProviderMetadata`・`resultProviderMetadata` と `custom` パートは常に除く。推論パートは、メッセージの `metadata.modelId` がカタログにあり、その provider が切り替え先と同じで、切り替え先が推論に対応する場合だけ残す（2026-10-07、W3 敵対的レビュー r1 の M4 で改訂。クライアントが名乗る `metadata.provider` は信頼しない。サーバーが発行した metadata の署名検証は将来の拡張とする）。画像入力に非対応のモデルへは画像パートを「画像は省略されました」というテキストに置き換える。変換はサーバーで送信時にだけ行い、クライアントの表示用履歴は変えない。結果のないツール呼び出し（`input-streaming` / `input-available`）も、同じプロバイダであっても除く（プロバイダが結果のない tool-call を拒否するため。2026-10-07、T-17.2 で追記）。
-- **Consequences**: 変換規則は純粋関数で、単体テストで網羅できる。同じプロバイダへの推論の再送は署名がないと効かない（Anthropic は署名のない推論を警告付きで捨てる）。
+- **Decision**: 送信直前に `adaptHistoryForModel(messages, target)` を適用する。履歴はクライアントが送るため、`providerMetadata`・`providerReference`・`callProviderMetadata`・`resultProviderMetadata` と `custom` パートは常に除く。推論パート（`reasoning`・`reasoning-file`）は、出所や切り替え先に関係なく常に除く（2026-10-07、W3 敵対的レビュー r2 の N1 で改訂。r1 の M4 では、`metadata.modelId` がカタログにあり、その provider が切り替え先と同じ場合だけ残していた）。プロバイダが実行したツールパートは、`metadata.modelId` がカタログにあり、その provider が切り替え先と同じ場合だけ残す（クライアントが名乗る `metadata.provider` は信頼しない。サーバーが発行した metadata の署名検証は将来の拡張とする）。画像入力に非対応のモデルへは画像パートを「画像は省略されました」というテキストに置き換える。変換はサーバーで送信時にだけ行い、クライアントの表示用履歴は変えない。結果のないツール呼び出し（`input-streaming` / `input-available`）も、同じプロバイダであっても除く（プロバイダが結果のない tool-call を拒否するため。2026-10-07、T-17.2 で追記）。
+- **Consequences**: 変換規則は純粋関数で、単体テストで網羅できる。推論の再送にはプロバイダ固有の metadata が要る（Anthropic は署名、OpenAI / Azure は `itemId` か `reasoningEncryptedContent`）。それを常に除く以上、どのプロバイダも再送された推論を使えない。そのうえ OpenAI のプロバイダは、捨てる推論パートの JSON（生の推論テキストを含む）を警告の本文に入れ、AI SDK は既定でそれを `process.emitWarning` から stderr に出す（constitution 原則 7 に反する）。そのため推論はモデルへ送らない。同じプロバイダで会話を続けても、前のターンの推論は次のターンの入力にならない（表示用の履歴には残る）。実際の OpenAI・Anthropic のプロバイダ（fetch を注入）で、要求本文にも警告にも推論のテキストが出ないことを `adapt-history.test.ts` で検査する。
 
 ### ADR-8: 要約は UI メッセージストリームのデータパートで逐次配信する
 

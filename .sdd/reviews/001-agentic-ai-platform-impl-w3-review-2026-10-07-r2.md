@@ -128,3 +128,14 @@ N1 を理由とする。M4 の修正が原則 7（生のプロンプト由来の
 
 ## Hallucination Signal
 forced: false
+
+## 対応記録（2026-10-07）
+
+- [MEDIUM] N1 推論の再送で OpenAI が生の推論テキストを警告に出す → `c44a2c6` `fix(ai-core): never replay reasoning parts to the model (W3 review r2 N1)`（推論は出所に関係なく常に除く。実際の OpenAI・Anthropic のプロバイダで要求本文と警告に推論が出ないことを検査。ADR-7・plan C11・Error Handling を改訂。`AI_SDK_LOG_WARNINGS` の差し替えは経路がなくなったため未導入）
+- [MEDIUM] N2 公開 DNS 名で内部アドレスへ到達できる → 文書で対応（`docs(sdd): record W3 review round 2 fixes`。W3 では受け入れたリスクのまま、W4 の 20.1 の本番の HttpFetcher が接続時に解決後の IP を検査する要件とテストを plan C13・tasks-w4 に追加）
+- [LOW] N3 本文の上限が全量読み込み後 → 文書で対応（同コミット。20.1 で読みながら打ち切り、`Content-Length` 超過は本文を読まない）
+- [LOW] N4 `num_ctx` が要約だけ・未実測 → 文書で対応（同コミット。tasks-w5 の 29.2 で再読み込み時間とメモリ量を実測）
+- [LOW] N5 無効な `Location` で `TypeError` が漏れる → `ef2484f` `fix(ai-core): refuse an unparsable redirect location as disallowed-url (W3 review r2 N5)`
+- [LOW] N6 統合の見積もりと `chunkBudgetTokens` の変異が生き残る → `7accbd5` `test(ai-core): pin the integration estimate and chunk budget of summary planning (W3 review r2 N6)`（`206:49`・`209:23`・`99:9` を kill、plan.ts 91.30）
+- [LOW] N7 LAN の名前と IPv4 埋め込みの IPv6 の一部を許可する → `6beaa8e` `fix(ai-core): block LAN domains and IPv4-embedding IPv6 forms in the article URL guard (W3 review r2 N7)`（`home.arpa`・`lan`、SIIT と 6to4 は埋め込みの IPv4 で判定、ローカル用 NAT64 と Teredo は丸ごと拒否。Fix の提案とは 6to4 とローカル用 NAT64 の扱いが逆で、6to4 は埋め込みの位置が固定なので判定でき、ローカル用 NAT64 は埋め込みの位置が運用者のプレフィックス長で変わるため丸ごと拒否した）
+- 検証: `6beaa8e` の作業ツリー（文書の変更を含む）で `mise run gate` exit 0（root 257/257、ai-core 687/687 skip 4・lines 97.85%、eval-suite 3/3 skip 1）、`mise run test:mutation` 91.60。
