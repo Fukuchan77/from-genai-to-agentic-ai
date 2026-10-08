@@ -262,7 +262,7 @@ New feature（greenfield、full discovery）。リポジトリにはソースコ
 
 - **Context**: Req 5、Req 6、003 Req 1.3、003 Req 1.16。
 - **Decision**: `createGuardedAgent(options)` は、`ToolLoopAgent` に3種の停止条件（`isStepCount`、累積トークン、`Clock` による経過時間）を必ず設定し、停止理由を導出する。`defineAciTool(definition)` は `tool()` をラップして、(1) リスク区分（`read-only` / `write` / `destructive`）を必須項目とし、(2) ツール単位の時間上限を `AbortSignal` の合成で実装し、(3) 例外とタイムアウトを `ToolFailure`（回復可能 / 致命的、要約、次の修正アクション）としてツール結果に変換する。M1 のツールはすべて `read-only`。
-- **実行ごとの状態**（2026-09-27 の plan レビューで追加）: `stopWhen` の条件関数は `ToolLoopAgent` の生成時に束縛されるため、開始時刻と停止条件の成立記録は実行ごとに持つ必要がある。そこで `createGuardedAgent` は**1回の実行につき1回呼ぶ**ファクトリとし、状態をインスタンスの内部に閉じる（Route Handler ではリクエストごとに生成する）。生成コストは、設定オブジェクトとクロージャを作る程度で小さい。サマリは `onStepEnd` で加算し、`onEnd`（正常終了）または `onError`（中断・エラー）のうち、先に呼ばれた方で1回だけ確定させる。`messageMetadata` の `finish` で UI へ送る。ツール数は 20 以下とし、超えたら生成を拒否する（constitution 原則 2）。
+- **実行ごとの状態**（2026-09-27 の plan レビューで追加）: `stopWhen` の条件関数は `ToolLoopAgent` の生成時に束縛されるため、開始時刻と停止条件の成立記録は実行ごとに持つ必要がある。そこで `createGuardedAgent` は**1回の実行につき1回呼ぶ**ファクトリとし、状態をインスタンスの内部に閉じる（Route Handler ではリクエストごとに生成する）。生成コストは、設定オブジェクトとクロージャを作る程度で小さい。サマリは `onStepEnd` で加算し、`onEnd`／`finish` の `messageMetadata`（正常終了）、合成した `abortSignal` の `abort` イベント（中断・タイムアウト。AI SDK v7 は中断を `onError` ではなく `abort` パートで通知する）、`onError`（ストリームエラー。settings 経由で `streamText` に渡し、AI SDK 既定の `console.error` を置き換える）、`agent.generate()` の例外のうち、最初の1つで1回だけ確定させる。`messageMetadata` の `finish` で UI へ送る（2026-10-07、T-16.3 で改訂。v7 では UI ストリームの `finish` が `onEnd` より先に届くことがあり、`ToolLoopAgentSettings` に `onAbort` / `onError` がないため。当初の「`onEnd` または `onError` の先に呼ばれた方」では、正常終了の `finish` にサマリが付かず、中断では確定しなかった。同日の W3 敵対的レビュー r1 の H3・L15 を受けて、settings の `onError` と `generate()` の経路を加えた。`AgentRunSummary.error` は閉じた `code` と固定文言だけを持つ（H2））。ツール数は 20 以下とし、超えたら生成を拒否する（constitution 原則 2）。
 - **実行時間上限の強制**: `stopWhen` はステップの完了時にしか評価されないため、応答しない LLM 呼び出しには効かない。そこで `AbortSignal.any([呼び出し元のシグナル, clock.timeoutSignal(maxDurationMs)])` を合成して LLM 呼び出しとツールに渡す。中断の理由（`AbortSignal.reason`）から、`timeout` と `aborted` を区別する。
 - **Alternatives**: (a) ToolLoopAgent を直接使う。停止条件の付け忘れを型で防げない。(b) エージェントを使い回し、実行コンテキストを `prepareStep` や call options から注入する。生成コストはわずかに減るが、並行実行で状態が混ざらないことをコードの規約に頼ることになり、教材としても追いにくい。
 - **Consequences**: 既定値はステップ 10、累積トークン 50,000、実行時間 120 秒、ツール 1 回 15 秒とし、設定で上書きできる。根拠: M1 のサンプルツールは1問あたり2〜4回の呼び出しで完了し、ローカルの小型モデルでも 1 ステップ 10 秒程度に収まる想定。値は `local` モードの実測で見直す。
@@ -270,8 +270,8 @@ New feature（greenfield、full discovery）。リポジトリにはソースコ
 ### ADR-7: モデル切り替え時の履歴変換は、UI パートの許可リストで行う
 
 - **Context**: Req 3.3、Review H-5。`convertToModelMessages` の `ignoreIncompleteToolCalls` は、不完全なツール呼び出しを除くだけで、推論やプロバイダ固有メタデータは除かない。
-- **Decision**: 送信直前に `adaptHistoryForModel(messages, target)` を適用する。切り替え先と異なるプロバイダが生成した推論パートと `providerMetadata` を除き、画像入力に非対応のモデルへは画像パートを「画像は省略されました」というテキストに置き換える。変換はサーバーで送信時にだけ行い、クライアントの表示用履歴は変えない。
-- **Consequences**: 変換規則は純粋関数で、単体テストで網羅できる。
+- **Decision**: 送信直前に `adaptHistoryForModel(messages, target)` を適用する。履歴はクライアントが送るため、`providerMetadata`・`providerReference`・`callProviderMetadata`・`resultProviderMetadata` と `custom` パートは常に除く。推論パート（`reasoning`・`reasoning-file`）は、出所や切り替え先に関係なく常に除く（2026-10-07、W3 敵対的レビュー r2 の N1 で改訂。r1 の M4 では、`metadata.modelId` がカタログにあり、その provider が切り替え先と同じ場合だけ残していた）。プロバイダが実行したツールパートは、`metadata.modelId` がカタログにあり、その provider が切り替え先と同じ場合だけ残す（クライアントが名乗る `metadata.provider` は信頼しない。サーバーが発行した metadata の署名検証は将来の拡張とする）。画像入力に非対応のモデルへは画像パートを「画像は省略されました」というテキストに置き換える。変換はサーバーで送信時にだけ行い、クライアントの表示用履歴は変えない。結果のないツール呼び出し（`input-streaming` / `input-available`）も、同じプロバイダであっても除く（プロバイダが結果のない tool-call を拒否するため。2026-10-07、T-17.2 で追記）。
+- **Consequences**: 変換規則は純粋関数で、単体テストで網羅できる。推論の再送にはプロバイダ固有の metadata が要る（Anthropic は署名、OpenAI / Azure は `itemId` か `reasoningEncryptedContent`）。それを常に除く以上、どのプロバイダも再送された推論を使えない。そのうえ OpenAI のプロバイダは、捨てる推論パートの JSON（生の推論テキストを含む）を警告の本文に入れ、AI SDK は既定でそれを `process.emitWarning` から stderr に出す（constitution 原則 7 に反する）。そのため推論はモデルへ送らない。同じプロバイダで会話を続けても、前のターンの推論は次のターンの入力にならない（表示用の履歴には残る）。実際の OpenAI・Anthropic のプロバイダ（fetch を注入）で、要求本文にも警告にも推論のテキストが出ないことを `adapt-history.test.ts` で検査する。
 
 ### ADR-8: 要約は UI メッセージストリームのデータパートで逐次配信する
 
@@ -307,7 +307,7 @@ New feature（greenfield、full discovery）。リポジトリにはソースコ
 
 - ⚠️ Turborepo 2.11 と pnpm 12 の組み合わせが未検証 — mitigation: 最初のタスクで検証する。失敗したら mise + `pnpm -r` へ後退する（ADR-1）。
 - ⚠️ Vitest 5 の mock 状態リセットの挙動変更（`vaz-agentic-ai-next` で認証 spec を壊した） — mitigation: M1 は next-auth を使わない。`vi.restoreAllMocks` などの利用規約をテストヘルパに集約する。
-- ⚠️ Stryker 10 と Vitest 5 / TypeScript 7 の組み合わせが未検証 — mitigation: `typescript-checker` なしで実行する。動かない場合は、手書きの「壊した制御ロジック」fixture によるテスト（Req 1.16 の代替手段）へ切り替える。
+- ⚠️ Stryker 10 と Vitest 5 / TypeScript 7 の組み合わせが未検証 — mitigation: `typescript-checker` なしで実行する。動かない場合は、手書きの「壊した制御ロジック」fixture によるテスト（Req 1.16 の代替手段）へ切り替える。（2026-10-07、T-19.3 で実測: そのままでは動かなかった。TypeScript 7 に JS API がないため `tsconfigFile` の書き換えで停止し、`@stryker-mutator/vitest-runner` 10.0.0 の `testNamePattern` が Vitest 5 の `suite > test` に一致せず全変異が生き残った（8.40%）。`tsconfigFile` の回避と `pnpm patch` のパッチで 88.80% になった。外す条件は plan C18）
 - ⚠️ TypeScript 7.1 先行版（ネイティブ `tsc`）が `--listFilesOnly` を持つかは未検証 — mitigation: 5.4 で実測する。持たない場合は、`count-tsc` が tsconfig の `files`・`include`・`exclude` を `node:fs` で展開して数える（plan C20）。
 - ⚠️ Playwright の WebKit エンジンは参照リポジトリで実績がない（両リポジトリとも Chromium と Firefox のみ） — mitigation: CI のマトリクスで早期に実行する。
 - ⚠️ YouTube 字幕の取得は非公式 API に依存し、仕様変更で壊れやすい — mitigation: `TranscriptSource` ポートの背後に置く。`mock` では fixture を使う。取得失敗は Req 4.11 のエラーとして扱う。

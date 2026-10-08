@@ -32,10 +32,15 @@ describe("PlatformError", () => {
 			"capability-unsupported",
 			"provider-unavailable",
 			"source-unavailable",
+			"output-invalid",
 		]);
 
 		expectTypeOf<PlatformErrorCode>().toEqualTypeOf<
-			"invalid-request" | "capability-unsupported" | "provider-unavailable" | "source-unavailable"
+			| "invalid-request"
+			| "capability-unsupported"
+			| "provider-unavailable"
+			| "source-unavailable"
+			| "output-invalid"
 		>();
 	});
 });

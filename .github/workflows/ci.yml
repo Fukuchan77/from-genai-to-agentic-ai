@@ -76,11 +76,31 @@ jobs:
       - name: Audit dependencies
         run: mise run audit
 
+  mutation:
+    name: Mutation tests
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install mise and toolchain
+        uses: jdx/mise-action@7a4e45a543138629540c9a1616d08632b893e492 # v5.0.1
+        with:
+          version: 2026.9.14
+          install: true
+          cache: true
+      - name: Install dependencies
+        run: mise run setup
+      - name: Run mutation tests
+        run: mise run test:mutation
+
   ci-status:
     name: CI status
     timeout-minutes: 5
     if: ${{ always() }}
-    needs: [gate, secret-scan, audit]
+    needs: [gate, secret-scan, audit, mutation]
     runs-on: ubuntu-latest
     steps:
       - name: Require all CI jobs to succeed
@@ -88,7 +108,9 @@ jobs:
           GATE_RESULT: ${{ needs.gate.result }}
           SECRET_SCAN_RESULT: ${{ needs.secret-scan.result }}
           AUDIT_RESULT: ${{ needs.audit.result }}
+          MUTATION_RESULT: ${{ needs.mutation.result }}
         run: |
           test "$GATE_RESULT" = "success"
           test "$SECRET_SCAN_RESULT" = "success"
           test "$AUDIT_RESULT" = "success"
+          test "$MUTATION_RESULT" = "success"

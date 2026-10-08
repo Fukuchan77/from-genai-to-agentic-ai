@@ -174,12 +174,12 @@ _Traces:_ REQ-001, REQ-007, C1, C2, C22
   _Requirements:_ 1.4, 1.7, 1.10, 1.15, 1.17
   _Traces:_ REQ-001, C1, C2
   _Verify:_ 各段について、一時的に違反を入れて gate が非ゼロで終了することを1回ずつ確認する。追加したジョブは `actions-pinned`・`frozen-lockfile` 規則を満たす
-- [ ] 29.2 `mise run gate:repeat`（同一コミットで10回実行し合否が同一）、オフライン実行（依存インストール済みでネットワーク切断時も成功）、API キーなしでの成功、5分以内の完了を実測で確認する。Ollama を止めた状態の `mise run test:local` で、`*.local.test.ts` が理由付きでスキップされることも確認する
+- [ ] 29.2 `mise run gate:repeat`（同一コミットで10回実行し合否が同一）、オフライン実行（依存インストール済みでネットワーク切断時も成功）、API キーなしでの成功、5分以内の完了を実測で確認する。Ollama を止めた状態の `mise run test:local` で、`*.local.test.ts` が理由付きでスキップされることも確認する。Ollama を起動した状態では、要約（`num_ctx` 40,960）とチャット・エージェント（サーバー既定）を交互に呼んだときのモデル再読み込みの時間とメモリ量を実測する（W3 敵対的レビュー r2 の N4。大きければチャットとエージェントにも同じ `num_ctx` を渡す変更を plan C11・C8 に起票する）
   _Boundary:_ `mise.toml`
   _Depends:_ 29.1
   _Requirements:_ 1.5, 1.11, 1.14, NFR-01, NFR-02, NFR-03
   _Traces:_ REQ-001, C1
-  _Verify:_ 実測値（実行時間、10回の合否）を大タスク29の Implementation Notes に記録する
+  _Verify:_ 実測値（実行時間、10回の合否、Ollama の再読み込み時間とメモリ量）を大タスク29の Implementation Notes に記録する
 - [ ] 29.3 `mise run secret-scan`・`audit`・`test:mutation` の実行確認と、CI の集約ステータス（`ci-status`）が plan C2 の全ジョブ（`gate`、`e2e`、`secret-scan`、`audit`、`mutation`、`client-bundle`）を反映することの最終確認
   _Boundary:_ `mise.toml`
   _Depends:_ 29.1

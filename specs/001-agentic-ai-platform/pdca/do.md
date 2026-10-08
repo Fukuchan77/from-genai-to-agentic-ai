@@ -3092,3 +3092,420 @@ GREEN 後、7件すべての新規テストについて独立した deliberate b
 - 境界: 修正した3つのテストファイルは T-11.2・T-13.3・T-13.4 の `_Boundary:_` 内。T-21・T-21.1 の `_Boundary:_` への `packages/ai-core/package.json` の追加は、未着手のタスクの計画の変更である。
 - 監査の未対応項目（L-1〜L-8、D2、D4〜D10）は LOW / Info で、GO を妨げない。D9 は T-14.1 / T-14.3 で扱う。
 - Ship: テストの修正は `bdc1584` test(ai-core): harden W2 local-only, recording, and scenario ambiguity tests。traceability.md の件数（`local-only.test.ts` 6件、`resolve.test.ts` 8件）、Commit 列と Gaps を更新した。
+
+### 2026-10-07 Task 14 Started（W3 の並列実装）
+
+- Objective: `createModelGateway`（`resolve`・`resolveEmbedding`・`availableModels`）、Ollama の事前検査、録画の合成、`./models` の公開 API、`local` 限定のカタログ確認を実装し、`module/1-1` のタグを付ける。W2 の D9（明示指定したモデル ID と実行モードの整合）もここで扱う。
+- 実施: W3 の大タスク 14〜19 を、境界の重ならないワーカーに分けて並列に実装し、統合ブランチ `claude/project-thread-xt048t` に取り込んだ（以下の SHA は統合後のもの）。Task 14 のワーカーは 14.1〜14.5 を担当し、14.6 はコーディネーターが行った。
+- SCAN baseline: W2 の再検証時点で ai-core `executed=114 passed=114 failed=0 skipped=2`。
+
+### 2026-10-07 Task 14.1〜14.5 RED / GREEN / PROVE Evidence
+
+**RED evidence**:
+
+- 14.1 `gateway.test.ts`: `Cannot find module ./errors` / `./gateway`。
+- 14.2: `Cannot find module './ollama-preflight'`、`gateway.test.ts` の `local` の3件が失敗。
+- 14.3: 追加した13件が失敗。
+- 14.4: 単独のテストなし。一時の `src/models/zz-subpath.test.ts` で `@platform/ai-core/models` を型と値の両方で import し、Vitest と `tsc` が通ることと、value export 17件（inline snapshot）を確認した。ファイルは削除し、コミットしていない。
+
+**GREEN**:
+
+- 14.1: 10/10、14.2: 28/28、14.3: 43/43（`models/` の焦点テスト。`--coverage.enabled=false`）。
+- Coverage: `gateway.ts` lines 100%、`ollama-preflight.ts` 100%、`providers.ts` 92.85%、`errors.ts` 100%。
+
+**PROVE evidence**（壊す → 失敗 → 復元）:
+
+- 14.1: モード検査を `if (false)` → D9 の2件が「promise resolved … instead of rejecting」。`assertCredentials` を除去 → OpenAI・Azure の認証情報の2件。用途を `"chat"` に固定 → `expected 'mock:chat' to be 'mock:structured'`。カタログ検査を除去 → `expected TypeError … to match { name: 'ModelSelectionError' }`。
+- 14.2: キャッシュを除去 → キャッシュのテスト（「resolved undefined instead of rejecting」）。`??=` を `=` → 同時検査のテスト（2回目の fetch で TypeError）。`:latest` の正規化を除去 → タグなし名のテスト（model-missing）。HTTP 状態の検査を除去 → http-status のテスト。タイムアウトのシグナルを除去 → `expected undefined to be an instance of AbortSignal`。ゲートウェイの事前検査の呼び出しを除去 → `local` の3件。
+- 14.3: 機能検査を無効化 → 3件。`purpose-mismatch` の検査を無効化 → 1件。`availableModels` の認証情報フィルタを除去 → `expected [Array(6)] to deeply equal ['claude-sonnet-4-6']`。モードのフィルタをカタログ全体に置き換え → 3件。録画を合成しない → 2件、常に合成 → 「recording off」の1件。`recordedWith` を `"live"` に固定 → `local` の録画のテスト。`createRedactor({})` → `expected … not to contain 'test-anthropic-key'`。埋め込みの次元の設定を無視 → `expected length 8 but got 768`。
+- 14.5: `AI_TEST_RUN_MODE=local AI_TEST_SUITE=local`（Ollama なし）→ `executed=0 passed=0 failed=0 skipped=2`、理由 `Ollama is unavailable at http://127.0.0.1:11434: fetch failed. Start it with \`ollama serve\`.`。gate では `Local tests require AI_TEST_RUN_MODE=local.`。`describeLocal` を `describe` に置き換えると、2件とも `OllamaUnavailableError` の日本語のメッセージで失敗する（本体が実際に検査している）。
+
+**Verification**（ワーカーの最終 `mise run gate`、exit 0）:
+
+- Biome 106 files、model-ID 82 files、repository rules 8規則すべて走査件数 > 0（`no-sensitive-logging` 61、`ai-core-no-ui-deps` 55 等）、typecheck 4 tasks（ai-core 57 files）。
+- root `executed=257 passed=257 failed=0 skipped=0`。ai-core `Tests 150 passed | 4 skipped (154)`、`executed=150 passed=150 failed=0 skipped=4`（理由 `Local tests require AI_TEST_RUN_MODE=local.` 4件。`*.local.test.ts` は gate の glob `src/**/*.test.ts` にも一致し、理由付き skip として数える W2 の設計どおり）、All files lines 95.35%。
+- 統合コミット: 14.1 `c8b60e8`、14.2 `f633ca3`、14.3 `1d8b91e`、14.4 `96450e6`、14.5 `f671813`。pre-commit（biome、gitleaks staged、check:model-ids）は毎回実行した。`--no-verify` は使っていない。
+
+### 2026-10-07 Task 14.6 完成タグ `module/1-1`
+
+- `git tag -a module/1-1 f671813`（ローカル、注釈付き）。対象は 14.5 の統合コミットで、W3 の 15〜18 の実装は含まない（統合順で 16.1 の `0fb44ee` 以降）。
+- メッセージ:
+  ```
+  module/1-1: reference implementation of module 1-1 (Req 1, 2)
+
+  Includes: monorepo foundation, quality gate, run modes, model catalog, ModelGateway, MockRuntime (tasks 1-13, 14.1-14.5).
+  Also includes partial work of modules running in parallel at this commit: none beyond W2.
+  Not included: E2E (C19) and module docs (C22).
+  Push in task 29.4 after human approval.
+  ```
+- gate: 14.5 のワーカーの最終 `mise run gate`（上記、exit 0）を、タグのコミットの時点の構成での確認とした。
+- 制約: 作業環境は使い捨てで、タグは失われうる。29.4 は同じコミット（`f671813`）と上記のメッセージで作り直してから検証・push する。`f671813` を `main` に残すため、W3 の PR はマージコミットで取り込む（squash / rebase しない）。
+
+### 2026-10-07 Task 14 Validation and Ship
+
+- Spec drift: plan C6 に `GatewayDeps` の形、`resolveEmbedding` の引数、`ModelOption`、検査の順序、`ModelSelectionError`（D9 のエラー型。tasks の 14.1 で「実装時に決めて plan C6 に記録する」としていたもの）、事前検査のキャッシュの具体値（成功だけを 5 秒、タイムアウト 2 秒）がなかった。plan C6・Error Handling・File Structure を実装に合わせた。
+- Risks: `./models` の value export はプロバイダ SDK・`node:fs`・`node:crypto` を読み込むため、クライアントは `import type` だけを使う（C20 のクライアントバンドル検査で確認）。Azure のデプロイメント名はカタログの ID と同じにする必要がある（解説 C22 で扱う）。`gateway.ts` の防御的な分岐1つは未到達。
+- Mechanical fixes: tasks.md（14.1〜14.6 を `[x]`、Implementation Notes、進捗）、traceability.md（1.13・1.14・2.1・2.2・2.3・2.6・2.7・2.9・2.10・2.13・3.2・3.9・7.11 の Test/Commit、Gaps）。
+
+### 2026-10-07 Task 15 RED / GREEN / PROVE Evidence
+
+- Objective: ツール定義の共通規約（リスク区分、実効タイムアウト、エラーと中断のツール結果化、Clock 注入）、`buildToolSet` と `GuardedToolSet`、M1 の5ツール、`./aci` の公開 API。
+- テストの実行: `pnpm --filter @platform/ai-core exec vitest run <path> --coverage.enabled=false`。
+
+**RED evidence**:
+
+- 15.1: `Cannot find module './define-tool'`。15.2: `Cannot find module './tool-set'`。15.3: `./current-time`・`./calculator` が見つからない。15.4: `Cannot find module './currency'`。
+
+**GREEN**:
+
+- 15.1 `define-tool.test.ts` 22/22（`tsc` clean）、15.2 `tool-set.test.ts` 10/10、15.3 `calculator.test.ts` 34件と `tools.test.ts` の現在時刻3件、15.4 `tools.test.ts` 25件。
+
+**PROVE evidence**（壊す → 失敗 → 復元）:
+
+- 15.1: `effectiveToolTimeoutMs` の `min` を除去 → `expected 5000 to be 1000`（「長い定義の上限」）。タイムアウトの分岐を `if (false)` → タイムアウトの4件が「promise rejected DOMException TimeoutError instead of resolving」。`summary` に `error.message` を使う → 秘密を出さないテストの deep-equal。`AbortSignal.any` から呼び出し元のシグナルを除く → 中断の伝播のテストが `expected false to be true`（5 秒のタイムアウトを待たずに失敗するよう、テストの順序を先に入れ替えた）。
+- 15.2: リスク検査を除去 → write・destructive・「無効化されるツールでも非 read-only を拒否」が `expected function to throw`。`!== true` を `=== false` → `expected ['webSearch'] to deeply equal []`。`toTool` に2倍のタイムアウトを渡す → 300 ms の確定のテストが `expected false to be true`。Clock を複製して渡す → 同一性のテスト。`Object.freeze` を除去 → `expected false to be true`。`GuardedToolSet` のブランドを除去 → `tsc` が `TS2578 Unused '@ts-expect-error'`。
+- 15.3: `clock.now()` を `Date.now()` → 現在時刻の2件。`^` の右辺を `primary` で解析 → `2^3^2` と `2^-1`。減算の左右を入れ替え → `expected 9 to be 3`。0 除算の検査を除去 → 「expected 計算結果が有限の数になりません。 to be 0 で割ることはできません。」。深さの検査 `>=` を `>` → ネストのテスト。閉じない括弧の分岐を壊す → メッセージの不一致。
+- 15.4: fetcher に signal を渡さない → `expected undefined to be true`。HTTP 状態の検査を除去 → deep-equal。URL のカンマを `%2C` に符号化 → 録画済み fixture を使う3件と URL のテスト。為替レートを逆数に → 換算の2件。基準通貨の refine を除去 → レート表の2件。`requiredFeature` を除去 → 登録のテスト。5件の `slice` を除去 → 7件が返る。
+- 15.5: 一時の `packages/eval-suite/tests/` のテストで `@platform/ai-core/aci` を import し、runtime export 22件で成功（削除、未コミット）。`node scripts/check-repo-rules.mjs --only tool-risk-declared` → `scanned 13 FILES`、違反0。`calculator.ts` の `risk:` を消すと違反になり、規則がファイルを見ていることを確認した。
+
+**Verification**（ワーカーの最終 `mise run gate`、exit 0）:
+
+- model-ID 87 files、repository rules 8規則すべて走査件数 > 0。root `executed=257 passed=257`。ai-core `Tests 205 passed | 2 skipped`、`executed=205 passed=205 failed=0`。lines 95.83%、`src/aci` 100%、`src/aci/tools` lines 100%（`calculator.ts` statements 99.12%）。
+- 統合コミット: 15.1 `90a1b03`、15.2 `c7cfd13`、15.3 `65e0f16`、15.4 `ab7a569`、15.5 `e5dd66b`。fixture は既存の `fixtures/http/weather.json`（東京）と `fixtures/web-search/agentic-ai.json` で足り、異常系と大阪はテスト内で組み立てた。
+
+### 2026-10-07 Task 15 Validation and Ship
+
+- Spec drift: plan C9 は `buildToolSet(tools: readonly AciTool[], …)` で、`ToolAvailability` を定義していなかった。AI SDK v7 の `Tool` の不変性による `AnyAciTool`、`GuardedToolSet<TOOLS>` と実行時の凍結、`requiredFeature` と `toolAvailabilityFromConfig`、中断・エラーのツール結果化の規則、`ConfigError` の対象、ツール名と天気の `{ city }` 入力・9都市の表・URL の組み立て、追加の公開 API を plan C9 と Error Handling に記録した。
+- Risks: Web 検索ツールはキーがなくても `WebSearchProvider` を要する（T-20.1）。`mock` で Web 検索を有効とみなすかは Route の判断（T-23.1）。`rates.json` の import attributes は Next/Turbopack で未確認。
+- Mechanical fixes: tasks.md（15.1〜15.5 を `[x]`、Implementation Notes、進捗）、traceability.md（5.2・5.3・5.4・5.7・5.8・6.4 の Test/Commit、Gaps）。
+
+### 2026-10-07 Task 16.1〜16.2 RED / GREEN / PROVE Evidence
+
+- Objective: run に束縛した3種の停止条件と、閉じた語彙の停止理由の純粋関数。
+
+**RED evidence**:
+
+- 16.1: `pnpm exec vitest run src/agents` → `Cannot find module './stop-conditions'`。
+- 16.2: `Cannot find module './stop-reason'`。
+
+**GREEN**:
+
+- 16.1 `stop-conditions.test.ts` 18/18、16.2 `stop-reason.test.ts` 14/14。`tsc --noEmit` と biome は clean。
+
+**PROVE evidence**（`scratchpad/prove.py` が stub を当て、テストを実行し、復元する）:
+
+| Stub | 失敗したテスト |
+|---|---|
+| P1 `isStepCount(maxSteps - 1)` | stepLimit の「1つ手前」「ちょうど上限」、統合の「ちょうど maxSteps で止まる」ほか2件 |
+| P2 tokenBudget の `>=` を `>` | 「予算ちょうどで成立する」 |
+| P3 最後のステップだけを合計 | 「全ステップを合計して予算ちょうどで成立する」と統合の token-budget |
+| P4 入力トークンを無視 | P3 と同じテストと記録のテスト |
+| P5 deadline の `>=` を `>` | 「期限ちょうどで成立し timeout を記録する」と開始時刻を明示するテスト |
+| P6 `createRunStopConditions` が `startedAt` を無視 | 「開始時刻が上限より古い run で timeout が成立する」 |
+| P7 モジュール単位で共有する記録 | 「3条件を run ごとの新しい記録に束縛する」と統合の2件 |
+| P8 timeout を記録しない | timeout の2件 |
+| P9 `fired()` を凍結しない | スナップショットのテスト |
+| P10 正の整数の検証なし | 「rejects…」の3件 |
+| Q1 abort より先に error を検査 | abort の優先順位の2件 |
+| Q2 timeout の中断を `aborted` にする | 3件 |
+| Q3 成立した条件の優先順位を逆に | 「ranks fired conditions…」 |
+| Q4 error より先に成立した条件を検査 | 「puts an error above every fired stop condition」 |
+| Q5 記録を入力として受け取らない | 「accepts the run's stop-condition record directly」 |
+| Q6 語彙から `aborted` を除く | 2件 |
+
+**Verification**（ワーカーの最終 `mise run gate`、exit 0）: root `executed=257 passed=257`、ai-core `Tests 146 passed | 2 skipped (148)`、`executed=146 passed=146`、All files lines 94.37%、`src/agents` 100%（全指標）。統合コミット: 16.1 `0fb44ee`、16.2 `265f6ec`。
+
+### 2026-10-07 Task 16.3〜16.4 RED / GREEN / PROVE Evidence
+
+- Objective: `createGuardedAgent`（1回の実行に束縛、`GuardedToolSet` だけを受け付ける、ツール数とループ上限の検証、`abortSignal` の合成、サマリの1回だけの確定、`RunObserver`）と `./agents` の公開 API。基点は 14.1〜14.5、15.1〜15.5、16.1〜16.2、17.1〜17.2 を含む `e5dd66b`。
+
+**RED evidence**:
+
+- 16.3: `pnpm exec vitest run src/agents/guarded-agent.test.ts` → `Cannot find module ./guarded-agent`。
+- 16.4: 公開サブパスを import する一時の probe → `Cannot find package '@platform/ai-core/agents'`。
+
+**First GREEN の失敗**: 22/23。「`finish` の run メタデータ」が `undefined` だった。v7 では UI ストリームの `finish` が `streamText` の `onEnd` より先に届くため、plan C8 の「`finish` は `onEnd` より後」という前提が成り立たない。`messageMetadata` の `finish` でもサマリを確定するよう修正し、23/23 になった（下記 plan C8・ADR-6 の改訂の根拠）。
+
+**PROVE evidence**（`scratchpad/prove16.py` で14種の stub。各々復元済み）:
+
+- 合成シグナルからタイムアウトを除く → 応答しない LLM のテストが 5000 ms でタイムアウト。
+- 中断の理由を常に "caller" → `expected { stopReason: 'aborted' } to match { stopReason: 'timeout' }`。
+- ツール数の上限を 21 → `expected function to throw`。
+- 最初の確定だけを採用する guard を除去 → `expected 'aborted' to be 'completed'` と observer の呼び出し回数 2。
+- ほか（`toolsCalled` の除去、メタデータの除去、observer を呼ばない、observer の try/catch の除去、生成前の中断の検査の除去、上限の検証の弱化、非 Error の name、遅い開始時刻、`cacheRead` を合計しない、生のエラー文を返す）も、それぞれ対応するテストが失敗した。
+- 型: `tools` を素の `TOOLS` にすると `tsc` が `TS2578 Unused '@ts-expect-error' directive`。
+- 16.4: index から `createGuardedAgent` を除くと probe が `expected [ …(8) ] to deeply equal [ …(9) ]`。probe はコミット前に削除した（境界に index のテストがないため）。
+
+**Verification**（ワーカーの最終 `mise run gate`、exit 0）:
+
+- `guarded-agent-only: scanned 88 FILES`、違反なし。root `executed=257 passed=257`。ai-core `Tests 341 passed | 4 skipped (345)`、`executed=341 passed=341 failed=0 skipped=4`。All files lines 97.01%、`src/agents` 100%、`guarded-agent.ts` lines 100% / branches 88.09%。
+- エラーのテストは stderr にスタックを出す（`streamText` の既定のエラー出力。下記 Risks）。
+- 統合コミット: 16.3 `2140b87`、16.4 `18990d7`。
+
+### 2026-10-07 Task 16 Validation and Ship
+
+- Spec drift: plan C8 の停止条件の引数（`stepLimit(n)`・`tokenBudget(n)`・`deadline(clock, ms)`）、`StopReasonInput` の形、サマリの確定経路（ステップ3・5）と ADR-6 の「`onEnd` または `onError` の先に呼ばれた方」が、AI SDK v7 の実際の順序・通知と食い違っていた。plan C8（`createRunStopConditions`、`StopReasonInput`、確定経路の7項目、`messageMetadata`・`onError`・`startedAt`、`MAX_AGENT_TOOLS`、公開 API）、Data Model（`AgentRunSummary.error` のキーは常にあり、`message` は 200 文字で切る）、research.md ADR-6 を改訂した。
+- Risks: `guarded.agent.generate()` / `.stream()` を直接呼んでエラーになると `done` が解決しない（M1 の Route は `createAgentUIStreamResponse` を使う）。`streamText` の既定の `onError` は生のエラーを `console.error` に出し、`ToolLoopAgentSettings` から変えられない（T-23.1 で `no-sensitive-logging` との整合を確認）。observer の例外は記録せずに握りつぶす。
+- Mechanical fixes: tasks.md（16.1〜16.4 を `[x]`、Implementation Notes、進捗）、traceability.md（5.1・5.6・6.1・6.2・6.3・6.5 の Test/Commit、Gaps）。
+
+### 2026-10-07 Task 17.1〜17.2 RED / GREEN / PROVE Evidence
+
+- Objective: 3種のペルソナのテンプレートと、モデル切り替え時の履歴変換（ADR-7）。
+
+**RED evidence**:
+
+- 17.1: `pnpm exec vitest run src/chat/personas` → `./general-assistant` が見つからない（0件実行）。
+- 17.2: `Cannot find module './adapt-history'`。
+
+**PROVE evidence**（stub を当てて失敗を確認し、復元）:
+
+- 17.1: `version: "1.0"` → `expected '1.0' to match /^(0|[1-9]\d*)…/`。strict-reviewer の ID を `"python-mentor"` に重複 → 「has unique ids」を含む5件。`render` が vars を無視 → `expected '…' to contain 'モデル名: Mock Chat'` ほか3件。`getPersona` が throw しない → `expected undefined to be an instance of PlatformError`・`expected function to throw`。`Object.freeze` を除去 → `expected false to be true`。`isPersonaId` を大文字小文字を区別しない比較に → 「narrows only listed ids」。「Python の基礎文法は説明しない」を削除 → python-mentor の内容のテスト。
+- 17.2: 推論を常に残す → 7件（`expected ['step-start','reasoning','text'] to deeply equal ['step-start','text']`）。推論の機能を無視 → 「drops reasoning when the target model has no reasoning capability」。プロバイダ固有フィールドを除かない → 5件（`expected {…, providerMetadata} to deeply equal { type:'text', text:'猫の画像です。' }`）。画像の判定を `startsWith("image/")` だけに → 最上位の `image` のテスト。`input-streaming` だけを除く → input-available のケース。別プロバイダの `providerExecuted` ツール・`custom` パートを残す → それぞれ失敗。step-start だけのメッセージを残す → `expected ['u1','a1','u2'] to deeply equal ['u1','u2']`。パートをその場で変更 → 入力を変えないテスト。
+- 17.2 で当初生き残った stub 2件: assistant だけを対象にする guard の除去と、同じプロバイダで同じパートのオブジェクトを再利用する stub。テストを1件ずつ加え、user の metadata のテストと `expected { type: 'step-start' } not to be …`（同じプロバイダでも新しいオブジェクト）で失敗するようにした。
+
+**Verification**:
+
+- 17.1 23/23、17.2 22/22（`convertToModelMessages` の出力に推論・署名・画像データがないことの確認を含む）。`tsc`・biome は clean。`src/chat/personas` 100%、`adapt-history.ts` lines 100% / branches 97.43%（未到達は29行目の、metadata がオブジェクトでない場合の guard）。
+- ワーカーの最終 `mise run gate`: model-ID 81 files、repository rules 8規則すべて成功（`no-sensitive-logging` 60 files）、root `executed=257 passed=257`、ai-core `159 passed | 2 skipped`、`failed=0`、All files lines 94.56%。
+- 統合コミット: 17.1 `a753e4b`、17.2 `30bc262`。
+
+### 2026-10-07 Task 17.3 RED / GREEN / PROVE Evidence
+
+- Objective: `buildResponseMetadata`、`chatRequestSchema` / `agentRequestSchema`（`z.strictObject`）、`./chat` の公開 API。`package.json#exports` の `./chat` は既にあった。
+
+**RED evidence**:
+
+- `metadata.test.ts`: `Cannot find module './metadata'`。
+- `request-schema.test.ts`: `Cannot find module './request-schema'`。
+- 公開 API のテスト（`request-schema.test.ts` 内で `@platform/ai-core/chat` を import）: `Cannot find package '@platform/ai-core/chat'`。
+
+**GREEN**: `metadata.test.ts` 13件、`request-schema.test.ts` 49件（`describe.each` で全ケースを chat / agent の両スキーマに対して実行）。`vitest run src/chat` 107 passed。
+
+**PROVE evidence**（スクリプトで1つずつ当てて復元）:
+
+- `metadata.ts`（11種）: cacheRead の写しを除去 →「maps the AI SDK usage…」「keeps a reported zero」。`=== undefined` を falsy の検査に →「keeps a reported zero instead of dropping it」。`?? 0` を除去 →「counts unreported input and output totals as zero」。`run.toolsCalled` を無視 →「carries the run and reports its tools…」「reports an empty tool list… (Req 5.6)」。優先順位を入れ替え →「prefers explicit toolsCalled over the run's list」。常に `usage` キーを出す →「leaves usage out for the stream's start chunk」。`disabledTools: []` に固定 →「lists the tools that were not registered (Req 5.4)」。freeze を除去 →「returns a JSON-serialisable value…」。`modelName = entry.id` →「copies the model identity…」。`run` を落とす →「carries the run…」。常に `toolsCalled` を出す →「has no run and no toolsCalled」。
+- `request-schema.ts`（11種、各スキーマで1回ずつ失敗）: 最上位の `strictObject` を `object` →「rejects an unknown top-level field」。メッセージの `strictObject` を `object` →「rejects an unknown field on a message」。modelId を任意の文字列 → カタログのテストと `constructor` / `toString` / `__proto__` のケース。personaId を任意の文字列 →「rejects an unknown persona ID」。`system` ロールを許可 →「rejects a client-supplied system message」。`trigger` / `messageId` を除去 → `DefaultChatTransport` のテストと「rejects an unknown trigger」。`messages.min(1)` を除去 →「rejects no messages」。パートの `looseObject` を `object` →「keeps every part's fields」。ID の最大長を除去 →「rejects an over-long id」。日本語のモデル・ペルソナのエラー文を除去 → `/モデル/`・`/ペルソナ/` の照合。
+- `index.ts`: `buildResponseMetadata` の export を除く →「exposes personas, history adaptation, response metadata and the request schemas」。
+- テストにモデル ID のリテラルはない（`Object.keys(MODEL_CATALOG)`、`listModels()`、`PERSONA_IDS` から取る）。`AgentRunSummary` の型は公開サブパス `@platform/ai-core/agents` から import し、16.4 の `_Verify:_` を満たす。
+
+**Verification**（ワーカーの最終 `mise run gate`、exit 0。Tasks: 4 successful）:
+
+- root 257 passed（1 expected fail）。ai-core Test Files 38 passed、Tests 523 passed / 4 skipped、`executed=523 passed=523 failed=0`。All files stmts 96.36% / lines 97.63%、`src/chat` 100 / 98.24 / 100 / 100、`metadata.ts` 100%。
+- 統合コミット: `6f7a049`（metadata）、`175a05b`（request schemas と `./chat`）。
+
+### 2026-10-07 Task 17 Validation and Ship
+
+- Spec drift: (1) plan の `POST /api/chat` の本文は4フィールドの `z.strictObject` で、`DefaultChatTransport` が既定で付ける `trigger`・`messageId` を拒否する（既定の `useChat` の送信がすべて 400 になる）。2フィールドを任意で受け付け、Route では使わないことにした（代案の `prepareSendMessagesRequest` での除去は採らない）。(2) plan C11 の `buildResponseMetadata` のシグネチャに `persona`・`disabledTools` がなく、`usage` が必須だった。(3) ADR-7 の Decision に、結果のないツール呼び出しの除外と生成元の判定がなかった。plan C11・Data Model（応答メタデータ）・HTTP API・C15、research.md ADR-7 を実装に合わせた。
+- Risks: `metadata.provider` はクライアントが改ざんできる（Route で `metadata.modelId` のカタログ照合を加えるかは T-22 で判断）。画像以外のファイルパートはそのまま送られる。strict なエンベロープは、AI SDK が `UIMessage` に最上位のフィールドを加えると更新まで拒否する。メッセージ件数・長さ・画像の上限は C14 に任せ、ここでは重複させない。
+- Mechanical fixes: tasks.md（17.1〜17.3 を `[x]`、Implementation Notes、進捗）、traceability.md（3.3・3.7・3.10・5.6 の Test/Commit、Gaps）。
+
+### 2026-10-07 Task 18 RED / GREEN / PROVE Evidence
+
+- Objective: 記事・YouTube・字幕テキストの取得、全文／分割の判断、プロバイダ別のキャッシュ指定、最大2回の再生成、`partial` / `restart` / `final` / `meta` のイベント列。
+- 順序: 18.4 を 18.3 より先に行った（`plan.ts` が実際のプロンプトの組み立てから指示文のトークン数を測るため）。18.6 で v7 が `messages` 内の system メッセージを `AI_InvalidPromptError` で拒否することが分かり、`prompts.ts` を `{ instructions, messages }` を返す `build*Prompt` に変え、`cache-policy.test.ts` と `plan.ts` も合わせた。
+- テストの実行: `pnpm --filter @platform/ai-core exec vitest run --coverage.enabled=false <file>`。
+
+**RED evidence**: 全サブタスクで、実装より先にテストファイルがあり `Cannot find module './<x>'`（schema・source・cache-policy・plan・retry・pipeline）。
+
+**PROVE evidence**（sed で stub を当て、テストを実行し、復元）:
+
+- 18.1 `schema.test.ts`（47件）: `.length(3)` → `.min(2)` で「2件・4件の要点」が `expected true to be false`。YouTube のホスト検査を除去 → `expected 'dQw4w9WgXcQ' to be undefined`。`issuesByAttempt.at(-1)` → `.at(0)` で `expected ['keyPoints: too small'] to deeply equal ['title: too big']`。`chapters.min(1)` を除去 → `expected [] to deeply equal ['chapters']`。`strictObject` → `object` で未知フィールドのテスト。
+- 18.2 `source.test.ts`（21件、13.6 の fixture を `loadFixtureSet` で使う）: 状態の検査を除去 → `expected { kind: 'article', text: 'Not Found' } to be an instance of SourceFetchError`。`PlatformError` の素通しを除去 → `expected SourceFetchError … to be an instance of MockFixtureMissingError`。中断の再 throw を除去 → `expected SourceFetchError … to be DOMException`。字幕の失敗をすべて fetch-failed に → no-captions・private のテスト。空の segment の除外を除去 → `expected { … text: '' } to match { reason: 'no-captions' }`。除外要素の検査の除去は、Readability が自分で script を除くため初回は生き残った。「ナビゲーションだけの文書」のケースを加え、`expected { text: 'ホーム' } …` で失敗するようにした。
+- 18.4 `cache-policy.test.ts`（15件）: 自動系を none に → openai・azure・google のテスト。再送でソースパートを変える →「keeps the cached source part identical」。`</source>` の無害化を除去 → `expected ['</source>', '</source>'] to have a length of 1`。anthropic でカタログの `promptCache: "none"` を無視 → `expected { mode: 'explicit' } to deeply equal { mode: 'none' }`。
+- 18.3 `plan.test.ts`（9件）: whole/staged の `<=` を `<` → `expected 'staged' to be 'whole'`。安全係数 1.1 → `expected 1.1 to be 1.2`。出力予約 4000 → `expected 4000 to be 4096`。長い行を強制分割しない → 強制分割のテスト。1行1チャンク → `expected 400 to be ≤ 9`。最小予算の検査を除去 → `PlatformError` が投げられない。秒を切り捨てない → `'[90.7s]' vs '[90s]'`。浮動小数の丸めの guard が stub で生き残ったため、2〜3M までの整数で `Math.ceil(n*1.2)` / `Math.floor(n*0.8)` が変わらないことを確かめて guard を除いた。
+- 18.5 `retry.test.ts`（7件）: ループの上限を `<= MAX_REGENERATIONS` → 3回目の成功のテストが失敗し、エラーが「2 回」。`restart` を出さない → `expected ['partial-1','partial-2'] …`。前回の issues を渡さない → 呼び出しの検査。最後の issues だけを保持 →「1 回失敗」（3 の代わり）。
+- 18.6 `pipeline.test.ts`（21件）: 常に partial を出す → staged のテスト。ポリシーに関係なくキャッシュ読み出しを記録 → mock の meta の deep-equal。restart を捨てる → `expected [] to deeply equal [{ type: 'restart' … }]`。プロバイダのエラーを検証失敗として扱う → `expected SummaryValidationError … to be Error: provider down`。チャプターを要求しない → チャプターのテスト。再生成でフィードバックを落とす → 再生成のテスト。入力トークンを合計しない → staged の meta。
+- fixture の不足はテスト内で補った（`fixtures/` は変えていない）: `chunkSize: 8` の streamed シナリオ、フィードバックの文言で一致する「再生成で有効になる」シナリオ（共有の一覧には入れない。入れると `m1-3/validation-retry` も有効になるため）、統合の呼び出し用のシナリオ、`fixture:summary-chapters` を含む YouTube ソース。
+
+**Verification**（ワーカーの最終 `mise run gate`、exit 0）:
+
+- model-ID 90 files、repository rules 8規則すべて走査件数 > 0（`no-deprecated-object-api`・`guarded-agent-only`・`no-sensitive-logging` 各69）、typecheck 成功。root `executed=257 passed=257`。ai-core 24 test files、`executed=234 passed=234`、skipped 2。All files lines 95.97%、`src/summarize` stmts 98.99 / branches 88.2 / funcs 100 / lines 100。
+- 統合コミット: 18.1 `50653b6`、18.2 `e1b66ed`、18.4 `ff72071`、18.3 `1d33288`、18.5 `bc0f92d`、18.6 `ecb35bf`。
+
+### 2026-10-07 `output-invalid` の追加（コーディネーター、`1367ee4`）
+
+- 問題: `PlatformErrorCode` に「プロバイダには届いたが出力がスキーマを満たさない」を表すコードがなく、18.1 は境界外の `src/errors.ts` を変えられないため、`SummaryValidationError` が `provider-unavailable` を使っていた（呼び出し元が到達不能なプロバイダと区別できない）。
+- RED: `errors.test.ts` の語彙の完全一致と、`schema.test.ts` に加えた `expect(error.code).toBe("output-invalid")` が `Expected: "output-invalid" Received: "provider-unavailable"` で失敗。
+- GREEN: `PLATFORM_ERROR_CODES` に `output-invalid` を加え、`SummaryValidationError` が使う。errors と summarize の焦点テスト 123 passed。gate の ai-core 438 passed。
+- 文書: plan の Interfaces（語彙と HTTP 状態の対応。`output-invalid` は 502）、HTTP API の `/api/summarize` 行、C12、Error Handling、File Structure に反映した。
+
+### 2026-10-07 Task 18 Validation and Ship
+
+- Spec drift: plan C12 の `streamSummary(plan, deps)` の `deps` の形、`summarizeSource` ほかの追加の公開 API、v7 の system メッセージの制約によるプロンプトの形、分割の予算と最小チャンク、`SummaryMeta` の集計の範囲（実測・キャッシュ読み出しは全呼び出しの合計、`attempts` は最終の呼び出し）、YouTube ID の形式（fixture のため 1〜64 文字）、`SummaryValidationError` のコードが plan になかった。plan C12・Data Model・HTTP API・Error Handling・File Structure を実装に合わせた。
+- Risks: `jsdom` の `createRequire` での読み込みは Next/Turbopack では未確認（T-24）。チャンクの詰め方は行ごとのトークン数の合計で、チャンクごとに再トークン化しない（安全係数 1.2 で吸収）。チャンクが非常に多いときの統合プロンプトの予算は未検査。Stryker の対象 `summarize/plan.ts`・`retry.ts` はワーカーの時点では未実行（19.3 の後の `mise run test:mutation` で plan 82.61%、retry 100%）。
+- Mechanical fixes: tasks.md（18.1〜18.6 を `[x]`、Implementation Notes、進捗）、traceability.md（4.1〜4.12 の Test/Commit、Gaps）。
+
+### 2026-10-07 Task 19.1〜19.2 RED / GREEN / PROVE Evidence
+
+- Objective: M1 のツールエージェントの通し実行を回帰として検証し、`local` 限定の品質評価の例を1件置く。eval-suite に `test`・`test:coverage` スクリプトを加える（依存は追加しない）。基点は `18990d7`。
+- 19.1 は公開サブパス `@platform/ai-core/{agents,aci,mock,testing}` だけを import する（14.4・15.5・16.4 の `_Verify:_` の一部）。
+
+**RED evidence**:
+
+- 19.1: スクリプトを加える前は `turbo run test --filter=@platform/eval-suite` が `WARNING No tasks were executed`（gate がこのテストを実行しない）。テスト自体は既にある挙動を検証するため、直接の実行では 3/3 で通った。
+- 19.2: 新しい例のテストのため RED はない。
+
+**PROVE evidence**（ai-core の実装を壊し、`git checkout` で戻す）:
+
+- `stop-reason.ts:44` を `return "completed"` → ケース3が `expected { stopReason: 'completed', … } to match object { stopReason: 'step-limit', … }`。
+- `guarded-agent.ts:229` でツール名を記録しない → 3件とも `toolsCalled` の照合で失敗。
+- `define-tool.ts:71` の `"recoverable"` を `"fatal"` → ケース2が `{ ok: false, failure }` の deep-equal で失敗。
+- `weather.ts` の WMO コード 0 を「快晴」→ ケース1が `toolOutputs` の deep-equal で失敗。
+- 19.2: `local-only.ts:38` の guard を外して本体を実行させると `AssertionError: expected 'mock' to be 'local'`（スキップが本体を止めている）。要点の検査（`summarySchema`、`SUMMARY_LIMITS.keyPointCount` の3件、空でない、互いに異なる）は、sandbox に Ollama がなく、プロンプトに一致する mock シナリオもないため、実モデルでは未実行。
+
+**Verification**:
+
+- 19.1: `mise run test` → `@platform/eval-suite:test: Gate test summary: executed=3 passed=3 failed=0`。`mise run test:coverage` は `packages/eval-suite/coverage/`（gitignore 済み）を作る。
+- 19.2: gate では `skipped=1`、理由 `Local tests require AI_TEST_RUN_MODE=local.: 1`。`AI_TEST_RUN_MODE=local AI_TEST_SUITE=local`（Ollama なし）では `executed=0 skipped=1`、理由 `Ollama is unavailable at http://127.0.0.1:11434: fetch failed. Start it with \`ollama serve\`.`。eval-suite の `tsc` と biome は clean。
+- ワーカーの最終 `mise run gate`（exit 0）: Biome 152 files、model-ID 127 files、8規則すべて走査件数 > 0、TypeScript eval-suite 3 / ai-core 101 / root 10 / web 3 files。ai-core `executed=461 passed=461 failed=0 skipped=4`、lines 97.6%。root `executed=257 passed=257`。eval-suite `executed=3 passed=3 failed=0 skipped=1`。
+- 観察: `turbo run test` が `WARNING no output files found for task @platform/eval-suite#test` を出す（`test` の `outputs: ["coverage/**"]` に対し、eval-suite はカバレッジを書かない。`//#test` も同じ）。無害だが、`turbo.json` の所有者が出力を空にすれば消える。
+- 統合コミット: 19.1 `cd097b5`、19.2 `47258a6`。
+
+### 2026-10-07 Stryker の互換性の修正（コーディネーター、`30d4437`）
+
+- 問題: 19.3 の `_Verify:_` のために `mise run test:mutation` を実行すると、(1) Stryker の tsconfig の前処理が `ts.parseConfigFileTextToJson` を呼び、TypeScript 7（ネイティブコンパイラ）が JS API を持たないため dry run の前に停止した。(2) それを回避すると、スコアが 8.40% で、静的でない変異がすべて生き残った。
+- 原因の切り分け（probe）: `@stryker-mutator/vitest-runner` 10.0.0 は変異ごとの `testNamePattern` をスイート名とテスト名の空白区切りで作るが、Vitest 5 は `suite > test` に照合する。パターンなしの実行は2件を通し、`/deriveStopReason derives completed/` は2件ともスキップし、`/deriveStopReason > derives completed/` はそのテストを実行した。つまり絞り込んだ各実行が0件のテストを走らせていた。
+- 修正: `stryker.config.mjs` の `tsconfigFile` を存在しないファイル（`stryker-no-tsconfig-rewrite.json`）に向けて書き換えを止める（ルートの tsconfig は `tsconfig.base.json` を継承するだけで、書き換えは不要）。`pnpm patch` で vitest-runner の名前の連結を `" > "` にし、`pnpm-workspace.yaml` の `patchedDependencies`（理由と外す条件のコメント付き）と `pnpm-lock.yaml` を更新した。
+- 結果: `mise run test:mutation` 88.80%（閾値 70）。ファイル別: define-tool 90.72、stop-conditions 92.31、stop-reason 100、run-mode 100、resolve 78.13、plan 82.61、retry 100。所要 1分33秒。
+- 境界: 4ファイルは 19.3 の `_Boundary:_` の外だった。W3 敵対的レビュー r1 の MEDIUM を受け、T-19・T-19.3 の `_Boundary:_` に加え、plan C1・C18・File Structure、research.md の Risks、`.sdd/steering/tech.md`、AGENTS.md に回避と外す条件（vitest-runner が Vitest 5 の `suite > test` の照合に対応したらパッチを、Stryker が TypeScript の JS API を必要としなくなったら `tsconfigFile` の回避を外す）を記録した。
+
+### 2026-10-07 Task 19.3 W3 の締め（コーディネーター、`79c5eec`）
+
+- `mise.toml` の `check:repo-rules --only` に `tool-risk-declared` を加えた（`tool-risk-declared: scanned 13 FILES`）。
+- `ci.yml` に `mutation` ジョブ（`timeout-minutes: 30`、checkout・mise-action は既存のジョブと同じ SHA、`mise run setup` → `mise run test:mutation`）を加え、`ci-status` の `needs` と `MUTATION_RESULT` の検査を加えた。
+- 最終 `mise run gate`（exit 0）: root `executed=257 passed=257`。ai-core `executed=523 passed=523 skipped=4`、lines 97.63%。eval-suite `executed=3 passed=3 skipped=1`（理由 `Local tests require AI_TEST_RUN_MODE=local.`）。`mise run audit` は脆弱性なし。
+- `_Verify:_` の未完了: PR の `ci-status`（`mutation` を含む）の結果は pending。
+- 統合ブランチの先頭は `f8379f7`（`origin/main` のマージ）。
+
+### 2026-10-07 Task 19 Validation and Ship
+
+- Spec drift: plan C21 の「最終回答の Outcome」は曖昧で、実装は各ツールの `ToolOutcome`（成功と recoverable な失敗）と最終回答のテキストを検証し、`ai` に依存しないため `agent.stream()` で実行する。C18 は eval-suite に閾値がないことを記していなかった。Stryker の回避が plan に宣言されていなかった（レビューの MEDIUM）。plan C1・C18・C21・File Structure、research.md、steering、AGENTS.md を更新した。
+- W3 敵対的レビュー r1（REQUEST_CHANGES: HIGH 3 / MEDIUM 5 / LOW 8）の指摘のうち、文書で扱うもの（MEDIUM の Stryker の境界と宣言、MEDIUM の plan・tasks の未追随、LOW の local テストの未実測）をこの ship で反映した。15 と 16 のノートの矛盾（ツール結果はエラー名だけ、run のサマリは生のエラー文）については、16 のノートと plan C8・Data Model を「サマリはエラー名と学習者向けの固定文言だけを持つ」に改めた。コードの修正とその記録は review-fix で行う。
+- Mechanical fixes: tasks.md（19.1〜19.3 を `[x]`、Implementation Notes、14.6・16 のノートの追記、T-19・T-19.3 の `_Boundary:_`、進捗を「実装完了、敵対的レビュー対応中」）、traceability.md（1.1・1.4・1.7・1.13・1.14・1.15・1.16 の Test/Commit、Gaps）、AGENTS.md（プロジェクト状態と W3 gate・CI の説明）。
+
+### 2026-10-07 W3 Adversarial Review Round 1: REQUEST_CHANGES
+
+- Review: `.sdd/reviews/001-agentic-ai-platform-impl-w3-review-2026-10-07.md`
+- HIGH 3: 要約のプロバイダエラーが `output-invalid` に化ける（H1）、エージェントの生のエラー文が `finish` のメタデータでブラウザへ届く（H2）、AI SDK 既定の `onError` が生のエラー（`APICallError` の要求本文を含む）を `console.error` に出す（H3）。
+- MEDIUM 5: `adaptHistoryForModel` がクライアントの `metadata.provider` を信頼する（M4）、Ollama の `num_ctx` が計画の予算と一致しない（M5）、記事の取得に SSRF の防御・タイムアウト・サイズ上限がない（M6）、Stryker の回避が境界外（M7）、plan・tasks が実装に追随していない（M8）。
+- LOW 8: `</source>` の変種（L9）、local テストの未実測（L10）、observer の例外の握りつぶし（L11）、`AnyAciTool` が構造型（L12）、要約の `modelId` がカタログに限定されない（L13）、統合プロンプトの予算未検査（L14）、`generate()` で `done` が未解決（L15）、`MIN_CHUNK_TOKENS` の境界が変異で殺されない（L16）。
+- M7・M8・L10 は Task 19 の ship（`82c1f99..41e48a9`）で文書として扱った。残り13件を2つのワーカーで修正した（agents/chat/aci と summarize。互いの境界は重ならない）。
+
+### 2026-10-07 Review Fix RED / GREEN / PROVE Evidence
+
+単一ファイルの実行は `pnpm --filter @platform/ai-core exec vitest run --coverage.enabled=false <file>`（フラグなしだと80%のカバレッジ閾値で失敗する）。
+
+**H2**（`436ac42`、`agents/guarded-agent.ts`）:
+
+- RED: 5件が `-  "code": "unexpected"` で失敗。ストリーム途中の `error` パートに `sk-ant-SECRET123` を含め、UI チャンクとサマリのどこにも出ないこと、`finish.messageMetadata` が `{ run: summary }` であることを検査。ほかに PlatformError、`requestBodyValues` に秘密を含む `APICallError`、Error でない throw。
+- GREEN: `AgentRunSummary.error` を `{ code: AgentRunErrorCode; message: AGENT_RUN_ERROR_MESSAGE }` にし、`name` と200文字の生メッセージを削除。
+- PROVE: 生メッセージを戻す → 5件失敗。UI の `onError` を `ERROR_TEXT + String(error)` → `not to contain 'sk-ant-SECRET123'`。PlatformError の code の対応を外す → 1件、`APICallError` の対応を外す → 1件。
+
+**H3 + L15**（`67c13a0`、`guarded-agent.ts`）:
+
+- RED: `console.error` が `[Error: bad key sk-ant-SECRET123]` で呼ばれた（途中の `error` パートと `doStream` の reject の両方）。`agent.stream()` を直接消費すると `completed` で確定した（2つ目のバグ）。`agent.generate()` が throw すると `summary()` が「終わる前」で throw した。
+- GREEN: settings に `onError: ({ error }) => finalise(error)` を渡す（`prepareCall` が `streamText` へ展開する。何も出力しない）。`GuardedToolLoopAgent` サブクラスの `generate()` が確定してから再送出する。
+- PROVE: settings の `onError` を外す → 3件失敗。サブクラスの確定を外す → generate のテストが PlatformError で失敗。`finalise(error)` を `finalise()` → 5件失敗。テストの stderr にあった `TypeError: provider exploded` は消えた。
+
+**L11**（`c4e6798`）: RED `expected [] to deeply equal [[Error: observer failed, …]]`。GREEN `onObserverError?: (error, observer) => void`（既定は no-op、その throw も無視）。PROVE 呼び出しを外す → 同じ失敗、通知先から再送出 → `Error: rethrown`、成功時に呼ぶ → `called 1 times`。
+
+**L12**（`2ce7962`、`77df298`、`aci/types.ts`・`define-tool.ts`・`tool-set.ts`）:
+
+- RED: 手書き、実ツールのスプレッドコピー、機能が無効な手書きの3件が `expected function to throw`。`@ts-expect-error` のテストが `TS2578 Unused '@ts-expect-error'`。
+- GREEN: モジュール内の `WeakSet` と `isDefinedAciTool`、`buildToolSet` の `ConfigError`、型だけの `unique symbol` ブランド。`77df298` は4件の生存変異しか生まない冗長なオブジェクト検査を削除した。
+- PROVE: `has()` をスタブ → 3件、`definedTools.add` を外す → 既存6件が新しい `ConfigError`、ブランドを外す → TS2578。
+
+**M4**（`de504f2`、`chat/adapt-history.ts`）:
+
+- RED: 10件失敗（`not to contain 'cacheControl'`、偽装した provider の各ケース）。
+- GREEN: プロバイダ固有フィールド4種と `custom` パートを常に除く。出所は `Object.hasOwn(MODEL_CATALOG, metadata.modelId)` のエントリの provider（矛盾すれば不明）。テストの偽装 ID は `check:model-ids` に掛からない `"forged-model"`。
+- PROVE: 旧来の `sameProvider ? {...part}` → 3件、`hasOwn` を外す → `TypeError`、矛盾の検査を外す → 1件、同じプロバイダで custom を許す → 1件、推論の規則から `sameProvider` を外す → 12件。
+
+**H1**（`2c56283`、`summarize/pipeline.ts`）:
+
+- RED: 途中の `{type:"error"}` に対し `SummaryValidationError ... issuesByAttempt [3× "JSON として解析できませんでした"]`。
+- GREEN: `onError` で集めたエラーがあれば `NoObjectGeneratedError` の判定より先に `streamErrors[0]` を投げる。元のインスタンス、`doStreamCalls` 1、`restart` なしを検査。
+- PROVE: その行を外す → 新しいテストと既存の reject テスト（`expected AI_NoOutputGeneratedError ... to be Error: provider down`）が失敗。
+
+**M5**（`00eb5e9`）: RED `expected undefined to deeply equal { ollama }`。GREEN Ollama のエントリへの要約呼び出しすべてに `providerOptions.ollama.options.num_ctx = contextWindow`。実 `createOllama` に fetch を注入し、要求本文に `options.num_ctx: 40960` があることを確認。PROVE `return {}` → 2件、provider の検査を外す → 1件。
+
+**M6**（`219dd0d`、`7e867fc`、`source.ts`・`errors.ts`・新規 `url-guard.ts`）:
+
+- RED: 13件失敗（`expected { kind: 'article', text: 'secret' } to be an instance of SourceFetchError` ほか）。
+- GREEN: `URL.hostname` のリテラル検査（IPv4 の非公開帯域、IPv6 の ::・::1・IPv4 互換/マップ/NAT64・fc00::/7・fe80::/10・fec0::/10・ff00::/8、localhost・*.local・*.internal・単一ラベル）。`redirect: "manual"` で最大5回、行き先ごとに検査。`SourceDeps.clock` の 15 秒タイムアウト（fetch と競争させ、signal を無視する fetcher も打ち切る）。5 MiB の UTF-8 バイト上限。新しい reason `disallowed-url`・`timeout`・`too-large`。テストは `url-guard.test.ts` 56件、`source.test.ts` 14件、`pipeline.test.ts` 1件。
+- PROVE（それぞれ失敗を確認）: マップ/NAT64 分岐 → 3件、protocol 検査 → ftp・gopher を受理、169.254/16 → 2件、fetch 前の検査 → 7件、`redirect: "manual"` → `expected false to be true`、上限 `>=`→`>`、タイムアウトの対応 → reason が `network`、サイズ `>`→`>=` と文字数化 → 境界テスト、競争を外す → `Test timed out in 5000ms`。
+- PROVE 中の発見: 事前に abort した signal で放棄した要求が unhandled rejection を出したため、`request.catch(() => undefined)` で修正した。
+- `7e867fc`: `hardSplit` を補間探索（`fittingEnd`）に変えた。2 MB の `"word "` 行で qwen3:8b 2.5 s → 0.66 s、日本語 2 MB 6.2 s → 0.77 s。PROVE 二分探索に戻す → `expected 4934318 to be less than 1600000`、`low - 1` と `start + 1` の除去 → 各6件。
+
+**L9**（`68adf47`）: RED 7件。GREEN `/<(\s*\/?\s*source\b[^>]*)>/giu` で題名と本文の全変種を `&lt;…&gt;` に。PROVE 題名を素通し → 7件、`i` フラグを外す → 大文字の2件。
+
+**L13**（`256478f`）: RED 5件。GREEN `modelId` を `MODEL_CATALOG` の ID の `z.enum` にし、未使用の `SUMMARY_LIMITS.modelIdMaxLength` を削除。`constructor`・`toString`・`__proto__`・`""` を拒否。PROVE `z.string()` に戻す → 5件。
+
+**L14**（`f9070bc`、`255186a`、`plan.ts`・`pipeline.ts`）: RED `integrationTokens is not a function`、次に `expected length 9 but got 6`。GREEN `integrationTokens`（実測 462 に対し 473、過大側で5%以内）、`integrationGroups`、`mergeUntilOneGroup`（途中の統合はイベントなし）。5チャンクで2件分の予算なら9回の呼び出し。PROVE ループ無効 → 6回、進展の検査を外す → 拒否テスト失敗、境界 `>`→`>=` → 2件、単独部分の検査を外す → 1件。`255186a` は Stryker が等価変異と示した2つの guard を削除した。
+
+**L16**（`e93f840`）: チャンク予算ちょうど 256 で段階計画（各チャンク ≤ 256）、255 で拒否。PROVE `<=` の変異で失敗。`stryker run --mutate packages/ai-core/src/summarize/plan.ts` で `killed 4`、plan.ts 84.97。
+
+### 2026-10-07 Review Fix Verification
+
+- 統合コミット（agents/chat/aci）: H2 `436ac42`、H3+L15 `67c13a0`、L11 `c4e6798`、L12 `2ce7962`、M4 `de504f2`、L12 refactor `77df298`。
+- 統合コミット（summarize）: H1 `2c56283`、M5 `00eb5e9`、M6 `219dd0d`、M6 perf `7e867fc`、L9 `68adf47`、L13 `256478f`、L14 `f9070bc`、L14 refactor `255186a`、L16 `e93f840`。
+- `e93f840` での `mise run gate` → exit 0: root `executed=257 passed=257`。ai-core `executed=651 passed=651 failed=0 skipped=4`、lines 97.84%。eval-suite `executed=3 passed=3 skipped=1`。9規則すべて走査件数 > 0。（summarize ワーカーの報告の 628 は agents の修正を統合する前の数。）
+- `mise run test:mutation`: agents の修正後 88.86、summarize の修正後 90.32（閾値 70）。plan.ts の生存変異（行の詰め込み 134・149・155・156・162、エラー文言、空の統合プロンプト、1行あたりの `+ 1`、速度だけに効く初回の probe）は残る。
+- 挙動の変化: localhost や LAN の記事 URL（学習者自身の開発サーバーなど）は、どの実行モードでも拒否される。fixture は `example.test` だけを使う。
+- 残るリスクは traceability.md の Gaps に記録した（DNS rebinding、本文のストリーミング上限、`num_ctx` は要約だけ、Ollama のメモリ未実測、署名なしの推論の再送）。ツール結果の要約に `PlatformError.message` を入れる規約は変えていない。
+- plan C8・C9・C11・C12・C15・Data Model・Error Handling・File Structure、research ADR-6・ADR-7、tasks.md の 15〜18 のノートと T-18・T-18.2 の `_Boundary:_`（`url-guard.ts`・`url-guard.test.ts` を追加）を修正後のコードに合わせた。
+
+### 2026-10-07 W3 Adversarial Review Round 2: REQUEST_CHANGES
+
+- Review: `.sdd/reviews/001-agentic-ai-platform-impl-w3-review-2026-10-07-r2.md`
+- Round 1 の16件は、部分対応と明記したものを含めてすべて対応済みと確認された。
+- 新規 MEDIUM: M4 の修正（provider フィールドを常に除く）の結果、同じプロバイダの推論を OpenAI へ再送すると `itemId` がなく、`@ai-sdk/openai` が推論パートの JSON（生の推論テキスト）を警告に入れ、AI SDK が既定で stderr に出す（N1、原則 7 違反）。公開 DNS 名経由の内部アドレス到達（N2、記録済みのリスク）。
+- 新規 LOW: 本文上限が全量読み込み後（N3）、`num_ctx` が要約だけ（N4）、無効な `Location` で `TypeError` が漏れる（N5）、統合の見積もりと `chunkBudgetTokens` の変異が生き残る（N6）、`home.arpa`・`lan` と IPv4 埋め込みの IPv6 の一部を許可する（N7）。
+- 方針: N1・N5・N6・N7 をコードで修正。N2・N3 はポートに DNS とストリーミングの段がないため W3 では受け入れたリスクのまま、W4 の 20.1 のテスト付きの要件にする。N4 は 29.2 で実測する。
+
+### 2026-10-07 Round 2 Fix Evidence
+
+単一ファイルの実行は `pnpm --dir packages/ai-core exec vitest run <file>`。PROVE のバックアップは `mktemp` の一意な名前で取り、`cmp` で復元を確認した。
+
+**N1**（`2f06c44`、`chat/adapt-history.ts`）:
+
+- RED: 実際の `createOpenAI` / `createAnthropic` に fetch を注入し、同じプロバイダの履歴（推論 `REASONING ABOUT USER SECRET PLAN`）を `generateText` で送るテストを追加。`AI_SDK_LOG_WARNINGS` を収集関数に差し替えて検査し、OpenAI が `Non-OpenAI reasoning parts are not supported. Skipping reasoning part: {"type":"reasoning","text":"REASONING ABOUT USER SECRET PLAN"}.` で失敗した（Anthropic は警告に本文を含めず、修正前から合格）。
+- GREEN: `reasoning`・`reasoning-file` は出所に関係なく常に除く。出所の判定（偽装・カタログ外・矛盾する provider・非オブジェクト）のテストはプロバイダ実行のツールパートに移した。テストは 36件。
+- PROVE: 旧規則（`sameProvider && target.capabilities.reasoning ? copy : undefined`）に戻す → 6件失敗（4プロバイダの推論除外、provider フィールドのテスト、OpenAI の警告 `not to contain 'REASONING ABOUT USER SECRET PLAN'`）。矛盾する provider の検査と assistant 以外の除外を外す → 2件失敗。
+
+**N5**（`c8da4d5`、`summarize/source.ts`）:
+
+- RED: `location: "http://["` の 302 → `expected TypeError: Invalid URL { …(3) } to be an instance of SourceFetchError`。
+- GREEN: `resolveLocation` が `new URL` の失敗を `SourceFetchError("disallowed-url")` にする（解析できない行き先は「取得できる公開の http(s) URL」ではない。`network` は再試行すべき一時的な通信の失敗を示すため使わない）。2回目の取得はしない。
+- PROVE: catch で `TypeError("Invalid URL")` を投げ直す → `expected TypeError: Invalid URL to be an instance of SourceFetchError`。
+
+**N6**（`48299db`、`summarize/plan.test.ts` のみ）:
+
+- テスト: 統合の見積もりが「空のプロンプトの生のトークン数 + 部分要約ごとの行 + 1」の 1.2 倍の切り上げに一致、whole とチャンクの overhead が実際の空のプロンプトの推定に一致、チャンク予算 = 予算 − チャンクの overhead、8,192 のコンテキストの段階計画で各チャンクのプロンプト全体が予算内。
+- PROVE: `- overhead` → `+ overhead` で2件、空の統合プロンプトに部分要約を入れる → 2件、`+ 1` → `- 1` で1件、whole の空のテキストを `"Stryker was here!"` → 1件。
+- `pnpm exec stryker run --mutate packages/ai-core/src/summarize/plan.ts`: 指摘の `206:49`・`209:23`・`99:9` と `63:13` が kill。plan.ts 84.97 → 91.30（killed 131、survived 16）。残る生存は `promptText` の等価に近い変異（47・49・51）、初回の probe（114）、行の詰め込み（134・149・155・156・162）、エラー文言（192）。
+
+**N7**（`03962c2`、`summarize/url-guard.ts`）:
+
+- RED: 15件失敗（`router.lan`、`ROUTER.LAN.`、`myhost.home.arpa`、`home.arpa`、SIIT 2件、6to4 3件、ローカル用 NAT64 3件、Teredo 3件）。
+- GREEN: `BLOCKED_DOMAINS`（`localhost`・`local`・`internal`・`home.arpa`・`lan` とそのサブドメイン）。SIIT `::ffff:0:0/96` は埋め込みの IPv4、6to4 `2002::/16` は第2・第3グループの IPv4 で判定。ローカル用 NAT64 `64:ff9b:1::/48`（公開の宛先にならず、埋め込みの位置が運用者のプレフィックス長で変わる）と Teredo `2001::/32`（クライアントの IPv4 が難読化されている）は丸ごと拒否。既存の境界テスト `[64:ff9b:1::7f00:1]` 許可を拒否側へ移し、隣接する公開の名前とアドレス（`my.atlan`、`[2002:808:808::1]`、`[2003:7f00:1::]`、`[2001:1::1]` 等）の許可テストを追加。テストは 82件。
+- PROVE: `home.arpa`・`lan` を外す → 4件、SIIT を外す → 2件、6to4 を常に許可 → 3件・常に拒否 → 公開の `[2002:808:808::1]` で1件、ローカル用 NAT64 を許可 → 3件、Teredo を許可 → 3件、完全一致を外す → `home.arpa` で1件。
+
+**N2・N3・N4**（文書）: plan C13 と tasks-w4 の 20.1 に、本番の HttpFetcher が接続時に解決後の IP を検査すること（rebinding を含む）と、読みながら本文の上限で打ち切ることを、テスト項目付きで加えた（20.1 の `_Boundary:_` に `isBlockedHostname` の公開のための `summarize/index.ts`）。C12 と Error Handling からも参照した。N4 は tasks-w5 の 29.2 に Ollama の再読み込み時間とメモリ量の実測を加えた。
+
+### 2026-10-07 Final Verification After Round 2 Fix
+
+- コミット: N1 `2f06c44`、N5 `c8da4d5`、N6 `48299db`、N7 `03962c2`。
+- `mise run gate` → exit 0: root `executed=257 passed=257`。ai-core `executed=687 passed=687 failed=0 skipped=4`、lines 97.85%（`src/chat` 100%、`src/summarize` 100%）。eval-suite `executed=3 passed=3 skipped=1`。9規則すべて走査件数 > 0。
+- `mise run test:mutation` → exit 0、スコア 91.60（閾値 70）。summarize 92.31、plan.ts 91.30。
+- 文書: research ADR-7（Decision・Consequences）、plan C11・C12・C13・Error Handling、tasks.md の 17・18 のノートと進捗、tasks-w4 の 20.1、tasks-w5 の 29.2、traceability の 3.3・4.6・4.7 と Gaps を更新した。
+- 未対応: レビューが N1 の Fix で併せて提案した、サーバー側で `globalThis.AI_SDK_LOG_WARNINGS` を warning の `type` だけを記録する関数に差し替える方針は、推論を送らなくなったことで N1 の経路はなくなったため入れていない（他の警告に生のプロンプトが入る経路が見つかれば C13 の `platform.ts` で行う）。
+
+### 2026-10-07 W3 Adversarial Review Round 3: APPROVE
+
+- 記録: `.sdd/reviews/001-agentic-ai-platform-impl-w3-review-2026-10-07-r3.md`（新規コンテキストの `sdd-reviewer`、HEAD `41e5285`）。
+- r2 の N1・N5・N6・N7 は修正済み。旧い振る舞いに戻すとテストが失敗することをレビュアが独立に確かめた（N1 6件、N5 1件、N7 2〜3件、N6 は名指しの変異体 `206:49`・`209:23`・`99:9` が kill）。N2・N3・N4 は W4 20.1・W5 29.2 のテスト付きの要件として記録済み。
+- `mise run gate -- --force` → exit 0（root 257/257、ai-core 687 passed / 4 skipped、eval-suite 3 passed / 1 skipped）。`mise run test:mutation` → 91.60。
+- 新規は LOW 3件。R3-1（plan C13・tasks-w4 20.1 の接続時検査の2つの誤り）と R3-2（統合前の SHA の引用）は文書を修正した。R3-3（公開経路のない特殊用途アドレス）は traceability の Gaps に受け入れた制約として記録した。
+- PR #25 の CI（`gate`・`secret-scan`・`audit`・`mutation`・`ci-status`）は `41e5285` で成功。W3 の移行条件（全サブタスク `[x]`、Implementation Notes、19.3 の結線、gate と `ci-status` の成功、敵対的レビューの記録）を満たしたので、W3 を保管し W4 へ移る。
+

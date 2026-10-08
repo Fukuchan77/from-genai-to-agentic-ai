@@ -4,6 +4,8 @@
 	"private": true,
 	"type": "module",
 	"scripts": {
+		"test": "vitest run",
+		"test:coverage": "vitest run --coverage.enabled --coverage.reporter=html --coverage.thresholds.lines=0",
 		"typecheck": "tsc -p tsconfig.json --noEmit"
 	},
 	"dependencies": {

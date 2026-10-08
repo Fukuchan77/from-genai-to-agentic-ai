@@ -98,7 +98,7 @@ flowchart LR
 - **Responsibility**: ワークスペース構成、版の固定、lint / format / typecheck / test を1コマンドにまとめる品質ゲートを提供する。
 - **Public interface**: mise タスク `setup`、`gate`、`lint`、`lint:fix`、`typecheck`、`test`、`test:local`、`test:db`、`test:e2e`、`test:mutation`、`test:coverage`、`outdated`、`secret-scan`、`secret-scan:staged`、`audit`、`services:up`、`services:up:db`、`services:down`、`gate:repeat`、`docs:check`、`check:model-ids`、`check:repo-rules`。`gate` は `lint` → `check:model-ids` → `check:repo-rules` → `typecheck` → `test` → `docs:check` の順に実行し、1段でも失敗すれば非ゼロで終了する。
 - **gate と CI の段階的な結線**（2026-09-27、`/sdd-analyze` H-3。CI のジョブは2回目の `/sdd-analyze` H-1 で追加）: 各段は「走査0件で失敗」するため、検査対象がまだない段を最初から入れると、実装の途中で gate が必ず失敗する。CI のジョブ（C2）も同じで、対象のないジョブを最初から入れると `ci-status` が最終統合まで失敗し続ける。そこで tasks.md の実装の波（W1〜W5）ごとに、その波の締めのタスクが、対象が揃った段、`check:repo-rules` の規則、CI のジョブを加える（どの波で何を加えるかは tasks.md の「gate と CI の段階的な結線」表が正本）。波の途中では、直前の波の締めで確定した構成を使う。一度加えた段・規則・ジョブは外さない。W5 の締め（最終統合）で、上記の全段・全規則・全ジョブの構成になる。
-- **Owns**: `mise.toml`、ルートの `package.json`、`pnpm-lock.yaml`、`pnpm-workspace.yaml`（`minimumReleaseAge: 1440`、`allowBuilds`。各エントリの直前に許可理由のコメントを必ず書く（constitution 原則 7）。コメントのないエントリは `check:repo-rules` が失敗させる）、`turbo.json`（ルートタスク `//#test`・`//#typecheck` を含む）、`biome.json`（ADR-3）、`tsconfig.base.json`、ルートの `tsconfig.json`（どのワークスペースにも属さない `tooling/**/*.ts` とルートの設定ファイルを型検査の対象にする）、`vitest.config.ts`（ルート直下の `tooling/`・`scripts/` のテストだけを対象にする。ワークスペースは集約しない。C18「テストの実行単位」）、`.githooks/`、`scripts/gate/*`。
+- **Owns**: `mise.toml`、ルートの `package.json`、`pnpm-lock.yaml`、`pnpm-workspace.yaml`（`minimumReleaseAge: 1440`、`allowBuilds`。各エントリの直前に許可理由のコメントを必ず書く（constitution 原則 7）。コメントのないエントリは `check:repo-rules` が失敗させる。`patchedDependencies` は Stryker の互換性の回避（C18）だけで、パッチは `patches/` に置き、直前のコメントに理由と外す条件を書く）、`turbo.json`（ルートタスク `//#test`・`//#typecheck` を含む）、`biome.json`（ADR-3）、`tsconfig.base.json`、ルートの `tsconfig.json`（どのワークスペースにも属さない `tooling/**/*.ts` とルートの設定ファイルを型検査の対象にする）、`vitest.config.ts`（ルート直下の `tooling/`・`scripts/` のテストだけを対象にする。ワークスペースは集約しない。C18「テストの実行単位」）、`.githooks/`、`scripts/gate/*`。
 - **Does NOT own**: 各ワークスペースのソースとテストの中身、CI ワークフロー（C2）、Compose 定義（C3）。
 - **Requirements**: 1.1, 1.3, 1.4, 1.5, 1.6, 1.11, 1.12, 1.15, 2.18, NFR（検証速度、決定性、オフライン動作、型安全性、サプライチェーン）
 
@@ -143,12 +143,15 @@ flowchart LR
 
 - **Responsibility**: 用途とモデル ID から、実行モードに応じた `LanguageModel` / `EmbeddingModel` を返す。返す前に、認証情報・接続・機能への対応を検査する。
 - **Public interface**:
-  - `createModelGateway(deps: GatewayDeps): ModelGateway`
-  - `gateway.resolve(request: { purpose: ModelPurpose; modelId?: ModelId; require?: readonly Capability[] }): Promise<ResolvedModel>`（`ResolvedModel = { model: LanguageModel; entry: ModelEntry; mode: RunMode }`）
-  - `gateway.resolveEmbedding(request): Promise<ResolvedEmbeddingModel>`
-  - `gateway.availableModels(): readonly ModelOption[]`（認証情報が揃っているプロバイダのモデルだけを返す。Req 3.2 の一覧に使う）
-  - エラー: `ProviderCredentialsMissingError`（2.6）、`OllamaUnavailableError`（2.7）、`CapabilityUnsupportedError`（2.9）
-- **Owns**: プロバイダファクトリの対応表（`providers.ts`: anthropic / openai / azure / google / ollama）、Ollama の事前検査（`GET {baseUrl}/api/tags` で接続とモデルの取得済みを確認し、結果を短時間キャッシュする）、ミドルウェアの合成（録画時だけ `recordingMiddleware` を `wrapLanguageModel` で合成する）。
+  - `createModelGateway(deps: GatewayDeps): ModelGateway`（`GatewayDeps = { config: PlatformConfig; mock?: { scenarios?; cassettes?; embeddingDimensions? }; recording?: { store?; redactor? }; providers?: ProviderFactories; fetcher?: HttpFetcher; clock?: Clock }`。`mock` の既定は、シナリオが `M1_2_SCENARIOS` + `M1_3_SCENARIOS`、カセットが `fixtures/cassettes/`、埋め込みの次元が 768（`embeddinggemma` に合わせる）。`AI_RECORD=1` では、`store` を注入しなければ `fixtures/cassettes/` に保存する。既定の `Redactor` は `process.env` ではなく `config.credentials` から作る。`providers`・`fetcher`・`clock` はテストでの注入用）
+  - `gateway.resolve(request: { purpose: ModelPurpose; modelId?: ModelId; require?: readonly Capability[] }): Promise<ResolvedModel>`（`ResolvedModel = { model: LanguageModelV4; entry: ModelEntry; mode: RunMode }`。`LanguageModelV4` は `LanguageModel` に代入できる）
+  - `gateway.resolveEmbedding(request?: { modelId?: ModelId }): Promise<ResolvedEmbeddingModel>`
+  - `gateway.availableModels(): readonly ModelOption[]`（`ModelOption = { id, displayName, provider, capabilities, contextWindow }`。現在の実行モードを `modes` に含み、認証情報が揃っているプロバイダのモデルだけを返す。Req 3.2 の一覧に使う）
+  - **検査の順序**（すべてモデルの生成より前）: カタログと実行モード（D9）→ 機能（2.9）→ 認証情報（2.6）→ Ollama の事前検査（2.7）。`resolve` と `resolveEmbedding` は、解決する entry の `modes` に現在の実行モードが含まれることを最初に検査する。`AI_MODEL_*` で明示指定した ID も要求の `modelId` も同じ扱いで、ゲートウェイの生成時には検査しない。このため、`local` で `live` 専用の ID を指定しても Ollama へは接続しない（2026-10-04、W2 `/sdd-validate-impl` の D9。2026-10-07、T-14.1 で実装）。
+  - エラー: `ProviderCredentialsMissingError`（2.6、`provider`・`envVars`）、`OllamaUnavailableError`（2.7、`baseUrl`・`reason: "unreachable" | "http-status" | "invalid-response" | "model-missing"`）、`CapabilityUnsupportedError`（2.9）、`ModelSelectionError`（D9 等。`code: "invalid-request"`、`reason: "unknown-model" | "mode-mismatch" | "no-default" | "purpose-mismatch"`、`details` は `{ reason, mode, modelId?, modes?, provider?, purpose? }`。日本語のメッセージにモデル ID、現在の実行モード、カタログ上の `modes` を含める）
+  - 公開 API（`@platform/ai-core/models`）の値の export はプロバイダ SDK（Zod を含む）・C7 のモックランタイム・`node:fs`・`node:crypto` を読み込む。クライアントのコンポーネントは `import type` だけを使う（C20 のクライアントバンドル検査で確認する）。
+  - Azure はカタログの ID（例: `catalog: live.azure.chat`）をそのままデプロイメント名として使う。学習者の Azure のデプロイメントは同じ名前にする必要がある（解説に記す。C22）。
+- **Owns**: プロバイダファクトリの対応表（`providers.ts`: anthropic / openai / azure / google / ollama）、Ollama の事前検査（`GET {baseUrl}/api/tags` で接続とモデルの取得済みを確認する。成功した結果だけを 5 秒キャッシュし、失敗はキャッシュしない（タイムアウト 2 秒、Clock 注入）。同時に来た検査は1回の取得を共有する。`OLLAMA_BASE_URL` は末尾の `/api` の有無をどちらも受け付け、`ollama-ai-provider-v2` には `${server}/api` を渡す）、ミドルウェアの合成（録画時だけ `recordingMiddleware` を `wrapLanguageModel` で合成する。`recordedWith` は実行モード、時刻は `Clock` から取る。埋め込みはカセットの形式が LanguageModel 専用のため録画しない）。
 - **Does NOT own**: シナリオとカセットの中身（C7）、リクエスト単位のレート制限（C14）、テレメトリの登録（004）。
 - **Requirements**: 2.1, 2.2, 2.3, 2.6, 2.7, 2.9, 2.10, 3.2
 
@@ -183,18 +186,21 @@ flowchart LR
 
 - **Responsibility**: 3種の停止条件と停止理由を必ず持つ `ToolLoopAgent` を生成し、実行サマリを返す。
 - **Public interface**:
-  - `createGuardedAgent<TOOLS extends ToolSet>(options: GuardedAgentOptions<TOOLS>): GuardedAgent<TOOLS>`。`GuardedAgentOptions` は `model`、`instructions`、`tools: GuardedToolSet<TOOLS>`（C9 の `buildToolSet` の戻り値だけを受け付ける。AI SDK の `tool()` で作った生の `ToolSet` を渡すと型エラーになる。リスク区分の検査を通らないツールをエージェントに登録させないため。constitution 原則 6、2026-09-27、3回目の `/sdd-analyze` M-3）、`limits: LoopLimits`、`clock: Clock`、`signal: AbortSignal`（呼び出し元の中断。Route Handler では `request.signal`）、`observers?: readonly RunObserver[]` を持つ。
-  - **1回の実行につき1回生成する**（ADR-6）。`GuardedAgent` は1回の実行（run）に束縛されたオブジェクトで、`agent: ToolLoopAgent<never, TOOLS>`（`createAgentUIStreamResponse` に渡す）、`abortSignal: AbortSignal`（下記の合成済みシグナル。`createAgentUIStreamResponse` の `abortSignal` に渡す）、`summary(): AgentRunSummary`（実行終了後に確定した値を返す。終了前の呼び出しは `PlatformError`）、`done: Promise<AgentRunSummary>` を持つ。生成時刻（`clock.now()`）を run の開始時刻とする。停止条件の成立記録、ステップの集計、開始時刻は、すべてこのオブジェクトの内部に閉じる。インスタンスをリクエスト間で使い回す API は提供しない。
-  - 生成時の検証: `LoopLimits` は正の整数。`tools` のツール数が **20 を超える**場合は `ConfigError` で生成を拒否する（constitution 原則 2）。
-  - 停止条件: `stepLimit(n)`（`isStepCount` のラッパ）、`tokenBudget(n)`（各ステップの `inputTokens + outputTokens` の合計）、`deadline(clock, ms)`（run 開始時刻からの経過）。どれが成立したかを run 内部の記録に残す。
+  - `createGuardedAgent<TOOLS extends ToolSet>(options: GuardedAgentOptions<TOOLS>): GuardedAgent<TOOLS>`。`GuardedAgentOptions` は `model`、`instructions`、`tools: GuardedToolSet<TOOLS>`（C9 の `buildToolSet` の戻り値だけを受け付ける。AI SDK の `tool()` で作った生の `ToolSet` を渡すと型エラーになる。リスク区分の検査を通らないツールをエージェントに登録させないため。constitution 原則 6、2026-09-27、3回目の `/sdd-analyze` M-3）、`limits: LoopLimits`、`clock: Clock`、`signal: AbortSignal`（呼び出し元の中断。Route Handler では `request.signal`）、`observers?: readonly RunObserver[]`、`onObserverError?: (error: unknown, observer: RunObserver) => void`（observer の例外の通知先。既定は何もしない。通知先自身の例外も無視し、実行結果・`done`・他の observer に影響しない。（2026-10-07、W3 敵対的レビュー r1 のL11への対応））を持つ。
+  - **1回の実行につき1回生成する**（ADR-6）。`GuardedAgent` は1回の実行（run）に束縛されたオブジェクトで、`agent: ToolLoopAgent<never, TOOLS>`（`createAgentUIStreamResponse` に渡す）、`abortSignal: AbortSignal`（下記の合成済みシグナル。`abortSignal` は settings ではなく呼び出しごとの引数なので、Route は `createAgentUIStreamResponse` の `abortSignal` に渡す）、`messageMetadata`（`createAgentUIStreamResponse` の `messageMetadata` に渡す。`finish` で `{ run }` を返す。Route は C11 の `buildResponseMetadata` の値とマージする）、`onError`（`createAgentUIStreamResponse` の `onError` に渡す。学習者向けの固定文言を返し、生のエラー文をストリームに出さない）、`startedAt`（run の開始時刻）、`summary(): AgentRunSummary`（実行終了後に確定した値を返す。終了前の呼び出しは `PlatformError`）、`done: Promise<AgentRunSummary>` を持つ。生成時刻（`clock.now()`）を run の開始時刻とする。停止条件の成立記録、ステップの集計、開始時刻は、すべてこのオブジェクトの内部に閉じる。インスタンスをリクエスト間で使い回す API は提供しない。
+  - 生成時の検証: `LoopLimits` は正の整数（0・負数・小数・`NaN` は `ConfigError`）。`tools` のツール数が **20（`MAX_AGENT_TOOLS`）を超える**場合は `ConfigError` で生成を拒否する（constitution 原則 2）。
+  - 停止条件: `stepLimit(n, record)`（`isStepCount` のラッパ）、`tokenBudget(n, record)`（全ステップの `inputTokens + outputTokens` の合計。`undefined` は 0 とし、予算以上で成立）、`deadline(clock, ms, record, startedAt = clock.now())`（run 開始時刻からの経過が `ms` 以上で成立）。どれが成立したかを run の記録（`createStopConditionRecord()`）に残す。上限が正の整数でなければ `RangeError`（誤用の防止。`LoopLimits` の `ConfigError` は `createGuardedAgent` が担う）。`createRunStopConditions({ limits: { maxSteps, maxTotalTokens, maxDurationMs }, clock, startedAt }): { stopWhen, record }` が run ごとの入口で、呼ぶたびに新しい記録と mutable な `stopWhen` 配列を作る（`ToolLoopAgentSettings.stopWhen` は readonly 配列を受け付けない）。条件の引数は `{ steps: readonly { usage }[] }` だけの構造型とし、`any` を使わずにどの `TOOLS` の `StopCondition` にも代入できる。AI SDK v7 は全停止条件を `Promise.all` で同時に評価するため、同じステップで複数の条件が成立しうる。記録の `fired()` は成立した順ではなく `STOP_CONDITION_NAMES` の固定順で返し、停止理由は `deriveStopReason` の優先順位だけで決める（2026-10-07、T-16.1）。
   - **実行時間上限の強制**: `deadline` はステップの完了時にしか評価されないため、1回の LLM 呼び出しが応答しない場合に上限が効かない。これを補うため、`abortSignal = AbortSignal.any([options.signal, clock.timeoutSignal(limits.maxDurationMs)])` を合成し、LLM 呼び出しとツールへ渡す。タイムアウト側のシグナルが中断した場合は、学習者による停止（`aborted`）ではなく `timeout` として記録する（どちらのシグナルが先に中断したかを `AbortSignal.reason` で判定する）。
-  - **サマリの確定経路**:
-    1. `onStepEnd`: ステップ数、`usage` の累積、呼び出したツール名を run 内部に加算する。
-    2. `onEnd`: 正常終了（`completed` または停止条件の成立）でサマリを確定する。
-    3. `onError`（`createAgentUIStreamResponse` のストリームエラー）: `abortSignal.aborted` が true なら中断の理由（`aborted` / `timeout`）、そうでなければ `error` としてサマリを確定する。
-    4. 確定は1回だけ行う（最初に確定した値を採用する）。確定した時点で `done` を解決し、`observers` の `onRunEnd` を呼ぶ。
-    5. `messageMetadata` コールバックは、`part.type === "finish"` のときに `summary()` の値を `run` として付与する。`finish` は `onEnd` より後に送られるため、正常終了では確定済みの値が付く。中断・エラーでは `finish` が送られないことがあるため、UI は `run` がない場合に中断・エラーとして表示する（C16）。
-  - `deriveStopReason(input: StopReasonInput): StopReason`（優先順位: `aborted` → `error` → 成立した停止条件（`timeout` / `token-budget` / `step-limit`）→ `completed`）
+  - **サマリの確定経路**（2026-10-07、T-16.3 で AI SDK v7 の挙動に合わせて改訂）:
+    1. `onStepEnd`: ステップ数、`usage` の累積（`cacheRead`・`reasoning` を含む）、呼び出したツール名を run 内部に加算する（plan の `onStepEnd` / `onEnd` は v7 の `ToolLoopAgentSettings` の名前そのもの。`onStepFinish` / `onFinish` は非推奨の別名）。
+    2. 正常終了（`completed` または停止条件の成立）: `onEnd`、または `messageMetadata` の `finish` のうち先に来た方で確定する。v7 の `createAgentUIStream(Response)` では、UI ストリームの `finish` が `streamText` の `onEnd` より先に届くことがある（`onEnd` はイベント処理の flush で呼ばれる）。`finish` の時点で全ステップの `onStepEnd` と停止条件の評価は済んでいるので、どちらで確定しても同じ値になる。
+    3. 中断・タイムアウト: 合成した `abortSignal` の `abort` イベントで確定する。v7 は中断を `onError` ではなく `abort` パートで通知し、`ToolLoopAgentSettings` には `onAbort` / `onError` がないため。タイムアウトか呼び出し元かは `reason` の一致で判定する。生成時に呼び出し元のシグナルが既に中断済みなら、その場で `aborted` として確定する。
+    4. `onError`（`ToolLoopAgent` の settings に渡し、`prepareCall` が `streamText` へそのまま展開する。settings の型の外なのでキャストして渡す。`createAgentUIStreamResponse` の `onError` も同じ確定を行う）: `abortSignal.aborted` が true なら中断の理由（`aborted` / `timeout`）、そうでなければ `error` として確定し、学習者向けの固定文言を返す。何もログに出さない（AI SDK 既定の `console.error(error)` を置き換える。`APICallError` の要求本文には生のプロンプトが入るため。constitution 原則 7）。settings の `onError` は UI ストリームの `onError` より先に呼ばれ、`agent.stream()` を直接消費した場合にストリーム途中の `error` パートの後で `onEnd` が `completed` で確定することも防ぐ。`generateText` には `onError` がないため、`guarded-agent.ts` 内の `ToolLoopAgent` のサブクラスが `generate()` の例外で確定してから再送出する。このため `done` は、UI ストリーム、`agent.stream()`、`agent.generate()` のどの経路でも解決する（2026-10-07、W3 敵対的レビュー r1 のH3・L15への対応）。`AgentRunSummary.error` は閉じた `code` と固定文言（`AGENT_RUN_ERROR_MESSAGE`）だけを持ち、生のエラー文とエラー名を持たない（ストリーム途中のエラーでも `finish` が送られ、そのメタデータがブラウザへ届くため。2026-10-07、W3 敵対的レビュー r1 のH2への対応）。
+    5. 確定は上の経路のうち最初の1つだけを採用する。確定したサマリは凍結し、`done` を解決して `observers` の `onRunEnd` を1回ずつ呼ぶ。observer の例外は `onObserverError` へ渡し、run の結果・他の observer・`done` に影響させない。
+    6. `messageMetadata` コールバックは、`part.type === "finish"` のときに確定済みのサマリを `run` として付与する。ストリーム途中のエラーでも `finish` は送られるため、`run.error` は閉じた `code` と固定文言だけを持つ。中断・エラーでは `finish` が送られないこともあるため、UI は `run` がない場合に中断・エラーとして表示する（C16）。
+  - `deriveStopReason(input: StopReasonInput): StopReason`。`StopReasonInput = { abort?: "caller" | "timeout"; errored: boolean; fired: readonly StopConditionName[] | StopConditionRecord }`（どちらのシグナルが中断したかは `createGuardedAgent` が `AbortSignal.reason` で判定して `abort` に渡し、`deriveStopReason` は純粋関数のままにする）。優先順位: 呼び出し元の中断 `aborted` → タイムアウト側の中断 `timeout`（どちらの中断も `error` より上）→ `error` → 成立した停止条件（`timeout` / `token-budget` / `step-limit`。この列挙の順が、同時に成立した条件の間の優先順位）→ `completed`
+  - 公開 API（`@platform/ai-core/agents`）: `createGuardedAgent`、`MAX_AGENT_TOOLS`、`AGENT_RUN_ERROR_MESSAGE`、`AgentRunErrorCode`、`LoopLimits`・`AgentRunSummary`・`AgentTokenTotals`・`AgentRunError`・`RunObserver`・`RunMessageMetadata`・`GuardedAgent`・`GuardedAgentOptions` の型、停止条件（`createRunStopConditions`、`createStopConditionRecord`、`stepLimit`、`tokenBudget`、`deadline`、`STOP_CONDITION_NAMES`）と `deriveStopReason`・`STOP_REASONS`・`StopReason`・`StopReasonInput`・`AbortCause`。
+  - 型の注意: `ToolsContextSettings<TOOLS>` は generic な `TOOLS` では解決できないため、settings は `as unknown as ToolLoopAgentSettings<never, TOOLS>` で渡し、`stopWhen` は `satisfies StopCondition<TOOLS>[]` で型を確認する。
   - `interface RunObserver { onRunEnd(summary: AgentRunSummary): void }`（M1 は UI メタデータへの記録とテストで使う。トレース（004 Req 5）と評価レポート（004 Req 3.10）は、この observer を実装して接続する）
 - **Owns**: `LoopLimits` の検証（正の整数）、ツール数の上限（20）、停止理由の導出、`AgentRunSummary` の型。`ToolLoopAgent` を生成してよいのは `agents/guarded-agent.ts` だけ（それ以外の `new ToolLoopAgent` は `check:repo-rules` が失敗させる）。
 - **Does NOT own**: ツールの定義（C9）、承認ゲート（004）、コンテキスト圧縮（004）、スパンの出力（004）。
@@ -206,9 +212,13 @@ flowchart LR
 - **Public interface**:
   - `defineAciTool<INPUT, OUTPUT>(definition: AciToolDefinition<INPUT, OUTPUT>): AciTool<INPUT, OUTPUT>`。`AciToolDefinition` は `name`、`description`、`inputSchema`、`risk: ToolRisk`（必須）、`timeoutMs?`、`execute(input, ctx: AciToolContext)` を持つ。`AciToolContext` は `abortSignal`、`clock`、`toolCallId` を持つ。`AciTool` はまだ AI SDK の `Tool` ではなく、`ToolRuntime` を受け取って変換される。
   - `interface ToolRuntime { clock: Clock; toolTimeoutMs: number }`。`toolTimeoutMs` は C4 の `AGENT_TOOL_TIMEOUT_MS`（`LoopLimits.toolTimeoutMs`）、`clock` は C13 の `platform.ts` が組み立てた Clock。変換時の実効タイムアウトは `min(definition.timeoutMs ?? runtime.toolTimeoutMs, runtime.toolTimeoutMs)` とする（ツール個別の値は設定の上限を短くすることだけができる。Req 6.4 の「設定された時間上限」を超えない）。変換したツールは `AbortSignal.any([options.abortSignal, runtime.clock.timeoutSignal(実効値)])` で中断を合成し、戻り値を `ToolOutcome<OUTPUT>` にする。`options.abortSignal` は AI SDK がツール実行に渡すシグナルで、C8 の合成済み `abortSignal` に由来する。
-  - `buildToolSet(tools: readonly AciTool[], availability: ToolAvailability, runtime: ToolRuntime): { tools: GuardedToolSet; disabled: readonly DisabledTool[] }`（`GuardedToolSet` は `unique symbol` のブランドを持つ `ToolSet` で、生成できるのは `buildToolSet` だけ）（`runtime` で各 `AciTool` を AI SDK の `Tool` に変換する）。`DisabledTool` は `name`、`reason`、`requiredEnv` を持つ（Req 5.4）。`risk` が `read-only` 以外のツールを渡された場合は `ConfigError` で拒否する（constitution 原則 6。承認ゲート（004 Req 4）が実装されるまでの規則で、004 がこの検査を「承認ゲートを通るツールに限り許可」へ置き換える）。
-  - サンプルツール: `createCurrentTimeTool(clock)`、`createCalculatorTool()`（四則演算・べき乗・括弧を再帰下降で解析する。`eval` と新しい依存を使わない）、`createCurrencyConvertTool(rates: RateTable)`（同梱の固定レート表と基準日。外部 API を使わない）、`createWeatherTool(fetcher: HttpFetcher)`（Open-Meteo。API キー不要）、`createWebSearchTool(search: WebSearchProvider)`（Tavily。キーがあるときだけ登録する）。
-- **Owns**: `ToolRisk`、`ToolOutcome`、`ToolFailure`、`ToolRuntime`、`GuardedToolSet` の型と、実効タイムアウトの決定規則。M1 のツールはすべて `risk: "read-only"`。
+  - **中断とエラーのツール結果化**: 実効タイムアウトと呼び出し元の中断は、合成したシグナルの `reason` で判別する。`reason` がタイムアウト側のシグナルの `reason` と一致するときだけ `kind: "timeout"` のツール結果にし、それ以外の中断は理由をそのまま再 throw して、エージェントへ `aborted` を伝える。`execute` がシグナルを無視しても確定するよう、`execute` とシグナルを競わせる（C10 の `ports/abort.ts`）。学習者向けの文言は、意図した失敗を表す `ToolExecutionError`（`summary`・`nextAction` を持つ。`recoverable` になる）か `PlatformError` の `message` だけを使い、想定外の例外はエラー名だけを `summary` に入れる（`message` は秘密情報を含みうるため）。
+  - `buildToolSet(tools: readonly AnyAciTool[], availability: ToolAvailability, runtime: ToolRuntime): BuiltToolSet`（`BuiltToolSet = { tools: GuardedToolSet; disabled: readonly DisabledTool[] }`。`runtime` で各 `AciTool` を AI SDK の `Tool` に変換する）。`GuardedToolSet<TOOLS extends ToolSet = ToolSet> = TOOLS & { readonly [brand]: true }` で、ブランドは export しない型だけの `unique symbol` とし、生成できるのは `buildToolSet` だけ。戻り値のツールの集合は実行時にも凍結し、リスク区分の検査の後に生のツールを足せないようにする。`buildToolSet` は `defineAciTool` が返したオブジェクトだけを受け付ける（`AciTool` は export しない `unique symbol` のブランドを持ち、手書きのオブジェクトは型エラー。実行時はモジュール内の `WeakSet` で生成元を検査し、手書きのオブジェクトやスプレッドしたコピーはリスク区分の検査より前に `ConfigError`。2026-10-07、W3 敵対的レビュー r1 のL12への対応）。AI SDK v7 の `Tool<INPUT, OUTPUT>` は `INPUT`・`OUTPUT` について不変（`needsApproval`・`execute` の引数と `inputSchema` が両方向に現れる）なので、型の異なるツールの配列は、SDK の消去型 `Tool` を返す `toTool()` を持つ `AnyAciTool` として受け取る（2026-10-07、T-15.2）。
+  - `ToolAvailability = Readonly<Partial<Record<FeatureId, boolean>>>`（C4 の `FeatureId` → 使えるか）。ツールは `AciToolDefinition.requiredFeature?: FeatureId` を宣言し、その機能が `true` でないツールは変換せずに `disabled` に入れる。`DisabledTool` は `name`、`reason`、`requiredEnv`（C4 の `FEATURE_REQUIREMENTS[feature]`。Web 検索は `["TAVILY_API_KEY"]`）を持つ（Req 5.4）。`reason` は環境変数名を含まない固定文言（「必要な設定が未設定のため、このツールは無効です。」）。`toolAvailabilityFromConfig(config)` は `PlatformConfig` から作る（`web-search` は Tavily のキーがあるときだけ `true`）。
+  - `ConfigError` で拒否するもの（constitution 原則 6）: ツール名が不正、`risk` が3値以外、`timeoutMs` が正の整数でない、`runtime.toolTimeoutMs` が正の整数でない、`defineAciTool` で定義されていないオブジェクト、ツール名の重複、`risk` が `read-only` 以外のツール（無効化されるツールも検査する。承認ゲート（004 Req 4）が実装されるまでの規則で、004 がこの検査を「承認ゲートを通るツールに限り許可」へ置き換える）、為替のレート表が不正。
+  - サンプルツール（ツール名は `currentTime`・`calculator`・`currencyConvert`・`weather`・`webSearch`。`*_TOOL_NAME` の定数で公開する）: `createCurrentTimeTool(clock)`、`createCalculatorTool()`（四則演算・べき乗・括弧を再帰下降で解析する。`eval` と新しい依存を使わない。`evaluateExpression`、`MAX_EXPRESSION_LENGTH`）、`createCurrencyConvertTool(rates: RateTable = DEFAULT_RATE_TABLE)`（同梱の固定レート表 `rates.json` と基準日。外部 API を使わない。`parseRateTable` で検証する）、`createWeatherTool(fetcher: HttpFetcher)`（Open-Meteo。API キー不要。入力は `{ city }` で、同梱の9都市の座標表（日本語の別名を含む）で解決し、ジオコーディングは使わない。URL は `openMeteoUrl` が組み立て、録画済み fixture の URL と一致させるため `current=temperature_2m,weather_code` のカンマを符号化しない）、`createWebSearchTool(search: WebSearchProvider)`（Tavily。`requiredFeature: "web-search"` で、キーがないときは `disabled` に入る。結果は最大 `MAX_SEARCH_RESULTS`（5）件）。キーがない場合も `disabled` に載せるためツールは一覧に入れる必要があり、C13 の `platform.ts` は使われないプロバイダを渡す。
+  - 公開 API（`@platform/ai-core/aci`）: 上記に加え、`ToolExecutionError`、`effectiveToolTimeoutMs`、`TOOL_RISKS`、`ToolFailureKind`、`AciToolContext`、`AnyAciTool`、`BuiltToolSet`、`ToolAvailability`。
+- **Owns**: `ToolRisk`、`ToolOutcome`、`ToolFailure`、`ToolRuntime`、`GuardedToolSet` の型と、実効タイムアウトの決定規則。M1 のツールはすべて `risk: "read-only"`。`tool-risk-declared`（C20）は `defineAciTool<...>(` を呼び出しとして走査するため、`defineAciTool` 自身は `function` 宣言ではなく `export const defineAciTool = <INPUT, OUTPUT>(...) =>` で定義する。
 - **Does NOT own**: 書き込み・破壊的ツールと、その登録制限（003 Req 1.16、1.17）。MCP クライアント（003）。承認（004）。
 - **Requirements**: 5.2, 5.3, 5.4, 5.6, 5.7, 5.8, 6.4
 
@@ -224,11 +234,12 @@ flowchart LR
 
 - **Responsibility**: ペルソナのテンプレート、モデル切り替え時の履歴変換、応答メタデータの組み立てを提供する。
 - **Public interface**:
-  - `PERSONAS: readonly PersonaTemplate[]`（`id`、`version`（semver）、`title`、`render(vars): string`）、`getPersona(id): PersonaTemplate`
-  - `adaptHistoryForModel(messages: readonly UIMessage[], target: ModelEntry): UIMessage[]`（ADR-7）
-  - `buildResponseMetadata(input: { entry: ModelEntry; usage: LanguageModelUsage; run?: AgentRunSummary; toolsCalled?: readonly string[] }): ResponseMetadata`
-  - `chatRequestSchema`、`agentRequestSchema`（`z.strictObject`。`messages`、`modelId`、`personaId`）
+  - `PERSONAS: readonly PersonaTemplate[]`（凍結済み。`id`、`version`（semver）、`title`、`render(vars: PersonaVars): string`。`PersonaVars = { modelName?; today? }` で、サーバーが信頼できる値（カタログの表示名と、Clock から得た `YYYY-MM-DD`）だけを渡し、リクエスト本文からは受け取らない。値を渡したときだけ「# 実行時の情報」節を末尾に加える）、`PERSONA_IDS`、`PersonaId`、`isPersonaId(value)`、`DEFAULT_PERSONA_ID`（`general-assistant`）、`getPersona(id): PersonaTemplate`（未知の ID は `PlatformError("invalid-request")`）。各ペルソナのファイルはデータ（`id`・`version`・`title`・`instructions`）だけを export し、`personas/index.ts` が `render` 付きのテンプレートに組み立てる（循環参照を避けるため）。プロンプトの本文を変えたら `version` を上げる。
+  - `adaptHistoryForModel(messages: readonly UIMessage[], target: ModelEntry): UIMessage[]`（ADR-7。`IMAGE_OMITTED_TEXT` も公開する）。履歴はすべてクライアントが送るため信頼しない。プロバイダ固有フィールド（`providerMetadata`・`providerReference`・`callProviderMetadata`・`resultProviderMetadata`）と `custom` パートは、どのメッセージからも常に除く。メッセージの出所は `metadata.modelId` で判定する: `Object.hasOwn(MODEL_CATALOG, id)` を満たす文字列のときだけ、そのカタログの entry の provider を出所とし、カタログにない・文字列でない ID や、entry と矛盾する `metadata.provider` は出所不明とする。プロバイダが実行したツールパート（`providerExecuted`）は、出所が切り替え先のプロバイダと一致するときだけ残す。推論（`reasoning`・`reasoning-file`）は出所に関係なく常に除く: 再送に要る metadata（Anthropic の署名、OpenAI / Azure の `itemId`・`reasoningEncryptedContent`）を除く以上どのプロバイダも使えず、OpenAI のプロバイダは捨てる推論パートを生のテキストごと警告に入れて stderr に出すため（2026-10-07、W3 敵対的レビュー r2 の N1。サーバーが発行した metadata の署名検証は将来の拡張）。結果のないツール呼び出し（`input-streaming` / `input-available`）は除き、承認系の状態（`approval-*`、`output-denied`）は残す（2026-10-07、W3 敵対的レビュー r1 のM4への対応）。`step-start` だけになったメッセージは送らない。メッセージとパートは常に浅いコピーで、入力を変えない。
+  - `buildResponseMetadata(input: { entry: ModelEntry; persona: Pick<PersonaTemplate, "id" | "version">; usage?: LanguageModelUsage; run?: AgentRunSummary; toolsCalled?: readonly string[]; disabledTools?: readonly DisabledTool[] }): ResponseMetadata`（凍結した JSON 化可能な値を返す）。`usage` はストリームの `start` では渡さず（使用量がまだない）、`finish` で `part.totalUsage` を渡す。クライアントの `useChat` が2つをマージする。`toolsCalled` は、明示の値があればそれ、なければ `run.toolsCalled`、どちらもなければキー自体を省く（素のチャットはツール一覧を出さず、エージェントがツールを使わずに答えたときは `[]`）。エージェントの Route は `finish` で先に `guarded.messageMetadata({ part })` を呼んで run を確定させ、返る `{ run }` を渡す（C8）。
+  - `chatRequestSchema`、`agentRequestSchema`（`z.strictObject`。同じ形で、[Interfaces / Contracts](#interfaces--contracts) の HTTP API の表を参照）。メッセージはエンベロープ（`id`・`role`・`metadata`・`parts`）だけを strict に検査し、パートは `type` だけを見て他のフィールドを保持する。パートの中身の検証は C15・C16 の Route が AI SDK の `validateUIMessages` で行う（スキーマの型は `UIMessage[]` ではない）。`role: "system"` は受け付けない（ペルソナだけがシステムプロンプトになる）。
 - **Owns**: `personas/*.ts`（汎用アシスタント、Python 講師、厳密なレビュアの3種から開始）、`ResponseMetadata` の型。
+- **制約**: 画像以外のファイル（PDF 等）は対応の可否を表す機能フラグがないため、そのまま送る。将来 AI SDK が `UIMessage` に最上位のフィールドを加えると、strict なエンベロープは更新するまでそれを拒否する。
 - **Does NOT own**: HTTP の検査（C14）、会話の永続化（Out of Scope）。
 - **Requirements**: 3.3, 3.7, 3.10, 5.6
 
@@ -236,10 +247,17 @@ flowchart LR
 
 - **Responsibility**: 記事 URL・YouTube URL・字幕テキストから本文を取得し、分割の要否を判断して、スキーマ検証済みの要約オブジェクトを逐次生成する。
 - **Public interface**:
-  - `summarySchema`（Zod: `title`、`keyPoints`（ちょうど3件）、`tags`、`actionItems`、`chapters?`（`heading`、`startSeconds`））、`summarizeRequestSchema`（`z.strictObject`。`id`、`input: SummaryInput`、`modelId`。`POST /api/summarize` の本文）
-  - `loadSource(input: SummaryInput, deps: SourceDeps): Promise<LoadedSource>`（`SummaryInput = { kind: "article"; url } | { kind: "youtube"; url } | { kind: "transcript"; text }`）。エラー: `SourceFetchError`（`reason: "http-status" | "empty-body" | "network"`、`status?`）、`TranscriptUnavailableError`（`reason: "no-captions" | "private" | "fetch-failed"`）
-  - `planSummary(source: LoadedSource, entry: ModelEntry): SummaryPlan`（`strategy: "whole" | "staged"`、`estimatedInputTokens`、`chunks`。ADR-9）
-  - `streamSummary(plan: SummaryPlan, deps: SummaryDeps): AsyncIterable<SummaryEvent>`（`partial` / `restart` / `final` / `meta` のイベント。検証失敗時は最大2回まで再生成し、それでも失敗したら `SummaryValidationError`（検証エラーの一覧を含む））
+  - `summarySchema`（Zod: `title`、`keyPoints`（ちょうど3件）、`tags`、`actionItems`、`chapters?`（`heading`、`startSeconds`））、`summarizeRequestSchema`（`z.strictObject`。`id`、`input: SummaryInput`、`modelId`（カタログの ID の `z.enum`。チャットと同じ2026-10-07、W3 敵対的レビュー r1 のL13への対応）。`POST /api/summarize` の本文）
+  - `loadSource(input: SummaryInput, deps: SourceDeps): Promise<LoadedSource>`（`SummaryInput = { kind: "article"; url } | { kind: "youtube"; url } | { kind: "transcript"; text }`）。エラー: `SourceFetchError`（`reason: "http-status" | "empty-body" | "network" | "disallowed-url" | "timeout" | "too-large"`、`status?`）、`TranscriptUnavailableError`（`reason: "no-captions" | "private" | "fetch-failed"`）。`SourceDeps` は任意の `clock: Clock`（既定 `systemClock`）を持つ。記事の取得は http / https の公開ホストだけを対象とし（`url-guard.ts` の `fetchableUrl`・`isBlockedHostname`。WHATWG `URL` が10進・8進・16進の IPv4 と IPv6 の表記を正規化するので、`hostname` のリテラルで判定する。ループバック・プライベート・リンクローカル・CGNAT・マルチキャスト等の IPv4、`::1`・ULA・リンクローカル・IPv4 埋め込みの IPv6（mapped・SIIT `::ffff:0:0/96`・NAT64 `64:ff9b::/96`・6to4 `2002::/16` は埋め込みの IPv4 で判定し、ローカル用の NAT64 `64:ff9b:1::/48` と Teredo `2001::/32` は丸ごと拒否する）、`localhost`・`local`・`internal`・`home.arpa`・`lan` とそのサブドメイン、単一ラベルの名前を拒否する。名前解決はしない。DNS で内部アドレスへ向く名前と DNS rebinding は、C13 の `platform.ts` が組み立てる本番の HttpFetcher が接続時に解決後の IP を同じ規則で検査して防ぐ（2026-10-07、W3 敵対的レビュー r2 の N2・N7）。無効な `Location` も `disallowed-url`（同 N5））、リダイレクトを `redirect: "manual"` で最大5回まで自分でたどって行き先ごとに検査し、全体を `ARTICLE_FETCH_LIMITS.timeoutMs`（15 秒、`Clock.timeoutSignal`。シグナルを無視する fetcher とも競わせる）で打ち切り、本文が `maxBodyBytes`（5 MiB、UTF-8 バイト）を超えたら拒否する（2026-10-07、W3 敵対的レビュー r1 のM6への対応。localhost や LAN の記事 URL はどの実行モードでも拒否される。この検査はポートが全量を読んだ後なので、読み込み中の打ち切りは C13 の本番の HttpFetcher が担う（r2 の N3））
+  - `planSummary(source: LoadedSource, entry: ModelEntry): SummaryPlan`（`strategy: "whole" | "staged"`、`estimatedInputTokens`、`chunks`。ADR-9。予算は `contextWindow` の 80%（`CONTEXT_USAGE_RATIO`）から出力の予約 `OUTPUT_RESERVE_TOKENS`（4,096）を引いた値で、推定値に安全係数 1.2 を掛けて比べ、境界ちょうどは `whole`。チャンクは行ごとのトークン数（と改行1つ）を足して詰め、1行が予算を超えるときは強制的に分ける。1行の強制分割は、トークン密度の補間で探索する（`fittingEnd`。gpt-tokenizer のトークン数は長さに対して単調でないため、契約は「収まり、1文字足すと超える接頭辞」）。チャンクの予算が 256 トークン（`MIN_CHUNK_TOKENS`）未満なら `PlatformError("capability-unsupported")`）
+  - Ollama のモデルへの要約呼び出しは `providerOptions.ollama.options.num_ctx` にカタログの `contextWindow` を渡し、計画の予算と実行時のコンテキスト長を一致させる（`ollama-ai-provider-v2` の `chat(id, settings)` は settings を捨て、呼び出しごとの `providerOptions` だけが届くため。2026-10-07、W3 敵対的レビュー r1 のM5への対応）。チャットとエージェントの呼び出しはサーバーの既定のまま。
+  - 段階要約の統合は、`integrationTokens` で統合プロンプトを見積もり（行ごとのトークン数と改行の合計。実測より大きめで5%以内）、`integrationGroups` で予算に収まるグループに順に分け、グループごとの統合（イベントを出さない）を1グループになるまで繰り返してから、最後の統合をストリームする。部分要約1件でも収まらない場合、または2件を1グループにできない場合は `capability-unsupported`（2026-10-07、W3 敵対的レビュー r1 のL14への対応）。
+  - `streamSummary(plan: SummaryPlan, deps: { model: LanguageModel; entry: ModelEntry; abortSignal? }): AsyncIterable<SummaryEvent>`（`SummaryDeps`。ゲートウェイではなく、C6 で解決済みのモデルとそのカタログの entry を受け取る。`partial` / `restart` / `final` / `meta` のイベント。検証失敗時は最大2回（`MAX_REGENERATIONS`）まで再生成し、それでも失敗したら `SummaryValidationError`（`code: "output-invalid"`、検証エラーの一覧を含む））
+  - `summarizeSource(input: SummaryInput, deps: SummaryDeps & SourceDeps): AsyncIterable<SummaryEvent>`（`loadSource` → `planSummary` → `streamSummary` を1回で行う。ソースの失敗は LLM を呼ぶ前に投げる。C17 の Route の入口）
+  - **生成の実装**（2026-10-07、T-18.6）: 構造化出力は `streamText` + `Output.object` で、`partialOutputStream` を `partial` として送る。`await result.output` が `NoObjectGeneratedError` で失敗したときは、`error.text` を自前で JSON 解析・スキーマ検証して `path: message` 形式の issues（`formatSchemaIssues`）を作る。生成本文を含む `cause` は使わず、エラーにも入れない。プロバイダのエラーは再生成せずにそのまま投げる。ストリームの途中で `error` パートが来ても `result.output` は `NoObjectGeneratedError` で reject するため、`onError` で集めたエラーがあれば検証より先にそれを投げる（再生成の対象はスキーマと JSON の失敗だけで、プロバイダ・通信のエラーは元のクラスのまま1回の呼び出しで伝える。2026-10-07、W3 敵対的レビュー r1 のH1への対応）。`streamText` の既定の `onError` はエラーを console に出すため、no-op の収集関数で置き換える。`staged` では各チャンクの部分要約（再生成の規則は同じ。イベントは出さない）の後、統合の呼び出しだけが `partial` / `restart` を送る。`restart.attempt` はこれから始まる試行の番号（2 か 3）。`maxOutputTokens` は `min(4096, entry.maxOutputTokens)`。
+  - **プロンプト**: AI SDK v7 の `streamText` は `messages` 内の system メッセージを `AI_InvalidPromptError` で拒否するため、`build*Prompt` は `{ instructions, messages }`（`SummaryPrompt`）を返す。長文のソースは user メッセージの先頭のテキストパートに `<source>` で区切って置き（タイトルと本文の中の開き・閉じの `source` タグは、大文字・空白・属性の変種を含めて `/<(\s*\/?\s*source\b[^>]*)>/giu` で `&lt;…&gt;` に置き換える（2026-10-07、W3 敵対的レビュー r1 のL9への対応））、再生成時の検証エラーは後ろに別パートとして足す。キャッシュ対象の先頭部分は再送しても変わらない。分割判断の指示文のトークン数は、空のソースで実際のプロンプトを組み立てて推定する。
+  - スキーマの補助: `summarySchemaFor({ withChapters })`（時刻付きのソースはチャプターを1件以上必須にし、それ以外はチャプターのないスキーマを使う。モデルに任意項目を求めない）、`SUMMARY_LIMITS`（字幕テキストは 200,000 文字まで。Web では本文 512 KiB の上限が先に効く）、`summaryInputSchema`、`parseYoutubeVideoId(url)`（YouTube のホストだけを受け付け、ID は `[A-Za-z0-9_-]{1,64}`。実際の ID は11文字だが、13.6 の fixture の ID（`m1-agentic-ai` 等）を受け付けるため。解析できない URL は `PlatformError("invalid-request")` で、要約リクエストのスキーマも拒否する）。
+  - 本文抽出: `jsdom` は型定義がなく `@types/jsdom` も依存にないため、`createRequire(import.meta.url)("jsdom")` で読み込み、使う面だけをローカルの interface で型付けする。`jsdom` は `innerText` を実装しないので、Readability の結果をブロック要素ごとに改行してテキストにする。Readability は失敗時も文書から script を除くため、代替経路でも script の本文は混ざらない。
   - **Req 4.3 と 4.5 の境界**: `partial` は描画のための暫定値（`DeepPartial<Summary>`）で、スキーマ検証を経ていない。「要約オブジェクト」として UI とライブラリ利用者へ返すのは、スキーマ検証を通過した `final` だけとする。UI は `final` を受け取るまでカードを「生成中」として表示し、`restart` を受け取ったら暫定表示を破棄する。ライブラリ利用者向けの `summarize()`（`streamSummary` を最後まで消費する関数）は `final` だけを返す。
   - `cachePolicyFor(entry: ModelEntry): CachePolicy`（`anthropic`: 長文パートに `providerOptions.anthropic.cacheControl`、`openai` / `azure` / `google`: 自動キャッシュのため記録のみ、`ollama` / `mock`: なし）
 - **Owns**: 要約スキーマ、本文抽出（`@mozilla/readability` + `jsdom`）、YouTube URL の解析、トークン推定（`gpt-tokenizer`）、分割と統合のプロンプト。
@@ -252,7 +270,7 @@ flowchart LR
 
 - **Responsibility**: 日本語 UI のレイアウト、ナビゲーション（`/chat`、`/agent`、`/summarize`）、起動時の設定検証、shadcn/ui の基本部品を提供する。
 - **Public interface**: `app/layout.tsx`（`<html lang="ja">`）、`app/page.tsx`（モジュール一覧と実行モードの表示）、`instrumentation.ts#register`（`loadPlatformConfig({ features })` を呼び、`ConfigError` を整形して出力する）、`components/ui/*`。
-- **Owns**: `next.config.ts`（`reactCompiler: true`、`typedRoutes: true`）、Tailwind CSS の設定、`lib/server/platform.ts`（ゲートウェイ・ポート・Clock・レート制限器・`ToolRuntime` を組み立てる唯一の場所。`server-only` を import する）。ポートは実行モードで切り替える: `mock` は C7 の fixture 実装、`local` / `live` は C10 の本番実装、`AI_RECORD=1`（`local` / `live`）では本番実装を C7 の録画用ラッパで包む。
+- **Owns**: `next.config.ts`（`reactCompiler: true`、`typedRoutes: true`）、Tailwind CSS の設定、`lib/server/platform.ts`（ゲートウェイ・ポート・Clock・レート制限器・`ToolRuntime` を組み立てる唯一の場所。`server-only` を import する）。ポートは実行モードで切り替える: `mock` は C7 の fixture 実装、`local` / `live` は C10 の本番実装、`AI_RECORD=1`（`local` / `live`）では本番実装を C7 の録画用ラッパで包む。`local` / `live` の HttpFetcher は `createNodeHttpFetcher(guardedFetch)` で組み立て、`guardedFetch` が次の2つを担う（2026-10-07、W3 敵対的レビュー r2 の N2・N3。C12 の `url-guard.ts` はリテラル検査だけで、ポートに名前解決とストリーミングの段がないため）: (a) 接続時に名前を解決し、解決後の IP が C12 の `isBlockedHostname` と同じ規則（ループバック・プライベート・リンクローカル・メタデータ等）に当たれば接続しない。`isBlockedHostname` は WHATWG URL で正規化済みの hostname を前提とするため、resolver が返す生の IP は `` new URL(`http://${host}/`).hostname ``（`host` は IPv6 なら `[ip]`、IPv4 なら `ip`） で正規化してから渡す（生のままでは `::ffff:10.0.0.1` を通し、公開 IPv6 を拒否する。W3 敵対的レビュー r3 の R3-1）（例: undici の `Agent({ connect: { lookup } })` を `dispatcher` に渡す。解決と接続が同じ段なので DNS rebinding も防ぐ。拒否は `SourceFetchError("disallowed-url")` で表す。undici は `lookup` の例外を `TypeError: fetch failed` の `cause` に包むので、`guardedFetch` は `cause` を見て `SourceFetchError("disallowed-url")` に変換してから投げる。変換しないと C12 の `fetchOnce` が `network` と報告する）。(b) 本文を読みながら累積バイト数を数え、`ARTICLE_FETCH_LIMITS.maxBodyBytes` を超えた時点で読み込みを中断して `SourceFetchError("too-large")` を投げる（`Content-Length` が上限を超えるときは本文を読まない）。`undici` を依存に加える場合は、先に research.md と plan を改訂する（constitution 原則 10）。
 - **Does NOT own**: 各画面の機能ロジック。
 - **Requirements**: 1.9, 1.10, 2.13（録画用ラッパの組み込み）, 3.8, 6.4（`ToolRuntime` の組み立て）, NFR（UI 言語、アクセシビリティ、対応ブラウザ）
 
@@ -270,6 +288,7 @@ flowchart LR
 - **Public interface**: `POST /api/chat`（[Interfaces / Contracts](#interfaces--contracts)）。UI: `ChatPanel`（`useChat` + `DefaultChatTransport`）、`ModelSelector`、`PersonaSelector`、`ImageAttachButton`（モデルが `imageInput` に対応しているときだけ有効）、`ReasoningDisclosure`（`<details>` で折りたたむ）、`MessageMeta`（モデル名、入出力トークン数、キャッシュ読み出し量）、`ErrorBanner`（再送ボタン付き）、停止ボタン（`ChatPanel` の中で `stop()` を呼ぶ。独立した部品にはしない）。
 - **Owns**: チャット画面の状態（`useChat` が管理し、永続化しない）。
 - **Does NOT own**: 履歴変換とメタデータの組み立て（C11）、ツール（C16）。
+- **Route の注意**: `chatRequestSchema` はメッセージのエンベロープだけを検査するため、Route は `body.messages` を `validateUIMessages` で検証してから `adaptHistoryForModel`・`convertToModelMessages` に渡す（C11。2026-10-07、T-17.3）。`streamText` には何もログに出さない `onError` を必ず渡す（AI SDK の既定は生のエラーの `console.error`。C8 と同じ規則2026-10-07、W3 敵対的レビュー r1 のH3への対応）。
 - **Requirements**: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8, 3.9, 3.10
 
 #### C16 ToolAgentFeature（`/agent`、`POST /api/agent/tools`）
@@ -300,8 +319,9 @@ flowchart LR
   - `@platform/ai-core/testing`: `describeLocal(name, fn)`、`itLocal(name, fn)`（`localAvailability` が不可なら理由付きでスキップする）、`createTextStreamModel`、`createToolCallingModel`、`createObjectModel`（`MockLanguageModelV4` + `simulateReadableStream`）、`createFakeClock`。
   - `tooling/vitest/gate-reporter.ts`: 実行・成功・失敗・スキップ（理由別）の件数と、DB 依存で未実行の件数（`*.pg.test.ts` のファイル数）を表示する。実行件数が 0 なら終了コードを非ゼロにする。
   - **テストの実行単位**（2026-09-27、3回目の `/sdd-analyze` H-1）: gate の `test` 段は `turbo run test` で、`test` スクリプトを持つ各ワークスペースと、ルートタスク `//#test`（ルートの `vitest.config.ts`。対象は `tooling/`・`scripts/` のテストだけ）を、それぞれ独立した Vitest プロセスで1回ずつ実行する。ルートの設定は `projects` でワークスペースを集約しない（同じテストを2回実行しないため）。ルートと各ワークスペースの `vitest.config.ts` は、`setup-hermetic` と `gate-reporter` を共通に登録する。`localAvailability` を利用する `packages/ai-core` と `packages/eval-suite` は `global-setup-local.ts` も登録する。`gate-reporter` は実行単位ごとに件数を表示し、その単位の実行件数が 0 なら失敗する。テストの選択は CLI のファイル名フィルタではなく、mise タスクが設定する `AI_TEST_SUITE` で行う（2026-09-27、Task 1 の実装検証。Vitest の CLI フィルタは `exclude` で外したファイルを戻せないため）。ルートと各ワークスペースの `vitest.config.ts` は同じ規則に従う: `gate`（既定。`test`・`test:coverage`）は `*.pg.test.*` 以外のすべてを収集し、`*.local.test.*` は `local` が使えなければ理由付きでスキップされる。`local`（`test:local`）は `*.local.test.*` だけ、`pg`（`test:db`）は `*.pg.test.*` だけを収集する。0件での失敗（`passWithNoTests: false` と `gate-reporter`）は `gate` だけに適用し、`local`・`pg` では対象のない実行単位を許す。未知の値は設定の読み込み時に失敗する。`turbo.json` の `test` と `//#test` は、strict env モードでも値が渡りキャッシュキーに入るよう、`AI_TEST_RUN_MODE`・`AI_TEST_SUITE`・`OLLAMA_BASE_URL` を `env` に宣言する。ワークスペースの `test` スクリプトと `test:coverage` スクリプト（`vitest run --coverage.enabled --coverage.reporter=html --coverage.thresholds.lines=0`。HTML レポートの生成だけを行い、行カバレッジ80%の閾値は gate の `test` 段だけが強制する）は最初のテストと同時に加える（`ai-core` は 6.3、`eval-suite` は 19.1、`apps/web` は 21.1。スクリプトのないワークスペースは turbo の実行対象にならない）。
-  - カバレッジ（NFR テストカバレッジ）: `packages/ai-core/vitest.config.ts` はカバレッジを常に有効にし（`coverage.enabled: true`、`thresholds.lines: 80`）、gate の `test` 段で閾値を下回れば失敗させる。`mise run test:coverage` は `turbo run test:coverage` で各ワークスペースの `test:coverage` スクリプトを実行し、HTML レポートを作るだけのタスクで、閾値の強制は gate が担う（2026-09-27、`/sdd-analyze` M-6）。
-  - `stryker.config.mjs`: 対象は制御ロジック（`agents/stop-conditions.ts`、`agents/stop-reason.ts`、`aci/define-tool.ts`、`config/run-mode.ts`、`mock/resolve.ts`、`summarize/plan.ts`、`summarize/retry.ts`）に限る。`typescript-checker` は使わない。変異対象はすべて `packages/ai-core` にあるため、`vitest.configFile` は `packages/ai-core/vitest.config.ts` とする。閾値 `break: 70`。
+  - カバレッジ（NFR テストカバレッジ）: `packages/ai-core/vitest.config.ts` はカバレッジを常に有効にし（`coverage.enabled: true`、`thresholds.lines: 80`）、gate の `test` 段で閾値を下回れば失敗させる。`mise run test:coverage` は `turbo run test:coverage` で各ワークスペースの `test:coverage` スクリプトを実行し、HTML レポートを作るだけのタスクで、閾値の強制は gate が担う（2026-09-27、`/sdd-analyze` M-6）。閾値を強制するのは `ai-core` だけで、`src/` を持たない `eval-suite` はカバレッジの閾値を持たない（`test:coverage` は空の HTML レポートを作る。2026-10-07、T-19.1）。
+  - `stryker.config.mjs`: 対象は制御ロジック（`agents/stop-conditions.ts`、`agents/stop-reason.ts`、`aci/define-tool.ts`、`config/run-mode.ts`、`mock/resolve.ts`、`summarize/plan.ts`、`summarize/retry.ts`）に限る。`typescript-checker` は使わない。変異対象はすべて `packages/ai-core` にあるため、`vitest.configFile` は `packages/ai-core/vitest.config.ts` とする。閾値 `break: 70`（2026-10-07 の実測 88.80%）。
+    - **Stryker の互換性の回避**（2026-10-07、`30d4437`。W3 の締めで `mise run test:mutation` を初めて実行して判明。research.md の Risks）: (1) Stryker は `tsconfigFile` を TypeScript の JS API（`ts.parseConfigFileTextToJson`）で書き換えるが、TypeScript 7（ネイティブコンパイラ）は JS API を持たないため、`tsconfigFile` を存在しないファイル（`stryker-no-tsconfig-rewrite.json`）に向けて書き換えを止める（ルートの tsconfig は sandbox に複写される `tsconfig.base.json` を継承するだけで、書き換えは不要。checker も tsconfig を読まない）。(2) `@stryker-mutator/vitest-runner` 10.0.0 は変異ごとの `testNamePattern` をスイート名とテスト名の空白区切りで作るが、Vitest 5 は `suite > test` に照合するため、絞り込んだ実行が0件になり、静的でない変異がすべて生き残っていた（スコア 8.40%）。`pnpm patch` で `" > "` 区切りにしたパッチ（`patches/@stryker-mutator__vitest-runner@10.0.0.patch`、`pnpm-workspace.yaml` の `patchedDependencies`）を当てる。外す条件: パッチは `@stryker-mutator/vitest-runner` が Vitest 5 の `suite > test` の名前の照合に対応したら、`tsconfigFile` の回避は Stryker が TypeScript の JS API を必要としなくなったら外す。
 - **Owns**: テストファイルの命名規約: `*.test.ts`（gate で実行）、`*.local.test.ts`（比較・品質評価。`local` のときだけ実行）、`*.db.test.ts`（インプロセス DB で gate に含める）、`*.pg.test.ts`（Docker の Postgres が必要。`mise run test:db` だけで実行）。
 - **Does NOT own**: Evals の実体とグレーダー（004）。
 - **Requirements**: 1.12, 1.13, 1.14, 1.15, 1.16, 2.5, 2.11, NFR（テストカバレッジ、決定性、オフライン動作）
@@ -346,7 +366,7 @@ flowchart LR
 #### C21 EvalSuiteScaffold（`packages/eval-suite/`）
 
 - **Responsibility**: 評価スイートのワークスペースを用意し、テスト方針（タグ規約、`local` 限定）の適用例を1件ずつ置く。
-- **Public interface**: `package.json`、`vitest.config.ts`（`setup-hermetic`、`global-setup-local`、`gate-reporter` を登録する。C18「テストの実行単位」）、`tests/capability/README.md`、`tests/regression/tool-agent-run.test.ts`（C8 の単体テストとは重ねず、M1 のツールエージェントを C7 のシナリオで最後まで走らせ、停止理由、呼び出したツールの列、最終回答の Outcome を回帰として検証する。`ai-core` の `stop-reason.test.ts` は純粋関数の網羅、こちらはエージェントの通し実行、と役割を分ける）、`tests/capability/summary-quality.local.test.ts`（`local` 限定の例。要約が3点の要点を持つことを実モデルで確認する）。
+- **Public interface**: `package.json`、`vitest.config.ts`（`setup-hermetic`、`global-setup-local`、`gate-reporter` を登録する。C18「テストの実行単位」）、`tests/capability/README.md`、`tests/regression/tool-agent-run.test.ts`（C8 の単体テストとは重ねず、M1 の5ツールを `buildToolSet` で組んだ実際の構成（天気は HTTP の fixture、Web 検索は fixture プロバイダ、時刻は fake Clock）のツールエージェントを C7 のシナリオで最後まで走らせ、停止理由、呼び出したツールの列、各ツールが返した `ToolOutcome`（成功と recoverable な失敗）、最終回答のテキストを回帰として検証する。`eval-suite` は `@platform/ai-core` だけに依存し `ai` に依存しない（pnpm の厳格な解決で `createAgentUIStream` を import できない）ため、`guarded.agent.stream({ prompt, abortSignal: guarded.abortSignal })` の `fullStream` を読んで実行し、停止理由とツールの列は `await guarded.done` のサマリで検証する。UI メッセージストリームの `finish` のメタデータは C8 の単体テストと C16 の Route Handler のテストの責務とする。`ai-core` の `stop-reason.test.ts` は純粋関数の網羅、こちらはエージェントの通し実行、と役割を分ける）、`tests/capability/summary-quality.local.test.ts`（`local` 限定の例。要約が3点の要点を持つことを実モデルで確認する）。
 - **Owns**: 評価スイートのディレクトリ規約。
 - **Does NOT own**: Capability / Regression 評価の本体、LLM-as-a-Judge（004 Req 3）。
 - **Requirements**: 1.1, 1.13, 1.14
@@ -406,7 +426,7 @@ erDiagram
 | | totalTokens | `{ input: number; output: number; cacheRead: number; reasoning: number }` | 各ステップの `usage` の合計 |
 | | elapsedMs | `number` | 注入した `Clock` で計測 |
 | | toolsCalled | `readonly string[]` | 呼び出し順、重複を含む（Req 5.6） |
-| | error | `{ name: string; message: string } \| undefined` | `stopReason === "error"` のとき |
+| | error | `{ code: PlatformErrorCode \| "unexpected"; message: string } \| undefined` | `stopReason === "error"` のときだけ値を持つ（キー自体は常にある）。`code` は `PlatformError` の code（AI SDK の `APICallError` は `provider-unavailable`、それ以外は `unexpected`）、`message` は固定の日本語文言（`AGENT_RUN_ERROR_MESSAGE`）。生のエラー文とエラー名は含めない（`finish` のメタデータとしてブラウザへ送られるため。C8） |
 | ToolOutcome\<T\> | — | `{ ok: true; data: T } \| { ok: false; failure: ToolFailure }` | ツール結果として LLM に返す形（Req 5.8） |
 | ToolFailure | kind | `"recoverable" \| "fatal" \| "timeout"` | 003 Req 1.3 の分類を先取りする。M1 は `recoverable` と `timeout` だけを使う |
 | | summary | `string` | エラーの要約（秘密情報とスタックトレースは含めない） |
@@ -418,9 +438,10 @@ erDiagram
 | Field | Type | Notes |
 |-------|------|-------|
 | modelId / modelName / provider | `ModelId` / `string` / `ProviderId` | Req 3.7 |
-| usage | `{ inputTokens: number; outputTokens: number; cacheReadTokens?: number; reasoningTokens?: number }` | `usage.inputTokenDetails.cacheReadTokens`、`usage.outputTokenDetails.reasoningTokens` から写す |
-| personaId / personaVersion | `string` / `string` | Req 3.10 |
-| run | `AgentRunSummary \| undefined` | `/api/agent/tools` のときだけ |
+| usage | `{ inputTokens: number; outputTokens: number; cacheReadTokens?: number; reasoningTokens?: number } \| undefined` | `usage.inputTokenDetails.cacheReadTokens`、`usage.outputTokenDetails.reasoningTokens` から写す。`start` ではキーがない（使用量がまだない）。報告されない入出力の合計は 0、報告された 0 は残す |
+| personaId / personaVersion | `PersonaId` / `string` | Req 3.10 |
+| run | `AgentRunSummary \| undefined` | `/api/agent/tools` の `finish` のときだけ |
+| toolsCalled | `readonly string[] \| undefined` | Req 5.6。明示の値、なければ `run.toolsCalled`。`/api/chat` ではキーがない |
 | disabledTools | `readonly { name: string; reason: string; requiredEnv: readonly string[] }[]` | Req 5.4 |
 
 **要約（C12）**
@@ -433,10 +454,10 @@ erDiagram
 | | actionItems | `string[]`（0〜10件） | |
 | | chapters | `{ heading: string; startSeconds: number }[]`（任意） | タイムスタンプ付きの入力のときだけ必須にする（Req 4.10） |
 | SummaryMeta | strategy | `"whole" \| "staged"` | Req 4.12 |
-| | estimatedInputTokens / actualInputTokens | `number` / `number \| undefined` | 判断に用いた推定値と実測値 |
+| | estimatedInputTokens / actualInputTokens | `number` / `number \| undefined` | 判断に用いた推定値と実測値。実測値は全 LLM 呼び出し（チャンク、統合、再生成）の合計 |
 | | chunks | `number` | `whole` のとき 1 |
-| | cacheReadTokens | `number \| undefined` | Req 4.8 |
-| | attempts | `1 \| 2 \| 3` | 検証失敗による再生成を含む（Req 4.4） |
+| | cacheReadTokens | `number \| undefined` | Req 4.8。全 LLM 呼び出しの合計。キャッシュの指定がないプロバイダ（`ollama`・`mock`）では記録しない |
+| | attempts | `1 \| 2 \| 3` | 検証失敗による再生成を含む（Req 4.4）。最終の要約を作った呼び出しの試行回数 |
 | LoadedSource | kind / text / title? / segments? | `"article" \| "youtube" \| "transcript"` / `string` / `string` / `{ text: string; startSeconds: number }[]` | 字幕はセグメントを保持してチャプター生成に使う |
 
 **Mock の fixture（C7）** — `packages/ai-core/fixtures/` 配下に JSON で保存する。
@@ -465,12 +486,13 @@ erDiagram
 
 | Method / Path | Request body（`z.strictObject`） | Stream の内容 | 主な拒否 |
 |---|---|---|---|
-| `POST /api/chat` | `{ id: string; messages: UIMessage[]; modelId: ModelId; personaId: string }` | `text`、`reasoning`（`sendReasoning: true`）、`file`、`messageMetadata: ResponseMetadata` | 400 `invalid-request` / `limit-exceeded` / `capability-unsupported`（画像非対応モデルへの画像送信など）、413 `payload-too-large`、429 `rate-limited`、503 `provider-unavailable`（Ollama 未起動、認証情報なし） |
+| `POST /api/chat` | `{ id: string; messages: UIMessage[]（role は user / assistant のみ）; modelId: CatalogModelId; personaId: PersonaId; trigger?: "submit-message" \| "regenerate-message"; messageId?: string }`（`trigger`・`messageId` は `DefaultChatTransport` が既定で付けるため受け付け、Route は使わない。2026-10-07、T-17.3） | `text`、`reasoning`（`sendReasoning: true`）、`file`、`messageMetadata: ResponseMetadata` | 400 `invalid-request` / `limit-exceeded` / `capability-unsupported`（画像非対応モデルへの画像送信など）、413 `payload-too-large`、429 `rate-limited`、503 `provider-unavailable`（Ollama 未起動、認証情報なし） |
 | `POST /api/agent/tools` | 同上 | 上記 + `tool-<name>` パート（`input-streaming` → `input-available` → `output-available` / `output-error`）、`messageMetadata.run: AgentRunSummary` | 同上 |
-| `POST /api/summarize` | `{ id: string; input: SummaryInput; modelId: ModelId }` | `data-summary`（`DeepPartial<Summary>`、同じ `id` で上書き）、`data-summary-meta`（`SummaryMeta`）、`data-summary-restart`（`{ attempt: number; issues: string[] }`） | 上記 + 422 `source-unavailable`（`reason: "http-status" \| "empty-body" \| "network" \| "no-captions" \| "private" \| "fetch-failed"`、`status?`）。いずれも LLM を呼ぶ前に返す（Req 4.7、4.11） |
+| `POST /api/summarize` | `{ id: string; input: SummaryInput; modelId: ModelId }` | `data-summary`（`DeepPartial<Summary>`、同じ `id` で上書き）、`data-summary-meta`（`SummaryMeta`）、`data-summary-restart`（`{ attempt: number; issues: string[] }`） | 上記 + 422 `source-unavailable`（`reason: "http-status" \| "empty-body" \| "network" \| "no-captions" \| "private" \| "fetch-failed"`、`status?`）。いずれも LLM を呼ぶ前に返す（Req 4.7、4.11）。再生成を使い切った検証失敗は 502 `output-invalid`（プロバイダには届いたが、出力がスキーマを満たさない。`provider-unavailable` の 503 と区別する。通常はストリームの開始後に起きるため、下記のストリームのエラーとして `code` を送る） |
 
 - `/api/chat` は `request.signal` を `abortSignal` として `streamText` に渡す。`/api/agent/tools` はリクエストごとに `createGuardedAgent({ ..., signal: request.signal })` を呼び、合成済みの `guarded.abortSignal`（学習者の停止と実行時間上限）を `createAgentUIStreamResponse` に渡す。クライアントの `stop()` でサーバー側の生成とツールが中断する（Req 3.5、6.3）。
 - ストリームの途中で起きたエラーは、`onError` で `PlatformError` の `code` と日本語のメッセージだけに変換して送る（内部の詳細は送らない）。
+- `PlatformErrorCode` の閉じた語彙（`src/errors.ts` の `PLATFORM_ERROR_CODES`）: `invalid-request`（400）、`capability-unsupported`（400）、`provider-unavailable`（503）、`source-unavailable`（422）、`output-invalid`（502。2026-10-07、T-18 の `SummaryValidationError` のために追加）。括弧内は、`apps/web/lib/server/errors.ts` がストリームの開始前の失敗を JSON で返すときの HTTP 状態。
 
 ### 環境変数（`.env.example` に名前だけを列挙する）
 
@@ -534,14 +556,15 @@ erDiagram
 |------|---------------|----------------|
 | `mise.toml` | Modify | ツール（node、pnpm、gitleaks）の版固定と、[mise タスク](#mise-タスク学習者と-ci-の入口)の定義。 |
 | `package.json` | Create | ルートの開発依存（typescript、turbo、biome、vitest、stryker、`@types/node`）を完全一致で固定し、`packageManager` と `engines` を宣言する。 |
-| `pnpm-workspace.yaml` | Create | `apps/*`、`packages/*` の宣言、`minimumReleaseAge: 1440`、監査済みの `allowBuilds`。 |
+| `pnpm-workspace.yaml` | Create | `apps/*`、`packages/*` の宣言、`minimumReleaseAge: 1440`、監査済みの `allowBuilds`、理由付きの `overrides` と `patchedDependencies`（Stryker の回避。C18）。 |
 | `pnpm-lock.yaml` | Create | pnpm が生成するロックファイル。`--frozen-lockfile` によるクリーンな clone での再現（Req 1.3）の前提。 |
 | `turbo.json` | Create | `typecheck`、`test`、`build` のタスクグラフと入出力（キャッシュ対象）の定義。 |
 | `biome.json` | Create | リポジトリ全体の lint / format 規約（ADR-3）。Tailwind CSS v4 の `@theme` / `@custom-variant` / `@apply` を走査できるよう、Web scaffold 導入時に CSS parser の `tailwindDirectives` を有効化する。 |
 | `tsconfig.base.json` | Create | 全ワークスペース共通の strict な TypeScript 設定。 |
 | `tsconfig.json` | Create | ルートの型検査の設定（ベースを継承し、`tooling/**/*.ts` とルートの設定ファイルを対象にする。`turbo.json` のルートタスク `//#typecheck` が使う）。 |
 | `vitest.config.ts` | Create | ルート直下の `tooling/`・`scripts/` のテストの Vitest 設定（`setup-hermetic` と `gate-reporter` の登録）。ワークスペースは集約しない（C18「テストの実行単位」）。 |
-| `stryker.config.mjs` | Create | 制御ロジックに限定したミューテーションテストの設定。 |
+| `stryker.config.mjs` | Create | 制御ロジックに限定したミューテーションテストの設定（TypeScript 7 のための `tsconfigFile` の回避を含む。C18）。 |
+| `patches/@stryker-mutator__vitest-runner@10.0.0.patch` | Create | Vitest 5 の `suite > test` の名前の照合に合わせるパッチ（C18。対応版が出たら外す）。2026-10-07、`30d4437`。 |
 | `compose.yaml` | Create | `db` / `trace` プロファイルのローカル依存サービス。 |
 | `infra/postgres/init/01-extensions.sql` | Create | pgvector 拡張の有効化と Langfuse 用データベースの作成。 |
 | `.env.example` | Create | 必要な環境変数名の一覧（値なし）と説明。[環境変数](#環境変数env-example-に名前だけを列挙する)の表の全変数を、最初のタスクで一度に作る（後続のタスクが並列に同じファイルを編集しないため。`config/load.test.ts` がスキーマとの一致を検査する）。 |
@@ -600,8 +623,8 @@ erDiagram
 | `packages/ai-core/package.json` | Create | 依存（ai、@ai-sdk/*、ollama-ai-provider-v2、zod、@tavily/core、@mozilla/readability、jsdom、youtubei.js、gpt-tokenizer）とサブパス `exports`。M1 の依存は scaffold のタスクで一度に宣言する（後続のタスクが並列に `package.json` とロックファイルを編集しないため）。`./errors` のサブパスだけは T-21.1 が加える（依存を変えないため、ロックファイルは更新しない）。 |
 | `packages/ai-core/tsconfig.json` | Create | ベース設定の継承。 |
 | `packages/ai-core/vitest.config.ts` | Create | node 環境、`setup-hermetic`・`global-setup-local`・`gate-reporter` の登録、カバレッジを常に有効にした 80% の閾値（C18）。Stryker もこの設定を使う。 |
-| `packages/ai-core/src/errors.ts` | Create | `PlatformError` 基底クラスと、閉じた語彙の `PlatformErrorCode`。 |
-| `packages/ai-core/src/errors.test.ts` | Create | `code`・`message`・`details` の保持と、`instanceof` による判別を検証する。 |
+| `packages/ai-core/src/errors.ts` | Create | `PlatformError` 基底クラスと、閉じた語彙の `PlatformErrorCode`（`invalid-request`・`capability-unsupported`・`provider-unavailable`・`source-unavailable`・`output-invalid`）。 |
+| `packages/ai-core/src/errors.test.ts` | Create | `code`・`message`・`details` の保持と、`instanceof` による判別、語彙の完全一致を検証する。 |
 | `packages/ai-core/src/config/env-schema.ts` | Create | 環境変数の Zod スキーマと既定値。 |
 | `packages/ai-core/src/config/feature-requirements.ts` | Create | 機能 ID と必須環境変数の対応表。 |
 | `packages/ai-core/src/config/defaults.ts` | Create | 停止条件・レート制限・入力上限の既定値。 |
@@ -617,7 +640,7 @@ erDiagram
 | `packages/ai-core/src/models/providers.ts` | Create | プロバイダ ID からモデル実装を生成するファクトリの対応表。 |
 | `packages/ai-core/src/models/ollama-preflight.ts` | Create | Ollama の接続と必要モデルの事前検査。 |
 | `packages/ai-core/src/models/gateway.ts` | Create | `createModelGateway`、機能・認証情報の検査、録画ミドルウェアの合成。 |
-| `packages/ai-core/src/models/errors.ts` | Create | `ProviderCredentialsMissingError`、`OllamaUnavailableError`、`CapabilityUnsupportedError`。 |
+| `packages/ai-core/src/models/errors.ts` | Create | `ProviderCredentialsMissingError`、`OllamaUnavailableError`、`CapabilityUnsupportedError`、`ModelSelectionError`（D9）。 |
 | `packages/ai-core/src/models/index.ts` | Create | `./models` の公開 API。 |
 | `packages/ai-core/src/models/catalog.test.ts` | Create | カタログの整合性（既定モデルの実在、機能と用途の一致、`live` の単価の存在）と、同梱カセットの `modelId` がカタログに実在することを検証する。 |
 | `packages/ai-core/src/models/gateway.test.ts` | Create | モード別の解決、各エラーの内容、ネットワークなしで `mock` が動くことを検証する。 |
@@ -690,6 +713,8 @@ erDiagram
 | `packages/ai-core/src/summarize/prompts.ts` | Create | 要約・部分要約・統合のプロンプト。 |
 | `packages/ai-core/src/summarize/retry.ts` | Create | 検証失敗時の最大2回の再生成。 |
 | `packages/ai-core/src/summarize/pipeline.ts` | Create | `streamSummary`（部分・再開始・確定・メタのイベント列）。 |
+| `packages/ai-core/src/summarize/url-guard.ts` | Create | 記事 URL の検査（http / https の公開ホストだけ。非公開の IPv4・IPv6・名前の拒否）。2026-10-07、W3 敵対的レビュー r1 の M6 で追加。 |
+| `packages/ai-core/src/summarize/url-guard.test.ts` | Create | 非公開アドレスの各表記（10進・8進・16進、IPv4 埋め込みの IPv6 等）と許可するホストを検証する。 |
 | `packages/ai-core/src/summarize/errors.ts` | Create | `SourceFetchError`、`TranscriptUnavailableError`、`SummaryValidationError`。 |
 | `packages/ai-core/src/summarize/index.ts` | Create | `./summarize` の公開 API。 |
 | `packages/ai-core/src/summarize/source.test.ts` | Create | HTTP 失敗・空本文・字幕なしで LLM を呼ばないことを検証する。 |
@@ -717,7 +742,7 @@ erDiagram
 | `packages/eval-suite/package.json` | Create | 評価スイートのワークスペース定義（`@platform/ai-core` に依存）。 |
 | `packages/eval-suite/tsconfig.json` | Create | ベース設定の継承。 |
 | `packages/eval-suite/vitest.config.ts` | Create | node 環境、`setup-hermetic`、`global-setup-local`、`gate-reporter` の登録。 |
-| `packages/eval-suite/tests/regression/tool-agent-run.test.ts` | Create | ツールエージェントの通し実行の回帰テスト（`mock`。停止理由、ツールの呼び出し列、Outcome）。 |
+| `packages/eval-suite/tests/regression/tool-agent-run.test.ts` | Create | ツールエージェントの通し実行の回帰テスト（`mock`。停止理由、ツールの呼び出し列、各ツールの `ToolOutcome`、最終回答のテキスト）。 |
 | `packages/eval-suite/tests/capability/summary-quality.local.test.ts` | Create | `local` 限定の要約品質テストの例。 |
 | `packages/eval-suite/tests/capability/README.md` | Create | Capability / Regression の配置規約と 004 への引き継ぎ事項。 |
 
@@ -826,26 +851,29 @@ erDiagram
 - `live` で選択プロバイダの API キーが未設定 → LLM を呼ばずに `ProviderCredentialsMissingError`（`provider`、`envVars`）。UI のモデル一覧からも除外する（2.6、3.2）
 - `local` で Ollama に接続できない、またはモデルが未取得 → `OllamaUnavailableError`（`baseUrl`、`ollama serve` / `ollama pull <model>` の案内）（2.7）
 - モデルが要求機能（ツール、構造化出力、推論、画像入力、埋め込み）に非対応 → 呼び出し前に `CapabilityUnsupportedError`（`capability`、`modelId`）（2.9、3.9）
+- 解決するモデルがカタログにない、現在の実行モードで選べない（`AI_MODEL_*` で `live` 専用の ID を `local` に指定した等）、そのモードに既定がない、用途が合わない → モデルを生成する前に `ModelSelectionError`（`invalid-request`、`reason`）。`local` でも Ollama へは接続しない（C6、2026-10-04 の D9）
 - `mock` で一致するシナリオもカセットもない → `MockFixtureMissingError`（`key`、近い候補）。ネットワークへはフォールバックしない（2.14）
 - テスト中にモックされていない接続（`fetch`、TCP、名前解決）→ `NetworkBlockedError`（接続先）でテストを失敗させる（2.11）
 - 録画時に秘密値を含む要求 → 伏せ字にしてから保存する。ヘッダーは保存しない（2.13）
 - `AI_RECORD=1` を `mock` で指定した（`mise run record` を含む）→ `ConfigError` で起動を止める。録画は `local` / `live` だけ（2.13）
 - ストリーミング中に学習者が停止 → `request.signal` が LLM 呼び出しとツールを中断する。受信済みテキストは `useChat` の履歴に残る。エージェントの停止理由は `aborted`（3.5、6.3）
 - LLM 呼び出しの失敗 → ストリームのエラーパートで `code` と日本語のメッセージを返す。UI は `ErrorBanner` と再送（`regenerate()`）を表示し、送信済みのメッセージを保持する（3.6）
-- 会話の途中でモデルを切り替えた → 送信時だけ `adaptHistoryForModel` で推論・プロバイダ固有メタデータ・非対応の画像を除外・変換する。表示用の履歴は変えない（3.3）
+- 会話の途中でモデルを切り替えた → 送信時だけ `adaptHistoryForModel` で、プロバイダ固有メタデータ・`custom` パート・推論パートを常に除き、出所がカタログで確認できない、または切り替え先と異なるプロバイダが実行したツールパートと、非対応の画像を除外・変換する。推論は metadata なしではどのプロバイダも再送に使えず、OpenAI のプロバイダは生の推論テキストを警告に出すため、同じプロバイダでも送らない（W3 レビュー r2 の N1）。表示用の履歴は変えない（3.3）
 - `live` でリクエストが上限（本文サイズ、件数、長さ、画像、呼び出し回数）を超過 → LLM を呼ばずに 413 / 400 / 429 を返す（3.11）
-- ツールの実行中に例外 → `ToolOutcome` の `{ ok: false, failure: { kind: "recoverable", summary, nextAction } }` をツール結果として返し、ループを継続する（5.8）
+- ツールの実行中に例外 → `ToolOutcome` の `{ ok: false, failure: { kind: "recoverable", summary, nextAction } }` をツール結果として返し、ループを継続する。`summary` は `ToolExecutionError` / `PlatformError` の日本語の文言で、想定外の例外はエラー名だけにする（`message` に秘密情報が含まれうるため。C9）（5.8）
 - ツールの実行が時間上限（`AGENT_TOOL_TIMEOUT_MS`。ツール個別の `timeoutMs` はこれを短くすることだけができる）を超過 → ツールの `AbortSignal` を中断し、`kind: "timeout"` のツール結果を返してループを継続する（6.4）
 - ステップ数・累積トークン・経過時間のいずれかが上限に到達 → ステップの完了時にループを止め、`step-limit` / `token-budget` / `timeout` を記録する。上限を超えたステップは完了まで実行される（6.1、6.2）
 - 1回の LLM 呼び出しが応答せず、ステップが完了しないまま実行時間上限に到達 → 合成した `abortSignal` のタイムアウト側が LLM 呼び出しとツールを中断し、停止理由を `timeout` とする（学習者の停止による `aborted` とは `AbortSignal.reason` で区別する）（6.1、6.3）
 - ツール数が 20 を超えるエージェントの生成、または `read-only` 以外のツールの登録 → `ConfigError` で生成を拒否する（constitution 原則 2、6）
-- エージェントの実行中に未処理の例外 → 停止理由を `error` とし、`AgentRunSummary.error` にエラー名と要約を記録する（6.2）
+- エージェントの実行中に未処理の例外 → 停止理由を `error` とし、`AgentRunSummary.error` に閉じたエラーコードと固定の日本語文言を記録する。生のメッセージはサマリにもログにも出さない（6.2）
 - Web 検索の API キーが未設定 → ツールを登録せず、`disabledTools` で理由と `TAVILY_API_KEY` を UI に通知する（5.4）
 - 記事の取得が HTTP エラー、または抽出した本文が空 → LLM を呼ばずに 422 `source-unavailable`（`reason`、`status`）（4.7）
+- 記事 URL が http / https 以外、またはループバック・プライベート・リンクローカル・メタデータ等の非公開アドレス（リダイレクト先と、`local` / `live` では名前解決後のアドレスを含む。C13）、または解析できないリダイレクト先 → LLM を呼ばずに 422 `source-unavailable`（`reason: "disallowed-url"`）。記事の取得が 15 秒を超える → `reason: "timeout"`。本文が 5 MiB を超える → `reason: "too-large"`（`local` / `live` では読み込み中に打ち切る。C12、C13）
+- プロバイダのエラー（ストリーム途中の `error` パートを含む）→ 再生成せず、元のエラーをそのまま伝える（4.4 の再生成はスキーマ検証の失敗だけ。C12）
 - YouTube の字幕が取得できない（字幕なし、非公開、取得エラー）→ LLM を呼ばずに 422 `source-unavailable`（`reason`）（4.11）
 - 字幕に時刻がない入力（字幕テキストの直接入力）→ チャプターを任意項目として扱い、チャプターなしで要約する（4.10 は時刻付きの字幕だけが対象）
-- 要約がスキーマ検証に失敗 → 最大2回まで再生成し（`data-summary-restart` で UI を初期化）、3回目も失敗したら `SummaryValidationError`（検証エラーの一覧）（4.4）。それまでに描画した部分オブジェクトは暫定表示であり、確定した要約としては扱わない（4.3、C12 の境界）
-- 入力がコンテキスト上限の 80%（推定値に安全係数を掛けた値）を超える → 分割して段階的に要約する。チャンクの部分要約の失敗も同じ再生成規則に従う（4.6、4.12）
+- 要約がスキーマ検証に失敗 → 最大2回まで再生成し（`data-summary-restart` で UI を初期化）、3回目も失敗したら `SummaryValidationError`（`code: "output-invalid"`、検証エラーの一覧。生成本文は含めない）（4.4）。それまでに描画した部分オブジェクトは暫定表示であり、確定した要約としては扱わない（4.3、C12 の境界）
+- 入力がコンテキスト上限の 80%（推定値に安全係数を掛けた値）を超える → 分割して段階的に要約する。チャンクの部分要約の失敗も同じ再生成規則に従う。統合プロンプトが予算を超えるときは統合をグループに分けて段階的に行い、進展できないときは `capability-unsupported`（4.6、4.12）
 - `mock` の埋め込みで検索精度を比較しようとした → `*.local.test.ts` 以外では精度比較をしない規約とし、解説に注意を明記する（2.16）
 - 比較・品質評価のテストを `local` なしで実行 → 理由付きの「スキップ」として報告し、合格に数えない（1.14）
 - テストの実行件数、またはいずれかの段の走査件数が 0 → 品質ゲートを失敗させる（1.15、7.6）

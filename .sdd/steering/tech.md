@@ -19,7 +19,7 @@
 | Data store | Postgres + pgvector（Docker Compose） | M2 から。gate では使わない。検索は pgvector + Reciprocal Rank Fusion |
 | Observability | OpenTelemetry（OTLP）+ Langfuse | 受信基盤（Compose の `trace` プロファイル）は M1 で用意し、計測とエクスポートは M4 |
 | Sandbox | E2B（キーがなければローカルコンテナ） | LLM 生成コードの実行専用（M3 から） |
-| Testing | Vitest（単体・回帰）、Playwright（3エンジン E2E）、Stryker（ミューテーション） | `@axe-core/playwright` で WCAG 2.2 AA |
+| Testing | Vitest（単体・回帰）、Playwright（3エンジン E2E）、Stryker（ミューテーション） | `@axe-core/playwright` で WCAG 2.2 AA。Stryker は TypeScript 7・Vitest 5 に未対応のため、`tsconfigFile` の回避と `@stryker-mutator/vitest-runner` へのパッチ（`patchedDependencies`）で動かす。対応版が出たら外す（plan C18） |
 | Lint / Format | Biome（リポジトリ全体で単一規約） | `noUnusedVariables` / `noUnusedImports` は `error` |
 | Tooling | mise → `pnpm exec` | 素のツールを直接実行しない |
 
@@ -90,7 +90,7 @@
 - **秘密情報**: API キーは環境変数からサーバー側でのみ参照（`server-only`）。`NEXT_PUBLIC_` を秘密に
   使わない。`.env` はコミットせず、キー名だけの `.env.example` を置く。
 - **サプライチェーン**: 公開 24 時間未満の版を採らない（`minimumReleaseAge: 1440`）。`allowBuilds` は
-  理由コメント付き。CI は `--frozen-lockfile`、Actions は SHA 固定・最小 `permissions`。
+  理由コメント付き。`overrides`・`patchedDependencies` も直前のコメントに理由と外す条件を書く。CI は `--frozen-lockfile`、Actions は SHA 固定・最小 `permissions`。
 - **依存の追加**: `plan.md` に宣言してから追加する。API キーが要る外部サービスは、キーがない場合の
   スキップまたは代替を必ず持つ。
 - **先行版**: 範囲指定でなく完全一致で固定し、理由を記録する。非互換で TypeScript 6.x に後退する

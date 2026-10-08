@@ -3,6 +3,7 @@ export const PLATFORM_ERROR_CODES = [
 	"capability-unsupported",
 	"provider-unavailable",
 	"source-unavailable",
+	"output-invalid",
 ] as const;
 
 export type PlatformErrorCode = (typeof PLATFORM_ERROR_CODES)[number];

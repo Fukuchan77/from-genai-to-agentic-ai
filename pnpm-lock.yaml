@@ -165,6 +165,9 @@ settings:
 overrides:
   typed-rest-client>qs: ^6.16.0
 
+patchedDependencies:
+  '@stryker-mutator/vitest-runner@10.0.0': 1d9a03a7af837561098e95c5e97bbe7d8ce70f4f7fcf58eadbf7724c917eed1f
+
 importers:
 
   .:
@@ -177,7 +180,7 @@ importers:
         version: 10.0.0(@types/node@26.6.3)
       '@stryker-mutator/vitest-runner':
         specifier: 10.0.0
-        version: 10.0.0(@stryker-mutator/core@10.0.0(@types/node@26.6.3))(vitest@5.0.2)
+        version: 10.0.0(patch_hash=1d9a03a7af837561098e95c5e97bbe7d8ce70f4f7fcf58eadbf7724c917eed1f)(@stryker-mutator/core@10.0.0(@types/node@26.6.3))(vitest@5.0.2)
       '@types/node':
         specifier: 26.6.3
         version: 26.6.3
@@ -4833,7 +4836,7 @@ snapshots:
 
   '@stryker-mutator/util@10.0.0': {}
 
-  '@stryker-mutator/vitest-runner@10.0.0(@stryker-mutator/core@10.0.0(@types/node@26.6.3))(vitest@5.0.2)':
+  '@stryker-mutator/vitest-runner@10.0.0(patch_hash=1d9a03a7af837561098e95c5e97bbe7d8ce70f4f7fcf58eadbf7724c917eed1f)(@stryker-mutator/core@10.0.0(@types/node@26.6.3))(vitest@5.0.2)':
     dependencies:
       '@stryker-mutator/api': 10.0.0
       '@stryker-mutator/core': 10.0.0(@types/node@26.6.3)
