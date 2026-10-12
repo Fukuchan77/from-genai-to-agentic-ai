@@ -1,51 +1,41 @@
 import { expect, type Page, test } from "@playwright/test";
-import { errorReply, loadFixture, mockApi, type SseEvent, streamReply } from "./support/mock-api";
+import { errorReply, loadFixture, mockApi, streamReply } from "./support/mock-api";
 
 // Req 1.17, 4.5, 4.7, 4.11, NFR-10: the summarize screen against the generated
-// `summarize-transcript.sse` stream, served by `page.route`.
+// `summarize-article.sse` stream, served by `page.route`. The article scenario streams the summary
+// in small chunks, so the fixture holds the growing partial objects the card renders.
 
-async function summarizeTranscript(page: Page): Promise<void> {
-	await page.getByRole("radio", { name: "字幕テキスト" }).check();
-	await page.getByLabel("字幕テキストを貼り付け").fill("fixture:summary-full 本文です。");
+async function summarizeArticle(page: Page): Promise<void> {
+	await page.getByRole("radio", { name: "記事の URL" }).check();
+	await page
+		.getByLabel("記事の URL（http / https）")
+		.fill("https://example.test/articles/agentic-ai");
 	await page.getByRole("button", { name: "要約する" }).click();
 }
 
 /** The summary the fixture ends with, read from the generated stream rather than written here. */
 function fixtureSummary(): { title: string; keyPoints: string[]; tags: string[] } {
-	const event = loadFixture("summarize-transcript").find(
+	const event = loadFixture("summarize-article").findLast(
 		(candidate) => candidate.type === "data-summary",
 	);
 	const data = event?.data as { title: string; keyPoints: string[]; tags: string[] } | undefined;
-	if (!data) throw new Error("summarize-transcript.sse has no data-summary event");
+	if (!data) throw new Error("summarize-article.sse has no data-summary event");
 	return data;
-}
-
-/** The stream as the model would produce it: title first, then one key point, then everything. */
-function progressively(events: readonly SseEvent[]): SseEvent[] {
-	const final = events.find((event) => event.type === "data-summary");
-	if (!final) throw new Error("summarize-transcript.sse has no data-summary event");
-	const full = final.data as { title: string; keyPoints: string[] };
-	const stage = (data: Record<string, unknown>): SseEvent => ({ ...final, data });
-	return [
-		stage({ title: full.title }),
-		stage({ title: full.title, keyPoints: full.keyPoints.slice(0, 1) }),
-		...events,
-	];
 }
 
 test("summarize: the card fills in as fields arrive and the processing info follows", async ({
 	page,
 }) => {
 	const summary = fixtureSummary();
+	// The third partial object of the generated stream has the title and one key point, no tags.
 	const api = await mockApi(page, {
-		"/api/summarize": streamReply("summarize-transcript", {
-			transform: progressively,
-			holdAfter: { type: "data-summary", count: 2 },
+		"/api/summarize": streamReply("summarize-article", {
+			holdAfter: { type: "data-summary", count: 3 },
 		}),
 	});
 	await page.goto("/summarize");
 
-	await summarizeTranscript(page);
+	await summarizeArticle(page);
 	await api.waitUntilHeld();
 
 	// Title and the first key point are confirmed; the rest are still skeletons, not text.

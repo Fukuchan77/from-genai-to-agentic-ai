@@ -150,10 +150,20 @@ if [ -f .env.local ]; then set -- --env-file .env.local; fi
 docker compose "$@" --profile db --profile trace down
 '''
 
+# Next.js reads env files only from apps/web, so the root .env.local is loaded here. Node's
+# --env-file-if-exists keeps variables already set in the shell (as Next.js does) but, unlike
+# Next.js, does not expand ${VAR} references. mise forwards Ctrl-C (SIGINT) to the task, which
+# reaches pnpm and next dev; a SIGTERM sent to this wrapper alone does not reach them.
+[tasks.dev]
+description = "Run the web app (next dev) with the root .env.local"
+run = '''
+exec node --env-file-if-exists=.env.local --input-type=module -e 'import { spawnSync } from "node:child_process"; const run = spawnSync("pnpm", ["--filter", "web", "dev"], { stdio: "inherit" }); if (run.error) console.error(`mise run dev: could not start pnpm: ${run.error.message}`); else if (run.signal) console.error(`mise run dev: pnpm ended by ${run.signal}`); process.exitCode = run.status ?? 1;'
+'''
+
 [tasks.record]
-description = "Run the web app with cassette recording enabled"
+description = "Run the web app with cassette recording enabled and the root .env.local"
 env = { AI_RECORD = "1" }
-run = "pnpm --filter web dev"
+run = "mise run dev"
 
 [tasks."docs:check"]
 description = "Validate curriculum module documentation"

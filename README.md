@@ -57,8 +57,10 @@ commitしてください。miseを有効にしていないGitクライアント�
 モデルID検査（`mise run check:model-ids`）は作業ツリー全体を走査します。ステージしていない
 修正で違反が隠れることがあるため、commit前に`mise run gate`も実行してください。
 
-`.env.local`は、Next.jsと`mise run services:*`（Composeへ`--env-file .env.local`として渡す）の
-両方が読みます。ファイルがなければComposeは`compose.yaml`の既定値で起動します。既定の秘密値は
+`.env.local`（リポジトリのルート）は、`mise run dev`・`mise run record`（Nodeの`--env-file-if-exists`で
+読み込んでから`next dev`を起動する。Next.js自身は`apps/web`の中のenvファイルしか読まない）と
+`mise run services:*`（Composeへ`--env-file .env.local`として渡す）が読みます。シェルで設定済みの変数は
+ファイルの値より優先されます。`mise run dev`では、Next.jsと違い値の中の`${VAR}`は展開されません。ファイルがなければComposeは`compose.yaml`の既定値で起動します。既定の秘密値は
 ローカル専用なので、共有環境では`.env.local`に独自の値を設定してください。
 
 ## 主なコマンド
@@ -66,6 +68,7 @@ commitしてください。miseを有効にしていないGitクライアント�
 ```bash
 mise tasks              # 利用可能なタスクを表示
 mise run gate           # 現在の品質ゲート
+mise run dev            # Webアプリ（next dev）をルートの.env.local付きで起動
 mise run lint:fix       # Biomeによるformat/lint修正
 mise run typecheck      # Turborepo経由の型検査
 mise run test           # mockモードのテスト（テスト基盤完成後）
