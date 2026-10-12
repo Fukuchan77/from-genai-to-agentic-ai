@@ -216,6 +216,7 @@ flowchart TD
   - 文書 ID は `ingestDocuments` が取り込み元（`source`）の接頭辞 `kb:` / `eval:` とファイル名から組み立てる（`loadKnowledgeFile` はファイル名だけを扱う）。
 - `ingestDocuments({ db, embedding, source, root, files, tags?, reset?, signal? }): Promise<IngestResult>`: `IngestResult { ingested: { documentId; title; chunks: number }[]; skipped: { file; reason }[]; embeddingModelId }`。埋め込みはトランザクションの前に `embedMany` で計算する。
 - **Owns**: 形式判定、パス検査、分割規則、チャンク ID の規則、`search_text` の生成、取り込み結果の型。
+- **規則（W2 レビュー F-1、F-2）**: 文書 ID は `realpath` の実名から作る（大文字小文字・Unicode 正規形の違いで同じ文書を二重に保存しない）。`reset: true` は取り込めるファイルが 0 件でもナレッジベースを空にする。`IngestResult.embeddingModelId` は呼び出し後にナレッジベースが持つモデルを返す。読めないファイル（`EACCES` など）は `parse-failed` でスキップする。複数文書は 1 つのトランザクションで書く。
 - **Does NOT own**: SQL の実行（C6 の `KnowledgeStore.replaceDocument`）。埋め込みの呼び出し方（C6 の `embedTexts`）。ファイルのアップロード（multipart）。OCR（スキャン PDF はテキストが空になり `no-text` でスキップされる）。
 - **Requirements**: 1.1、1.2、1.3、1.8、2.12
 

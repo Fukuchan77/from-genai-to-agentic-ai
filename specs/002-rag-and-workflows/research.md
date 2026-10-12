@@ -238,10 +238,32 @@
 
 「別タスク」の列は実 Postgres での実測が未了のため、**計画時点では期待であり、`test:db` を初めて実行したタスクで根拠を更新する**（リスク R-2）。
 
+**W2 5.3 の記録（2026-10-12）**: `rag/db/client.pg.test.ts` を作成した（使い捨てのデータベース `rag_pg_test_<乱数>` を `CREATE DATABASE` して使い、学習者の `agentic_ai` には触れない。検証項目: 初期化 SQL による `vector` の有効化、空のデータベースでのマイグレーション適用、pgvector が 0.5.0 以上、HNSW・GIN の作成、二重適用しない、postgres.js 経由の挿入と `<=>` の順位、トランザクションのロールバック、認証失敗が `KnowledgeBaseUnavailableError` になる）。**この環境では Docker デーモンが起動しておらず（`docker info` がソケット接続エラー）、`mise run test:db` を実行できなかった。実 Postgres での結果は未実測であり、成功とは記録しない。** 人が Docker を起動して `mise run test:db` を実行し、成功した項目と差異を次の表に追記する。
+
+| 項目 | 結果（PostgreSQL 17 + pgvector） | 差異・対応 |
+|---|---|---|
+| 初期化 SQL による `CREATE EXTENSION vector` | 未実測 | |
+| 空のデータベースでのマイグレーション適用 | 未実測 | |
+| pgvector の版（`pg_extension.extversion`） | 未実測 | |
+| HNSW・GIN インデックスの作成 | 未実測 | |
+| postgres.js 経由の挿入と `<=>` の順位 | 未実測 | |
+| トランザクションのロールバック | 未実測 | |
+| 認証失敗の `KnowledgeBaseUnavailableError` への変換 | 未実測 | |
+
+**W2 7.4 の記録（2026-10-12）**: `rag/store.pg.test.ts` を作成した（`store.db.test.ts` と同じ入力と期待値で、置換とロールバック、埋め込みモデルの記録、`<=>` の順位と類似度、閾値ちょうどの境界、`tags` の `&&`（配列パラメータが postgres.js で通るか）と文書名のフィルタ、日本語の全文検索の順位）。**Docker が無く未実行（`ECONNREFUSED 127.0.0.1:5432` で失敗することだけ確認）で、実 Postgres での結果は未実測である。** 人が `mise run test:db` を実行し、差異を次の表に追記する。特に確かめたいのは、配列パラメータ（`tags &&`、`IN (…)`）と `1 - (embedding <=> $1)` のパラメータ型の推論が postgres.js で PGlite と同じ結果になること。
+
+| 項目 | 結果（PostgreSQL 17 + pgvector） | 差異・対応 |
+|---|---|---|
+| 置換・ロールバック・`rag_meta` の照合 | 未実測 | |
+| `<=>` の順位・類似度・閾値の境界 | 未実測 | |
+| `tags &&` と文書名のフィルタ（配列パラメータ） | 未実測 | |
+| 日本語の全文検索（`to_tsquery('simple', $1)`、`ts_rank`） | 未実測 | |
+| 入れ子のトランザクション（セーブポイント）で外側ごと巻き戻る（`ingestDocuments` の原子性の前提。レビュー F-5） | 未実測 | |
+
 ## Risks & open questions
 
 - ⚠ **R-1: Turbopack のサーバービルドでの PGlite**（I-10）— mitigation: 最初の Web タスクで `next build` と実サーバー E2E を通す。`serverExternalPackages` に `@electric-sql/pglite`・`postgres`・`unpdf` を追加し、必要最小限を確定する。失敗するなら `mock` の Web アプリだけメモリ上の `VectorStore` に退く（ADR-1 の A2。Req 1.12 の分類は `*.db.test.ts` が担保する）。
-- ⚠ **R-2: 実 Postgres（PostgreSQL 17 + pgvector）での挙動が未実測**（Docker 未起動）— mitigation: `*.pg.test.ts` を同じ SQL で用意し、最初に `mise run test:db` を実行したタスクで結果を記録する。差が出たら Compose のイメージのタグ（`pg17` → `pg18`）を上げるか、SQL を直す。
+- ⚠ **R-2: 実 Postgres（PostgreSQL 17 + pgvector）での挙動が未実測**（Docker 未起動。2026-10-12 の W2 5.3 時点でも未実行。上の「W2 5.3 の記録」の表を人が埋める）— mitigation: `*.pg.test.ts` を同じ SQL で用意し、最初に `mise run test:db` を実行したタスクで結果を記録する。差が出たら Compose のイメージのタグ（`pg17` → `pg18`）を上げるか、SQL を直す。
 - ⚠ **R-3: `local` の日本語埋め込みで閾値が弱い**（I-8）— mitigation: 閾値を要件どおり実装しつつ、回答プロンプトでも「根拠が無ければ該当なし」を要求し、解説に限界を明記する。精度比較のテストは top-1/recall で評価し、閾値の分離力に依存しない。
 - ⚠ **R-4: `mock` の埋め込みは意味を持たない**（G-4）— mitigation: 品質ゲートのテストは算術（RRF、重複排除、閾値の分岐、recall の計算）、制御フロー、型に絞る。HyDE・Multi-Query・ハイブリッド・Rerank の**効果の差**は `*.local.test.ts` だけで示し、解説と traceability に「gate の緑はこの差を保証しない」と明記する。
 - ⚠ **R-5: Cohere の実キーでの呼び出しが未実測**（I-4）— mitigation: `RerankProvider` の境界でレスポンスを Zod 検証し、`mock` の疑似実装と同じインターフェースのテストを持つ。手動のハンズオンで確認し、結果を解説に記録する。

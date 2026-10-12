@@ -89,3 +89,86 @@
 - Gate (`TURBO_FORCE=true mise run gate`, 0 cached): exit 0. `//:test executed=351 passed=351`, `@platform/ai-core executed=769 passed=769 skipped=4` (`rerank.test.ts` 24 tests, `generate-validated.test.ts` 19 tests; `rerank.ts` 100% lines), `web executed=306 passed=306`, `eval-suite executed=3 passed=3 skipped=1`, `Docs: 4 module documents, 51 test references verified`, `pnpm audit` clean.
 - Mechanical fixes: `tasks.md` progress table (W1 marked complete), `AGENTS.md` repository-rule count (nine -> ten wired), `traceability.md` Test/Commit cells.
 - Commits: b5f32ab (deps), f5f9490 (ai-core), f4b73f1 (repo checks).
+
+### 2026-10-12 W2 `/sdd-impl` start
+
+- Preflight: `mise.toml` has no `preflight` task. Gate lane (mock) needs no env or service: OK. DB lane (`test:db`): Docker daemon not running (`docker info` socket error) → 5.3 and 7.4 `*.pg.test.ts` can be written but not executed (task text allows it; recorded as human steps). `NODE_ENV=development` leaks into the shell → `unset NODE_ENV` before build/E2E (9.2). Port 3000 and 5432 free.
+- Task 6 delegated to a fresh-context subagent (independent of task 5, disjoint boundary); it must not run the full gate or edit tasks.md / do.md.
+
+### Task 5.1 (migrations + schema + migrator)
+
+- RED: `Cannot find module './migrate'`; the real-migration test failed with `ENOENT … drizzle` until the SQL file existed. GREEN: 9 passed.
+- PROVE: removed `.sort()` → initially still green (APFS lists names in order: vacuous!). Fixed the test to mock `readdir` in reverse order; then `.sort()` removed → 3 failures (`expected [ '0010', '0002', '0001' ] to deeply equal [ '0001', '0002', '0010' ]`). Never-skip-applied → 2 failures; no transaction → rollback test fails (`expected true to be false`); accept any `.sql` → `expected [ '0001_first.sql', …(2) ] to deeply equal [ '0001_first.sql' ]`. Restored: 9 passed.
+
+### Task 5.2 (client + schema checks)
+
+- RED: `Cannot find module './client'`. Two follow-up fixes found by the first GREEN run: the generated-column error text is `can only be updated to DEFAULT`; postgres.js retries a blocked socket until `connect_timeout` (5 s = test timeout) so the connection-failure path uses a fake `postgres` module (the real driver is covered by `client.pg.test.ts`). GREEN: 22 passed.
+- PROVE (8 breaks, each restored from a copy): drop `CHECK (page >= 1)`, drop `ON DELETE CASCADE`, drop `UNIQUE (document_id, ordinal)`, `tsv` from `body`, rename `search_text` in `schema.ts` (6+ failures), `page` notNull drift in `schema.ts`, drop the HNSW index, drop `client.end()` on failure → each fails exactly the expected test (e.g. `closes the connection pool when the server cannot be reached`, `rag_chunks: column names, types and nullability agree`). Restored: 22 passed.
+
+### Task 5.3 (pg test + index)
+
+- `client.pg.test.ts` uses a scratch database (`CREATE DATABASE rag_pg_test_<hex>`), so `mise run test:db` never touches the learner's `agentic_ai`. Without a server, `AI_TEST_SUITE=pg` fails with `connect ECONNREFUSED 127.0.0.1:5432` at `CREATE DATABASE`. **Not executed against Postgres** (no Docker): research.md R-2 table left "未実測".
+- Typecheck caught what Vitest cannot: `Record<string, unknown>` vs `Record<string, never>` schema types, and `unknown` rows from the shared-type `execute`. `tsc` clean for `rag/db` after the fixes; `biome check --write` clean.
+
+### Task 6 (ingest parts, delegated to a fresh-context subagent; re-verified in the main session)
+
+- Subagent evidence: 148 tests in 6 files; RED per file (`Cannot find module`); PROVE per file with stub → failure message (e.g. `markdown`: fence ignored → `expected [ …(4) ] to have a length of 1 but got 4`; `chunk`: no `-2` suffix → `expected '2461fb1936c3f46e' to be '2461fb1936c3f46e-2'`; `search-text`: `&` join → `expected '全文 & 検索' to be '全文 | 検索'`; `pdf-builder`: only first page in Kids → `expected 1 to be 3`; `loader`: containment removed → `expected { file: 'escape.md', …(4) } to be an instance of PlatformError`). Three vacuous tests were found by PROVE and fixed (code-point vs UTF-16 length; Buffer input rejected by pdf.js — a real bug fixed with `new Uint8Array(bytes)`; segmenter locale `"ja"` cannot be pinned by a test).
+- Main-session verification (bare shell is Node 24; `mise exec --` is Node 26.10.0): `vitest run src/rag src/testing` → 11 files, 206 passed, 2 skipped (pre-existing `local-only`); `biome check packages/ai-core` → 147 files clean; `tsc -p packages/ai-core` → no errors. Re-ran the loader PROVE (containment check removed) → 4 symlink tests fail; restored → 49 passed.
+- Learning: the shell `node` is v24 while the project pins 26 — run vitest through `mise exec --` (or `mise run`) for evidence.
+
+### Task 7.1 (embedding)
+
+- RED: `Cannot find module './embedding'`. GREEN: 18 passed.
+- PROVE: openai `dimensions: 1536` → `asks OpenAI for 768 dimensions…` fails; google key renamed → 2 failures; length check disabled → 4 failures; early `throwIfAborted` removed → `does not call the model when the signal is already aborted` fails; compat ignoring model ID / rejecting an empty base → 1 failure each. The `values.length === 0` guard was redundant (`embedMany([])` returns `[]` by itself, the test still passed with the guard stubbed out), so it was removed and the test kept as a regression check on the SDK behavior.
+
+### Task 7.2 / 7.3 (store)
+
+- RED: `Cannot find module './store'` (16 write-side tests), then `store.searchByVector is not a function` (19 search tests). GREEN: 39 passed (incl. limit validation). Found by review of my own test: the first helper used `sql.raw`, which the `no-sql-raw` rule forbids in tests too → `db.$count(table)`.
+- PROVE write side (8 stubs): `new Date()` instead of the clock; delete removed; tags not deduped; compat check removed; no transaction (rollback test fails); write validation removed; reset keeps meta; getChunks in DB order. The last one was first NOT caught by the intended test (DB order coincided) → the ordering test was strengthened (5 chunks, reversed request) and the stub then failed it: `returns chunks in the requested order and omits unknown ids`.
+- PROVE search side (9 stubs): `gte`→`gt` (threshold-exact test fails), `desc(distance)`, tag filter dropped, `limit` dropped, `PLAIN_OR_QUERY` check off, `undefined` query searching, `ts_rank` ascending, similarity = distance, empty filter lists → each fails the targeted tests. Restored: 39 passed.
+- ai-core suite after tasks 5–7: `vitest run` → 52 files, 1005 passed, 4 skipped; `tsc` and `biome` clean.
+
+### Task 7.4 (store.pg.test.ts)
+
+- Created with the same inputs as `store.db.test.ts` in a scratch database. Not executed against Postgres (no Docker); `AI_TEST_SUITE=pg` fails with `ECONNREFUSED 127.0.0.1:5432`. research.md "W2 7.4 の記録" holds the empty table.
+
+### Task 8.1 (ingestDocuments)
+
+- RED: `Cannot find module './ingest'`; GREEN: 21 passed (18 first pass + 3 added after PROVE).
+- PROVE (9 stubs): eval prefix → `kb:`; no compat check; no outer transaction; reset ignored; no abort check after embedding; file limit off; no name dedupe; request tags dropped; signal not passed to `embedTexts`. Three were NOT caught by the first test set (compat check, outer transaction, signal propagation) → tests added: "rejects another embedding model before calling the embedding API" (`expected 1 to be +0`), "writes all documents or none…" (`expected [ 'kb:a.md' ] to deeply equal [ 'kb:old.md' ]`), "passes the abort signal to the embedding model" (`expected false to be true`). All three then fail under their stubs.
+
+### Task 8.2 / 8.3 (request schema, rag/index.ts)
+
+- RED: `Cannot find module './request-schema'`; GREEN: 29 passed. PROVE (6 stubs): `z.object` → unknown-field test; refine removed → the path-like names fail; tag length by UTF-16 units → `counts characters, not UTF-16 units`; `reset` default true; `min(1)` removed; `maxTags` 11 → each fails its test. `isSafeFileName` exported from `loader.ts` (loader tests still 49 passed).
+- 8.3: `rag/index.ts` created; `tsc` clean; `mise run check:repo-rules` → all 10 rules pass (`no-sql-raw: scanned 143 FILES`); `grep agents packages/ai-core/src/rag` → no import.
+
+### Task 8.4 (platform)
+
+- RED: `Cannot read properties of undefined (reading 'knowledge')` (10 failures); GREEN: 35 passed. PROVE (6 stubs): mock→postgres (3 fail), wrong DB config (2), no caching (**the test run never terminated — CPU 100 %, killed by hand; detected, but a hang is not an assertion message**), failure cached (`does not cache a failure…`), cwd-based knowledge root (2), override ignored (`can be replaced for tests`).
+
+### Task 8.5 / 8.6 (routes)
+
+- 8.5 `GET /api/rag/knowledge`: 8 tests. PROVE (6 stubs): rerank always available, every embedding error → null, meta ignored, no-default rethrown, wrong dims, no `toErrorResponse` → each fails its targeted tests. A first PROVE run printed nothing because macOS has no `timeout`; it was discarded and redone.
+- 8.6 `POST /api/rag/ingest`: 25 tests (incl. 413 / 9 × 400 / symlink escape / live-only 429 / reset rebuild / 502 / 503 / signal). PROVE (9 stubs) all detected after strengthening the clock test (stub "clock not passed" had survived: the test now asserts `ingestedAt` from the fake clock). `tsc -p apps/web` clean after fixing `GET(request())` → `GET()` in the tests.
+- Web suite subset: `vitest run app/api/rag lib/server/platform.test.ts` → green.
+
+### Task 9.1 / 9.2 / 9.3 (corpus, real server, W2 close)
+
+- 9.1 RED: 3 failing tests (6 files `not-found`). The first corpus had no section over 800 characters → the split-path assertion failed (`expected 0 to be greater than or equal to 1`); a paragraph pair was added. PROVE: default max 2000 → `expected 866 to be less than or equal to 800`; long section removed → split assertion fails; one file removed → 3 failures. `check:model-ids` found real model-ID literals in my new tests (15 places) → replaced with `MODEL_DEFAULTS`.
+- 9.2 RED: `next build` failed on `new URL("../../../drizzle", import.meta.url)` (`Module not found`), fixed with `path.resolve`; then a Turbopack "whole project traced" warning on `loader.ts` → `turbopackIgnore`. After that: `next build` clean; `E2E_PROJECTS=chromium` 57 passed; full `mise run test:e2e` → `171 passed`, `Playwright: executed=171 skipped=0 (chromium=57 firefox=57 webkit=57)`; `next dev` smoke: knowledge 200, ingest 200; `mise run check:client-bundle` → `scanned 20 files for 14 names and 3 sentinels`. Side effects of `next dev` reverted (`next-env.d.ts`, generated `apps/web/AGENTS.md`). `NODE_ENV=development` leaks in the shell: all builds were run with `NODE_ENV=production` explicitly.
+- 9.3: `stryker.config.mjs` + 3 files. `mise run test:mutation` → `Final mutation score of 86.59` (chunk 84.62, markdown 78.79, search-text 94.44), exit 0. `TURBO_FORCE=true mise run gate` → exit 0 in 20 s: `//:test executed=351 passed=351`, `@platform/ai-core executed=1058 passed=1058 skipped=4`, `web executed=349 passed=349`, `eval-suite executed=3 passed=3 skipped=1`, `Biome: 292 files`, `no-sql-raw: scanned 143 FILES`, `Docs: 4 module documents, 51 test references verified`.
+- Adversarial review (wave close): see below.
+
+### W2 adversarial review (round 1)
+
+- `sdd-reviewer` (fresh context, resumed once after an API session limit) → REQUEST_CHANGES: 5 MEDIUM (F-1..F-5), 14 LOW; report `.sdd/reviews/002-rag-and-workflows-impl-w2-review-2026-10-12.md`.
+- Fixed test-first (RED: 7 ai-core + 3 web failures): F-1 on-disk name as document ID + dedupe, F-2 reset honored with nothing to ingest + result reports the base's model, F-3 closed `invalid-request` reasons reach the client, F-4 unreadable files skipped as `parse-failed`. PROVE: 7 stubs (unreadable mapping off, requested spelling used, no dedupe, reset ignored, requested model reported, allow-list off, details dropped) each fail the targeted tests. F-5: pg test added, NOT run (no Docker); LOW items answered in the review's Responses table.
+- Final `TURBO_FORCE=true mise run gate`: exit 0; `//:test executed=351`, `@platform/ai-core executed=1066 passed=1066 skipped=4`, `web executed=354 passed=354`, `eval-suite executed=3`, `Docs: 4 module documents, 51 test references verified`.
+- Learning: a lexical review of the happy path missed filesystem semantics (case-insensitive APFS, EACCES) and "empty result" branches (reset with nothing to ingest); list the zero-item and permission cases when writing the first tests.
+
+### 2026-10-12 W2 `/sdd-ship`
+
+- First verdict NO-GO: `apps/web/lib/server/errors.ts` / `errors.test.ts` (review F-3 fix) were outside every `_Boundary:_`. The user approved widening the 8.6 boundary; `tasks.md` boundary, notes and W2-close note updated.
+- Gate (`TURBO_FORCE=true mise run gate`, 0 cached): exit 0. `//:test executed=351`, `@platform/ai-core executed=1066 passed=1066 skipped=4`, `web executed=354 passed=354`, `eval-suite executed=3 skipped=1`, `Biome: 292 files`, `no-sql-raw: scanned 143 FILES`, `Docs: 4 module documents, 51 test references verified`.
+- Not run: `*.pg.test.ts` (no Docker); LOW findings F-6..F-17, F-19 deferred.
+- Commits: 5cd0a52 (ai-core), b904eff (web), 4f01313 (stryker); docs commit follows.
