@@ -3721,3 +3721,11 @@ GREEN 後、7件すべての新規テストについて独立した deliberate b
 - 続き（同日）: PR #35 を作成し、CI の9チェックすべて成功 → 29.3 を完了にした。29.4 は `module/1-1` を `f671813` にローカルで作り直し、2つのタグのコミットで gate が exit 0 であることを worktree で確認した（`/tmp` のシンボリックリンクでは `count-tsc` が0件になるため実パスで実行）。タグの push は PR のマージ後。29.5 の実 Ollama の確認は、ユーザーの承認後も権限設定で Ollama への接続が拒否されたため未実施。
 - 29.5 の実 Ollama 確認（同日、権限の解除後）: 要約・チャット・エージェント相当の要求を `num_ctx` 32,768 で交互に9回送り、`load_duration` 7〜40 ms（100 ms 未満）、常駐 10.6 GB のままで再読み込みなし。29.5 を完了にした。試行錯誤: zsh の `echo "$r"` が応答中の `\n` を展開して jq が失敗した → `printf '%s'` に直した。PR #35 はマージコミット `52b77a6` で `main` に入り、`f671813`・`7cc27cc` は `origin/main` に含まれる。
 - 29.4（同日、人間の承認後）: 3つの完成タグを push し、リモートで `f671813`・`7cc27cc` を指すことを確認した。解説 1-1〜1-3 のタグの節の「未 push」の記述を改めた。これで大タスク 29 と W5 の全サブタスクが完了した。
+
+### 2026-10-12 W5 の移行（敵対的レビュー3ラウンドの後）
+
+- 移行の条件のうち、W5 の敵対的レビューの記録がなかったため、移行の前に実施した。r1 は REQUEST_CHANGES（HIGH 1 / MEDIUM 5 / LOW 15）、r2 は REQUEST_CHANGES（MEDIUM 2）、r3 は APPROVE_WITH_NOTES。
+- HIGH: ハンズオンのルートの `.env.local` が Web アプリに届かなかった（Next.js は `apps/web` の env ファイルしか読まない）。`mise run dev`（Node の `--env-file-if-exists`）を加え、使い捨ての worktree で 1-2 の `step-limit` の手順を再現して確認した。学び: 解説の手順は、書いた人の環境ではなく、学習者が最初にたどる経路（コピーしたファイル → 起動コマンド）で実際に動かして確かめる。
+- MEDIUM の修正: `docs:check` が修飾子付きの宣言とメソッド呼び出しを参照先として認めない、解説のタグの節にタグより後の変更を明記、要約の逐次描画 E2E を生成した `summarize-article.sse` に変更、axe を描画後の6状態×2テーマに拡張（E2E 123 → 159 件）。PROVE: 天気カードのコントラスト不足は新しい検査だけが `color-contrast (serious)` で検出し、要約の保留位置をずらすと `not.toContainText` が失敗した。
+- 移行: `docs(tasks): archive wave 5`（純粋なリネーム）→ `docs(tasks): restore the index as tasks.md …`（索引を `tasks.md` に戻し、`tasks-comp-w5.md` は本文のみ）。W5 の後続の波がないため、`tasks.md` は索引だけになった。
+- `mise run gate` → exit 0（root 299、ai-core 702 skipped 4、eval-suite 3 skipped 1、web 306、docs 51 参照）。`mise run test:e2e` → 159 件（各エンジン 53）。r3 のレビュアーの `gate:repeat` → 10回一致。
