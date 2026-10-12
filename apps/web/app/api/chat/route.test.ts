@@ -1,4 +1,4 @@
-import { defineScenario, type ScenarioDefinition } from "@platform/ai-core/mock";
+import { defineScenario, M1_2_SCENARIOS, type ScenarioDefinition } from "@platform/ai-core/mock";
 import {
 	CapabilityUnsupportedError,
 	MODEL_CATALOG,
@@ -8,6 +8,7 @@ import { createTextStreamModel } from "@platform/ai-core/testing";
 import { afterEach, describe, expect, it } from "vitest";
 import { parseStreamErrorText } from "@/lib/server/errors";
 import { createPlatform, type Platform, setPlatformForTesting } from "@/lib/server/platform";
+import { verifyOrWriteFixture } from "../../../../../scripts/e2e/generate-sse-fixtures.mjs";
 import { POST } from "./route";
 
 const MOCK_ENV = { VITEST: "1", AI_TEST_RUN_MODE: "mock" } as const;
@@ -296,5 +297,20 @@ describe("POST /api/chat", () => {
 		const response = await POST(chatRequest([userMessage("hi")]));
 
 		expect(response.status).toBe(503);
+	});
+
+	it("matches the generated SSE fixture used by the E2E specs (Req 1.17)", async () => {
+		// The shared m1-2 scenarios are what the real server answers with in mock mode.
+		setPlatformForTesting(
+			await createPlatform({
+				env: MOCK_ENV,
+				gateway: { mock: { scenarios: M1_2_SCENARIOS, cassettes: EMPTY_CASSETTES } },
+				recording: { store: { async write() {} } as never },
+			}),
+		);
+
+		const response = await POST(chatRequest([userMessage("こんにちは")]));
+
+		verifyOrWriteFixture("chat-greeting.sse", await response.text());
 	});
 });

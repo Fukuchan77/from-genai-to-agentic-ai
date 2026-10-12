@@ -7,6 +7,7 @@ import { MockLanguageModelV4 } from "ai/test";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { parseStreamErrorText } from "@/lib/server/errors";
 import { createPlatform, type Platform, setPlatformForTesting } from "@/lib/server/platform";
+import { verifyOrWriteFixture } from "../../../../../../scripts/e2e/generate-sse-fixtures.mjs";
 import { POST } from "./route";
 
 // Every created GuardedAgent is recorded, together with the options it was created with.
@@ -397,5 +398,13 @@ describe("POST /api/agent/tools", () => {
 		expect(text).toContain("unexpected");
 		expect(text).not.toContain("invalid-request");
 		expect(text).not.toContain("TOP-SECRET");
+	});
+
+	it("matches the generated SSE fixture used by the E2E specs (Req 1.17)", async () => {
+		setPlatformForTesting(await mockPlatform());
+
+		const response = await POST(agentRequest("東京の天気を教えて"));
+
+		verifyOrWriteFixture("agent-weather.sse", await response.text());
 	});
 });

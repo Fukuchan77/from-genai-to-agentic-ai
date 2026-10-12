@@ -6,6 +6,7 @@ import { MockLanguageModelV4 } from "ai/test";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { parseStreamErrorText } from "@/lib/server/errors";
 import { createPlatform, type Platform, setPlatformForTesting } from "@/lib/server/platform";
+import { verifyOrWriteFixture } from "../../../../../scripts/e2e/generate-sse-fixtures.mjs";
 import { POST } from "./route";
 
 const MOCK_ENV = { VITEST: "1", AI_TEST_RUN_MODE: "mock" } as const;
@@ -364,5 +365,15 @@ describe("POST /api/summarize", () => {
 		expect(model.doStreamCalls[0]?.abortSignal).toBeDefined();
 		controller.abort();
 		expect(model.doStreamCalls[0]?.abortSignal?.aborted).toBe(true);
+	});
+
+	it("matches the generated SSE fixture used by the E2E specs (Req 1.17)", async () => {
+		setPlatformForTesting(await mockPlatform());
+
+		const response = await POST(
+			summarizeRequest({ kind: "transcript", text: "fixture:summary-full 本文です。" }),
+		);
+
+		verifyOrWriteFixture("summarize-transcript.sse", await response.text());
 	});
 });
