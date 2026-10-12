@@ -3706,3 +3706,7 @@ GREEN 後、7件すべての新規テストについて独立した deliberate b
 - 検証: GO。`mise run gate` → exit 0（root 297、ai-core 687 skipped 4、eval-suite 3 skipped 1、web 301、docs 51 参照）。`mise run test:e2e` → `executed=123 skipped=0`。
 - コミット: `7403cc7`（e2e）、`c20ce17`（docs）、`03a285a`（ci）、`6a41888`（ローカルモデル既定。`_Boundary:_` 外だが人間の指示）。
 - 残り: 29.2・29.3・29.4（チェックなし）。
+
+### 2026-10-12 29.2 Ollama 実測
+
+- 停止時: `test:local` は理由付きでスキップ（ai-core 2、eval-suite 1）。起動時: 交互呼び出しで毎回再読み込み（2.6〜5.6 秒、10 GB ⇄ 6 GB）、`num_ctx` をそろえると再読み込みなし。詳細は `tasks.md` 29 の Implementation Notes。plan C11・C8 の改訂は承認待ち。
