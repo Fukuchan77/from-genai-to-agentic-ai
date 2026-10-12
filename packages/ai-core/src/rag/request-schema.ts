@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { DEFAULT_RAG } from "../config/defaults";
+import { type CatalogModelId, MODEL_CATALOG } from "../models/catalog";
 import { INGEST_SOURCES } from "./ingest/ingest";
 import { isSafeFileName } from "./ingest/loader";
 
@@ -42,3 +43,78 @@ export const ingestRequestSchema = z.strictObject({
 });
 
 export type IngestRequest = z.infer<typeof ingestRequestSchema>;
+
+export const QUERY_REQUEST_LIMITS = Object.freeze({
+	idMaxLength: 200,
+	questionMaxLength: DEFAULT_RAG.maxQuestionCharacters,
+	topKMin: 1,
+	topKMax: 20,
+	minSimilarityMin: -1,
+	minSimilarityMax: 1,
+	maxDocumentIds: 20,
+	documentIdMaxLength: 200,
+	maxTags: INGEST_REQUEST_LIMITS.maxTags,
+});
+
+const CATALOG_MODEL_IDS = Object.freeze(Object.keys(MODEL_CATALOG)) as readonly CatalogModelId[];
+
+// The question length counts characters (code points) like a tag, and a blank question is no query.
+const questionSchema = z
+	.string()
+	.min(1)
+	.refine((question) => [...question].length <= QUERY_REQUEST_LIMITS.questionMaxLength, {
+		error: `質問は ${QUERY_REQUEST_LIMITS.questionMaxLength} 文字までです。`,
+	})
+	.refine((question) => question.trim() !== "", { error: "質問を入力してください。" });
+
+const filterSchema = z.strictObject({
+	documentIds: z
+		.array(z.string().min(1).max(QUERY_REQUEST_LIMITS.documentIdMaxLength))
+		.max(QUERY_REQUEST_LIMITS.maxDocumentIds)
+		.optional(),
+	tags: z.array(tagSchema).max(QUERY_REQUEST_LIMITS.maxTags).optional(),
+});
+
+// Every retrieval method is off unless asked for: the default pipeline is the naive one (Req 2.7).
+const methodsSchema = z.strictObject({
+	hyde: z.boolean().default(false),
+	multiQuery: z.boolean().default(false),
+	hybrid: z.boolean().default(false),
+	rerank: z.boolean().default(false),
+});
+
+// `prefault` runs the empty object through the schema, so each default is applied in one place.
+const settingsSchema = z.strictObject({
+	topK: z
+		.number()
+		.int()
+		.min(QUERY_REQUEST_LIMITS.topKMin)
+		.max(QUERY_REQUEST_LIMITS.topKMax)
+		.default(DEFAULT_RAG.topK),
+	minSimilarity: z
+		.number()
+		.min(QUERY_REQUEST_LIMITS.minSimilarityMin)
+		.max(QUERY_REQUEST_LIMITS.minSimilarityMax)
+		.default(DEFAULT_RAG.minSimilarity),
+	filter: filterSchema.prefault({}),
+	methods: methodsSchema.prefault({}),
+});
+
+/**
+ * The body of `POST /api/rag/query` (plan "HTTP API"). `settings` is always present after parsing,
+ * with `DEFAULT_RAG` values and every method off.
+ */
+export const queryRequestSchema = z.strictObject({
+	id: z.string().min(1).max(QUERY_REQUEST_LIMITS.idMaxLength),
+	question: questionSchema,
+	modelId: z
+		.enum(CATALOG_MODEL_IDS, {
+			error: "モデル ID がモデルカタログにありません。選択肢の中からモデルを選んでください。",
+		})
+		.optional(),
+	settings: settingsSchema.prefault({}),
+});
+
+export type QueryRequest = z.infer<typeof queryRequestSchema>;
+export type QuerySettings = QueryRequest["settings"];
+export type QueryMethods = QuerySettings["methods"];

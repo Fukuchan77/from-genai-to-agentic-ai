@@ -2,6 +2,7 @@ import { embed, generateText } from "ai";
 import { describe, expect, it, vi } from "vitest";
 import { type EnvSource, loadPlatformConfig } from "../config";
 import { PlatformError } from "../errors";
+import { M2_1_SAMPLE_QUESTIONS, M2_CORPUS_TEXT } from "../mock";
 import type { RecordingStore } from "../mock/recording";
 import { createFakeClock } from "../ports/clock";
 import { createTextStreamModel } from "../testing/mock-models";
@@ -84,6 +85,23 @@ describe("createModelGateway resolve (mock)", () => {
 		expect(judge.entry.id).toBe(defaultModelFor("mock", "mock", "judge"));
 		expect(judge.entry.id).not.toBe(chat.entry.id);
 		expect(gateway.availableModels().map((option) => option.id)).toContain(judge.entry.id);
+	});
+
+	it("includes the M2 scenarios by default while the M1 scenarios still match", async () => {
+		const gateway = createModelGateway({ config: configFor({}) });
+
+		const chat = await gateway.resolve({ purpose: "chat" });
+		const structured = await gateway.resolve({ purpose: "structured" });
+
+		// M1 (summary and chat) still answers ...
+		const m1 = await generateText({ model: chat.model, prompt: "こんにちは" });
+		expect(m1.text).toContain("モックモード");
+		// ... and the M2 HyDE scenario answers a question it was written for.
+		const m2 = await generateText({
+			model: structured.model,
+			prompt: M2_1_SAMPLE_QUESTIONS.hyde,
+		});
+		expect(m2.text).toBe(M2_CORPUS_TEXT.whyRag);
 	});
 
 	it("binds a separate mock model per purpose and uses injected scenarios", async () => {

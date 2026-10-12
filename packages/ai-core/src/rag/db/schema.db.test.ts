@@ -118,7 +118,8 @@ describe("createPgliteDatabase", () => {
 		} finally {
 			await other.close();
 		}
-	});
+		// Starting a second PGlite takes seconds when the gate runs every workspace at once.
+	}, 30_000);
 });
 
 describe("createPostgresDatabase", () => {
