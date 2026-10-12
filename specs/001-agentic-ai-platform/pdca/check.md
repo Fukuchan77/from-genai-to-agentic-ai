@@ -11,19 +11,20 @@
 | 失敗時にクライアントへ秘密値・生メッセージを出さない | `errors.ts` の許可リスト方式と固定文言で達成 | ✅ |
 | `/api/chat`・`/api/agent/tools`・`/api/summarize` と各 UI | 実装済み | ✅ |
 | エージェントルートが不正な履歴だけを 400 にする | 初版は例外すべてを 400 にしていた（MEDIUM 2） | ⚠️ → 修正済み |
-| 実サーバーでの表示確認、完成タグ 23.5・24.4 | 未実施（27.1・27.3 に残す） | ❌ 未着手 |
+| 実サーバーでの表示確認、完成タグ 23.5・24.4 | 実施。実サーバーで3ページが 500 だった（Turbopack の2件、Tailwind の未処理）。修正後は3エンジン81件が通過、完成タグはローカルに付与 | ⚠️ → 修正済み |
 
 ## Test & Quality Outcomes
 
-- Tests（2026-10-12、レビュー修正後の `mise run gate`、exit 0）: root 257、ai-core 687（skipped 4）、eval-suite 3（skipped 1）、web 296（23ファイル）。修正前の web は 294。
+- Tests（2026-10-12 の最終 `mise run gate`、exit 0）: root 275、ai-core 687（skipped 4）、eval-suite 3（skipped 1）、web 301。ship 時点の web は 294。E2E は gate の外で、`mise run test:e2e` が3エンジン × 27 件 = 81 件を通し、`assert-playwright-nonempty` が非空を確認する。
 - Lint/型検査: gate に含まれ、成功した。
 - カバレッジ: 閾値の強制は未結線（`apps/web/vitest.config.ts` に coverage 設定がない。tasks.md 21 の Implementation Notes に記載済み）。
 - 性能: 今回は測定していない。
 
 ## Requirements Coverage
 
+- 実サーバーで NFR-09 の axe（WCAG 2.2 AA、light/dark）とフォーカス指示子の 3:1 を3エンジンで確認した（27.3）。
 - W4 の要件（Req 1.9、1.10、2.13、3.1〜3.11、4.x の UI 側、5.x の UI 側、6.2〜6.4、NFR-09、NFR-12）のうち、実サーバーでしか確認できない NFR-09 の axe 検査と NFR-12 の表示は 27.x に持ち越した。
-- Gaps: Req 7.11 の完成タグ（23.5、24.4）。
+- Gaps: 完成タグの push（29.4）、`module/1-1` のタグ（14.6）、26.2・26.3 の `latency-probe.ts`、27.2・27.4、gate・CI への e2e と bundle 検査の結線（29）。
 
 ## Deviations from Design
 
@@ -43,3 +44,8 @@
 ## Assessment
 
 W4 の実装は要件の大半を満たしている。敵対的レビューの MEDIUM 2件と LOW 1件は修正してテストを足し、gate は成功した。LOW 3件（レート制限枠の消費、非文字列本文の無視、`local` モードの記載）は未対応。完成タグと実サーバー確認が残るため、W4 は「実装完了、検証は W5 に一部持ち越し」と判断する。修正はまだコミットしていない。
+| gate が通るのに `next dev` で3ページとも 500 | Vitest は Turbopack を通らない。`new URL("../../fixtures", import.meta.url)` と `tw-animate-css` の `style` 条件だけの `exports` を解決できなかった | `path.resolve` と相対 `@import` に変更。27.1 で回帰を守る |
+| Tailwind が処理されず無スタイルのまま。axe は違反0 | `@tailwindcss/postcss` と `postcss.config` が宣言されていなかった（plan の宣言漏れ） | 人間の承認後に追加し、plan・research に記録 |
+| Firefox でスキップリンクのフォーカス指示子が見えない | フォーカス中に outline 色が `currentcolor` になり、本文色がページ背景と同色だった | `:focus-visible { outline-ring }` を明示（`keyboard.spec` が検出） |
+| `playwright test` が終了せずポートを握る | 子プロセス `next-server` が `gracefulShutdown` なしで残った。シェルの `NODE_ENV=development` が `next build` を壊した | `gracefulShutdown` と `NODE_ENV=production` を指定 |
+| WebKit で Tab がリンクとボタンに止まらない | Safari の既定の挙動 | WebKit だけ Option+Tab を使う |
