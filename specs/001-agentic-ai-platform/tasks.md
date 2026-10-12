@@ -170,13 +170,13 @@ _Traces:_ REQ-001, C19
   _Requirements:_ 1.17, NFR-10
   _Traces:_ REQ-001, C19
   _Verify:_ 27 のシナリオを3エンジンで実行し、25.3 の検査が0件・全件スキップでないことを確認する
-- [ ] 26.2 `e2e/support/mock-api.ts`: `page.route("/api/**")` による fixture の返却、`e2e/fixtures/*.sse` の生成物配置
+- [x] 26.2 `e2e/support/mock-api.ts`: `page.route("/api/**")` による fixture の返却、`e2e/fixtures/*.sse` の生成物配置
   _Boundary:_ `apps/web/e2e/support/mock-api.ts`, `apps/web/e2e/fixtures/*.sse`
   _Depends:_ 26.1
   _Requirements:_ 1.17
   _Traces:_ REQ-001, C19
   _Verify:_ 27.2 と 27.4 のシナリオで使う
-- [ ] 26.3 `e2e/support/latency-probe.ts`・`axe.ts`: チャンク受信からDOM反映までの遅延計測（`MutationObserver`）と `AxeBuilder.withTags(["wcag2a","wcag2aa","wcag21aa","wcag22aa"])`
+- [x] 26.3 `e2e/support/latency-probe.ts`・`axe.ts`: チャンク受信からDOM反映までの遅延計測（`MutationObserver`）と `AxeBuilder.withTags(["wcag2a","wcag2aa","wcag21aa","wcag22aa"])`
   _Boundary:_ `apps/web/e2e/support/latency-probe.ts`, `apps/web/e2e/support/axe.ts`
   _Depends:_ 26.1
   _Requirements:_ 1.19, NFR-04, NFR-09
@@ -188,6 +188,9 @@ _Traces:_ REQ-001, C19
 - 2026-10-12（先行実施。25 の前）: 26.1 の `playwright.config.ts` と、26.3 の `axe.ts`（`latency-probe.ts` は未着手）だけを、27.1・27.3 のために先に作った。26 は 25 に依存するため順序を外れている。25.3（0件・全件スキップの検査）が未実装なので、26.1 の `_Verify:_` は満たしていない。チェックは付けない。
 - webServer は `next build && next start -p 3100`（`AI_RUN_MODE=mock`、`NODE_ENV=production`）。呼び出し側のシェルが `NODE_ENV=development` を export していると `next build` が `/_global-error` のプリレンダーで失敗するため、`env` で上書きする。`gracefulShutdown` を指定しないと `next-server` が残ってポートを握り続ける。
 - 3エンジン（chromium・firefox・webkit）で実行して通した。webkit は `pnpm exec playwright install webkit` で導入した。
+- 2026-10-12: 26.2・26.3 を実装した（サブエージェントが実施し、メインが検証）。`route.fulfill` はストリームを返せないため、`mock-api.ts` は応答の計画（`paceMs`、`holdAfter`）をヘッダーで渡し、ページ内の `fetch` ラッパーが1イベントずつ再送する。`latency-probe.ts` はストリームを即時に読んでチャンクの受信時刻を記録し、`MutationObserver` が累積テキストの反映時刻を記録する（引き込み式だとバックプレッシャーの遅延が隠れる）。
+- 遅延の実測（NFR-04、上限 100 ms、160 チャンク/エンジン）: 最大 chromium 6.8 ms／firefox 26.0 ms／webkit 15.0 ms。PROVE: 2チャンク目の描画に 150 ms の停止を入れると `latency.spec.ts` が `latencyMs: 150.3` のチャンクを指して失敗した。ヘルパー側の変異（`holdNext` 未設定、`transform` 無視、プローブ照合、モデル一覧の正規表現）もそれぞれ検出された。
+- mock モードのチャットモデルは1つだけなので、モデル切替の spec は `/chat` の文書を転送中に書き換えて2つ目のモデルを加える（`offerAlternativeModel`。Next の埋め込み形式が変われば明示的に失敗する）。「`page.route("/api/**")` だけ」からの逸脱である。サーバー側の履歴変換は ai-core の単体テストが担当し、spec は送信本文と画面上の履歴の残存を確認する。`getByRole("alert")` は Next のルートアナウンサーにも一致するため、タイトル文言で絞る。
 
 ---
 
@@ -205,7 +208,7 @@ _Traces:_ REQ-001, REQ-003, C19
   _Depends:_ 26
   _Requirements:_ 1.17, NFR-10
   _Traces:_ REQ-001, C19
-- [ ] 27.2 (P) `chat.spec.ts`・`agent-tools.spec.ts`・`summarize.spec.ts`: 送信・逐次表示・モデル切替（切り替え後も会話履歴の表示が残る）・停止・エラー再送、ツール状態表示とカード描画、カードの逐次描画と取得失敗表示
+- [x] 27.2 (P) `chat.spec.ts`・`agent-tools.spec.ts`・`summarize.spec.ts`: 送信・逐次表示・モデル切替（切り替え後も会話履歴の表示が残る）・停止・エラー再送、ツール状態表示とカード描画、カードの逐次描画と取得失敗表示
   _Boundary:_ `apps/web/e2e/chat.spec.ts`, `apps/web/e2e/agent-tools.spec.ts`, `apps/web/e2e/summarize.spec.ts`
   _Depends:_ 26
   _Requirements:_ 1.17, 3.3, NFR-10
@@ -215,7 +218,7 @@ _Traces:_ REQ-001, REQ-003, C19
   _Depends:_ 26
   _Requirements:_ 1.19, NFR-09
   _Traces:_ REQ-001, C19
-- [ ] 27.4 (P) `latency.spec.ts`: 応答チャンク受信からDOM反映までが100ms以内であることを計測する
+- [x] 27.4 (P) `latency.spec.ts`: 応答チャンク受信からDOM反映までが100ms以内であることを計測する
   _Boundary:_ `apps/web/e2e/latency.spec.ts`
   _Depends:_ 26
   _Requirements:_ NFR-04
@@ -228,6 +231,8 @@ _Traces:_ REQ-001, REQ-003, C19
 - PROVE（変異 → 失敗）: `fixtures.ts` を `new URL` 形式に戻す → `next build` が `Module not found` で webServer が起動しない／`postcss.config.mjs` を外す → スタイル適用の3件が失敗／`<html lang>` を外す → axe の6件が失敗／`applyColorScheme` が dark を付けない → dark の3件が失敗。すべて復元済み。
 - 発見と修正: Firefox ではスキップリンクがフォーカスを受けると outline の色が `currentcolor`（本文色 `lab(98.26 0 0)`）になり、ページ背景とのコントラストが 1.0 で指示子が見えなかった（keyboard.spec の2件が失敗）。`globals.css` に `:focus-visible { @apply outline-ring; }` を足して解消した。
 - 27.1 の「ツール」は天気ツール1回、「要約」は字幕テキスト入力で確認している（記事・YouTube は 27.2 の範囲）。
+- 2026-10-12: 27.2（`chat`・`agent-tools`・`summarize`。各4件）と 27.4（`latency`。2件）を実装した。`summarize.spec.ts` には、ブリーフ外の実経路の確認（`http://localhost/article` が 422 `disallowed-url`）と、字幕なし（422、Req 4.11）を加えた。RED: spec を先に書き、ヘルパーがない `TS2307` と、`next build` の型検査で webServer が起動しない失敗を確認した。PROVE（アプリ側の変異 → 失敗）: 停止ボタンを無効化／モデル切替で `setModelId` を外す／「再送信」の文言変更／生成中のパートを隠す／ツール状態の文言変更／カードの題名変更／`aria-busy` 固定／取得失敗の文言変更の13件が、それぞれの assertion で失敗した。復元済み（`git diff apps/web/components` が空）。
+- 実行結果: `mise run test:e2e` を2回続けて `executed=123 skipped=0 (chromium=41 firefox=41 webkit=41)`。新規4 spec は `--repeat-each=10` で 420 件通過（不安定 0）。アプリ本体の不具合は見つからなかった。
 
 ---
 
@@ -243,37 +248,37 @@ _Depends:_ 27, 19
 _Requirements:_ 1.8, 2.10, 2.16, 6.1, 7.1, 7.2, 7.3, 7.4, 7.5, 7.6, 7.7, 7.8, 7.9, 7.10, 7.11, NFR-12
 _Traces:_ REQ-001, REQ-002, REQ-006, REQ-007, C22
 
-- [ ] 28.1 `scripts/check-docs.mjs`・`check-docs.test.mjs`: 必須節・必須トピック見出し・チェックリストのテスト参照実在（`describe`/`it`/`test`/`describeLocal`/`itLocal` の文字列リテラルからの静的抽出）を検査し、参照0件で失敗する
+- [x] 28.1 `scripts/check-docs.mjs`・`check-docs.test.mjs`: 必須節・必須トピック見出し・チェックリストのテスト参照実在（`describe`/`it`/`test`/`describeLocal`/`itLocal` の文字列リテラルからの静的抽出）を検査し、参照0件で失敗する
   _Boundary:_ `scripts/check-docs.mjs`, `scripts/check-docs.test.mjs`
   _Depends:_ 27
   _Requirements:_ 7.6, 7.9
   _Traces:_ REQ-007, C22
-- [ ] 28.2 `docs/README.md`・`docs/modules/_template.md`: 解説の読み方、実行モード・外部サービスの表記規約、チェックリストから参照するテストは固定文字列の名前にする規約、19モジュール共通テンプレート（学習目標・主要トピック・ハンズオン手順・習熟度チェックリスト・実装とテストの所在・対照表「移植で諦めたもの」列・移植時の変更点・Python/Streamlitコラム・完成タグ）
+- [x] 28.2 `docs/README.md`・`docs/modules/_template.md`: 解説の読み方、実行モード・外部サービスの表記規約、チェックリストから参照するテストは固定文字列の名前にする規約、19モジュール共通テンプレート（学習目標・主要トピック・ハンズオン手順・習熟度チェックリスト・実装とテストの所在・対照表「移植で諦めたもの」列・移植時の変更点・Python/Streamlitコラム・完成タグ）
   _Boundary:_ `docs/README.md`, `docs/modules/_template.md`
   _Depends:_ 28.1
   _Requirements:_ 7.2, 7.3, 7.4, 7.5, 7.9, 7.10, 7.11, NFR-12
   _Traces:_ REQ-007, C22
-- [ ] 28.3 `docs/modules/index.md`・`docs/phases/phase-1.md`: 19モジュールの一覧と状態、Phase 1 が扱う IBM 3段階成熟度モデルの水準
+- [x] 28.3 `docs/modules/index.md`・`docs/phases/phase-1.md`: 19モジュールの一覧と状態、Phase 1 が扱う IBM 3段階成熟度モデルの水準
   _Boundary:_ `docs/modules/index.md`, `docs/phases/phase-1.md`
   _Depends:_ 28.2
   _Requirements:_ 7.1, 7.7
   _Traces:_ REQ-007, C22
-- [ ] 28.4 (P) `docs/modules/1-0-intro.md`: IBM 3段階成熟度モデル、Agentic AI の7段階閉ループ、生成AIとの比較マトリクス、7段階とモジュールの対応表。必須トピック: 7段階閉ループ、「テキストの生成」から「状態の変更」へ、LLM は認知・計画エンジン
+- [x] 28.4 (P) `docs/modules/1-0-intro.md`: IBM 3段階成熟度モデル、Agentic AI の7段階閉ループ、生成AIとの比較マトリクス、7段階とモジュールの対応表。必須トピック: 7段階閉ループ、「テキストの生成」から「状態の変更」へ、LLM は認知・計画エンジン
   _Boundary:_ `docs/modules/1-0-intro.md`
   _Depends:_ 28.2
   _Requirements:_ 7.2, 7.3, 7.4, 7.5, 7.8, 7.9, 7.10
   _Traces:_ REQ-007, C22
-- [ ] 28.5 (P) `docs/modules/1-1-dev-environment.md`: モノレポ・品質ゲート・実行モード、Langfuse の必要リソース、watsonx.ai をスキップした理由、TypeScript 先行版の方針と後退の記録。必須トピック: Streamlit の全行再実行モデルと App Router の差分ストリーミング、Server / Client Components の境界、API キーのサーバー側実行
+- [x] 28.5 (P) `docs/modules/1-1-dev-environment.md`: モノレポ・品質ゲート・実行モード、Langfuse の必要リソース、watsonx.ai をスキップした理由、TypeScript 先行版の方針と後退の記録。必須トピック: Streamlit の全行再実行モデルと App Router の差分ストリーミング、Server / Client Components の境界、API キーのサーバー側実行
   _Boundary:_ `docs/modules/1-1-dev-environment.md`
   _Depends:_ 28.2
   _Requirements:_ 1.8, 2.10, 7.2, 7.3, 7.4, 7.5, 7.6, 7.9, 7.10
   _Traces:_ REQ-001, REQ-002, REQ-007, C22
-- [ ] 28.6 (P) `docs/modules/1-2-ai-sdk-core-and-tools.md`: ストリーミングチャット・ToolLoopAgent・Generative UI、停止条件の近似性の注意。必須トピック: ロール設計（system / user / assistant / tool）、テンプレートによるプロンプト構築、Few-shot / CoT、推論モデルが計画に与えた影響、LangChain AgentExecutor と `ToolLoopAgent` の対比
+- [x] 28.6 (P) `docs/modules/1-2-ai-sdk-core-and-tools.md`: ストリーミングチャット・ToolLoopAgent・Generative UI、停止条件の近似性の注意。必須トピック: ロール設計（system / user / assistant / tool）、テンプレートによるプロンプト構築、Few-shot / CoT、推論モデルが計画に与えた影響、LangChain AgentExecutor と `ToolLoopAgent` の対比
   _Boundary:_ `docs/modules/1-2-ai-sdk-core-and-tools.md`
   _Depends:_ 28.2
   _Requirements:_ 6.1, 7.2, 7.3, 7.4, 7.5, 7.6, 7.9, 7.10
   _Traces:_ REQ-006, REQ-007, C22
-- [ ] 28.7 (P) `docs/modules/1-3-structured-output-and-summaries.md`: 構造化出力・分割の境界・プロンプトキャッシュ、`mock` の埋め込みが検索精度の評価に使えないことの明記。必須トピック: Map-Reduce が不要になった理由と分割が必要な境界、プロンプトキャッシュの原理とコスト
+- [x] 28.7 (P) `docs/modules/1-3-structured-output-and-summaries.md`: 構造化出力・分割の境界・プロンプトキャッシュ、`mock` の埋め込みが検索精度の評価に使えないことの明記。必須トピック: Map-Reduce が不要になった理由と分割が必要な境界、プロンプトキャッシュの原理とコスト
   _Boundary:_ `docs/modules/1-3-structured-output-and-summaries.md`
   _Depends:_ 28.2
   _Requirements:_ 2.16, 7.2, 7.3, 7.4, 7.5, 7.6, 7.9, 7.10
@@ -285,6 +290,10 @@ _Traces:_ REQ-001, REQ-002, REQ-006, REQ-007, C22
   - 28.2 のテンプレートと 28.4〜28.7 の各解説に「本番ではどう作るか」節を加え、[`specs/curriculum/README.md`](../curriculum/README.md)「本番実装との対応」の表が割り当てたハブの手法ページへリンクする（1-1 はハブの `CLAUDE.md` / `AGENTS.md`）。ハブの本文は転載しない（005 Req 2.2、2.5）
   - 解説内のリンク先の文字列を対応表と照合する検査を、ネットワークに接続しないリポジトリ規則として加える。走査 0 件で失敗し、解説が未作成のモジュールは一覧として出力する（005 Req 2.3、2.4）。`check:repo-rules` の規則数（現行の全9規則）と tasks.md「gate と CI の段階的な結線」の表もあわせて改訂する
   - `apps/web` のテーマトークン（大タスク 8.3 の `app/globals.css` とコントラスト検査）を、ハブが参照する元として文書化する（005 Req 3.3、3.4）
+
+- 2026-10-12: 28.1 `scripts/check-docs.mjs`（22件）。必須の節、モジュール別の必須トピックの見出し（Req 7.9、1-0 は Req 7.8 の内容も）、ハンズオン手順ごとの `実行モード:`・`外部サービス:`、対照表の「移植で諦めたもの」列、チェックリストの `<!-- test: path#name -->` が指すテストの実在（`describe`/`it`/`test`/`describeLocal`/`itLocal` の文字列リテラルから静的に抽出。`it.each` とテンプレートは参照不可）を検査する。モジュール 0 件・参照 0 件・リポジトリ外を指す参照は失敗にする。PROVE: 11の変異（`itLocal` の除外、補間テンプレートの許可、Python コラムの全モジュール必須化、リポジトリ外参照の許可、0 件の許可 2種、手順ラベルの無検査、トピックの無検査、対照表の列の無検査、テスト名の無検査、チェックリスト外の参照の読み取り）がすべて検出された。
+- 28.2〜28.3 は直接執筆。28.4〜28.7 は1文書1サブエージェントで執筆し、メインが `docs:check` で検証した。`mise run docs:check` → `Docs: 4 module documents, 51 test references verified`。解説にモデル ID は書かず（`check:model-ids` 通過）、「本番ではどう作るか」節は 005 の設計が未承認のため加えていない。
+- 要確認（サブエージェントの報告）: (1) `module/1-1` タグがローカルにない。1-1 の解説は「14.1〜14.5 の統合コミットに付け、29.4 で再作成する」と書いている。再作成時にタグの内容と突き合わせる。(2) 1-0 の「7段階とモジュールの対応表」は、spec が段階とモジュールを対応づけていないため、phase-2〜4 からの解釈である。(3) 1-3 のプロンプトキャッシュの書き込み倍率・最短長・TTL は Anthropic の文書の値で、カタログにはない（解説が出典と確認日を明記）。(4) 1-3 の解説は、`staged` の各チャンクにもキャッシュ印が付き再読込がないこと、`estimateCost` にキャッシュ書き込み項がないことを、コードの読解から述べている。(5) `module/1-3` の木に `apps/web/e2e` の3 spec が含まれる（コミット順による）。(6) `dev` の mise タスクがないため、解説の起動手順は `mise exec -- pnpm --filter web dev` を使う。
 
 ---
 
@@ -298,13 +307,13 @@ _Depends:_ 5, 13, 19, 25, 26, 27, 28
 _Requirements:_ 1.4, 1.5, 1.7, 1.10, 1.11, 1.14, 1.15, 1.16, 1.17, 1.18, 7.11, NFR-01, NFR-02, NFR-03
 _Traces:_ REQ-001, REQ-007, C1, C2, C22
 
-- [ ] 29.1 W5 の締め: `mise.toml` の `gate` に `docs:check` を加え、plan C1 の全段（`lint`→`check:model-ids`→`check:repo-rules`→`typecheck`→`test`→`docs:check`）と `check:repo-rules` の全9規則がそろったことを確認し、いずれかの失敗で非ゼロ終了することを確認する。`ci.yml` に `e2e`（chromium/firefox/webkit マトリクス。`mise run test:e2e` の後に 25.3 の `assert-playwright-nonempty`）と `client-bundle`（`next build` の後に 25.2 の `check-client-bundle`。秘密情報の番兵値を注入する）を加え、`ci-status` の `needs` を plan C2 の全ジョブにする（[tasks.md](tasks.md)「gate と CI の段階的な結線」）
+- [x] 29.1 W5 の締め: `mise.toml` の `gate` に `docs:check` を加え、plan C1 の全段（`lint`→`check:model-ids`→`check:repo-rules`→`typecheck`→`test`→`docs:check`）と `check:repo-rules` の全9規則がそろったことを確認し、いずれかの失敗で非ゼロ終了することを確認する。`ci.yml` に `e2e`（chromium/firefox/webkit マトリクス。`mise run test:e2e` の後に 25.3 の `assert-playwright-nonempty`）と `client-bundle`（`next build` の後に 25.2 の `check-client-bundle`。秘密情報の番兵値を注入する）を加え、`ci-status` の `needs` を plan C2 の全ジョブにする（[tasks.md](tasks.md)「gate と CI の段階的な結線」）
   _Boundary:_ `mise.toml`, `.github/workflows/ci.yml`
   _Depends:_ 5, 13, 19, 25, 26, 27, 28
   _Requirements:_ 1.4, 1.7, 1.10, 1.15, 1.17
   _Traces:_ REQ-001, C1, C2
   _Verify:_ 各段について、一時的に違反を入れて gate が非ゼロで終了することを1回ずつ確認する。追加したジョブは `actions-pinned`・`frozen-lockfile` 規則を満たす
-- [ ] 29.2 `mise run gate:repeat`（同一コミットで10回実行し合否が同一）、オフライン実行（依存インストール済みでネットワーク切断時も成功）、API キーなしでの成功、5分以内の完了を実測で確認する。Ollama を止めた状態の `mise run test:local` で、`*.local.test.ts` が理由付きでスキップされることも確認する。Ollama を起動した状態では、要約（`num_ctx` 40,960）とチャット・エージェント（サーバー既定）を交互に呼んだときのモデル再読み込みの時間とメモリ量を実測する（W3 敵対的レビュー r2 の N4。大きければチャットとエージェントにも同じ `num_ctx` を渡す変更を plan C11・C8 に起票する）
+- [ ] 29.2 `mise run gate:repeat`（同一コミットで10回実行し合否が同一）、オフライン実行（依存インストール済みでネットワーク切断時も成功）、API キーなしでの成功、5分以内の完了を実測で確認する。Ollama を止めた状態の `mise run test:local` で、`*.local.test.ts` が理由付きでスキップされることも確認する。Ollama を起動した状態では、要約（`num_ctx` 32,768）とチャット・エージェント（サーバー既定）を交互に呼んだときのモデル再読み込みの時間とメモリ量を実測する（W3 敵対的レビュー r2 の N4。大きければチャットとエージェントにも同じ `num_ctx` を渡す変更を plan C11・C8 に起票する）
   _Boundary:_ `mise.toml`
   _Depends:_ 29.1
   _Requirements:_ 1.5, 1.11, 1.14, NFR-01, NFR-02, NFR-03
@@ -324,3 +333,7 @@ _Traces:_ REQ-001, REQ-007, C1, C2, C22
   _Verify:_ `git tag --list 'module/*'` で3つのタグが表示され、`module/1-1` と `module/1-2` が異なるコミットを指し、各タグのコミットで `mise run gate`（その時点の構成）が成功する
 
 ### Implementation Notes
+
+- 2026-10-12: 29.1 完了。`mise.toml` の `gate` に `docs:check` を加え、plan C1 の全段と `check:repo-rules` の全9規則がそろった。`test:e2e` は `E2E_PROJECTS`（カンマ区切り、既定は3エンジン）を受け取り、CI の `e2e` ジョブ（chromium/firefox/webkit のマトリクス）が1エンジンずつ実行する。`ci.yml` に `e2e` と `client-bundle` を加え、`ci-status` の `needs` を6ジョブにした（`actions-pinned`・`frozen-lockfile` 規則は通過）。検証: `docs/modules/1-0-intro.md` の必須の節を1つ外すと `mise run gate` が exit=1（`1-0-intro.md: missing section: 完成時点のタグ`）。復元後は exit=0。他の段の違反による非ゼロ終了は、各段を結線した波（W1〜W3）で確認済み。
+- 29.2（一部）: API キー（ANTHROPIC・OPENAI・TAVILY）を外して `mise run gate:repeat` → 10回すべて成功、合計 1分59秒（`TURBO_FORCE`、1回あたり約12秒。NFR-01 の 5分以内）。ネットワークの実切断は行っていない（テストは `fetch`・`node:net`・`node:dns` を遮断し、未モックの接続は失敗する）。**未完了**: Ollama を止めた状態のスキップ確認と、`num_ctx` の再読み込み時間・メモリ量の実測（環境の操作を伴うため人間の判断に委ねる）。ローカルモデルの既定を変更した（2026-10-12、人間の指示）: カタログの local 既定を `granite4.2:latest`（chat・structured）、`gemma4:e2b`（judge）、`nomic-embed-text:latest`（embedding）にし、`llama3.2:latest` も選べる。`ollama show` で確認した機能（3モデルともツール対応、コンテキスト長 131,072）を反映し、チャットモデルの `contextWindow` は `num_ctx` として使う 32,768 にした（131,072 の KV キャッシュは学習者の PC に重いため）。要約の入力の予算は 32,768×0.8−4,096=22,118 になった。新しい既定で `mise run test:local` → eval-suite 1 件、ai-core 2 件が通過した。
+- 29.3（ローカル分）: `mise run secret-scan` → `162 commits scanned … no leaks found`、`mise run audit` → `No known vulnerabilities found`、`mise run test:mutation` → `Final mutation score of 91.60 … break threshold 70`（exit 0）。**未完了**: CI の全ジョブ成功の PR 上での確認。

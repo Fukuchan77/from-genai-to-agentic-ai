@@ -2360,7 +2360,7 @@ Alias break の failure は `This module cannot be imported from a Client Compon
   2. `mock` / `local` は単価なし、`live` は入出力単価ありで、watsonx.ai を含めない。
   3. 検索・既定値解決・コスト見積もりが決定論的で、未知の組み合わせを拒否する。
   4. 型は Zod 非依存で、モデル ID リテラルの一元管理 gate を通過する。
-- Official documentation checked: Anthropic models overview, OpenAI models/pricing, Microsoft Azure Foundry model catalog/pricing guidance, Google Gemini models/pricing, Ollama qwen3 and embeddinggemma library pages（2026-09-28 閲覧）。
+- Official documentation checked: Anthropic models overview, OpenAI models/pricing, Microsoft Azure Foundry model catalog/pricing guidance, Google Gemini models/pricing, Ollama library pages（2026-09-28 閲覧）。
 
 ### 2026-09-28 21:18 Task 9 RED Evidence
 
@@ -3435,7 +3435,7 @@ GREEN 後、7件すべての新規テストについて独立した deliberate b
 - GREEN: `URL.hostname` のリテラル検査（IPv4 の非公開帯域、IPv6 の ::・::1・IPv4 互換/マップ/NAT64・fc00::/7・fe80::/10・fec0::/10・ff00::/8、localhost・*.local・*.internal・単一ラベル）。`redirect: "manual"` で最大5回、行き先ごとに検査。`SourceDeps.clock` の 15 秒タイムアウト（fetch と競争させ、signal を無視する fetcher も打ち切る）。5 MiB の UTF-8 バイト上限。新しい reason `disallowed-url`・`timeout`・`too-large`。テストは `url-guard.test.ts` 56件、`source.test.ts` 14件、`pipeline.test.ts` 1件。
 - PROVE（それぞれ失敗を確認）: マップ/NAT64 分岐 → 3件、protocol 検査 → ftp・gopher を受理、169.254/16 → 2件、fetch 前の検査 → 7件、`redirect: "manual"` → `expected false to be true`、上限 `>=`→`>`、タイムアウトの対応 → reason が `network`、サイズ `>`→`>=` と文字数化 → 境界テスト、競争を外す → `Test timed out in 5000ms`。
 - PROVE 中の発見: 事前に abort した signal で放棄した要求が unhandled rejection を出したため、`request.catch(() => undefined)` で修正した。
-- `7e867fc`: `hardSplit` を補間探索（`fittingEnd`）に変えた。2 MB の `"word "` 行で qwen3:8b 2.5 s → 0.66 s、日本語 2 MB 6.2 s → 0.77 s。PROVE 二分探索に戻す → `expected 4934318 to be less than 1600000`、`low - 1` と `start + 1` の除去 → 各6件。
+- `7e867fc`: `hardSplit` を補間探索（`fittingEnd`）に変えた。2 MB の `"word "` 行で 当時の既定のローカルモデルで 2.5 s → 0.66 s、日本語 2 MB 6.2 s → 0.77 s。PROVE 二分探索に戻す → `expected 4934318 to be less than 1600000`、`low - 1` と `start + 1` の除去 → 各6件。
 
 **L9**（`68adf47`）: RED 7件。GREEN `/<(\s*\/?\s*source\b[^>]*)>/giu` で題名と本文の全変種を `&lt;…&gt;` に。PROVE 題名を素通し → 7件、`i` フラグを外す → 大文字の2件。
 
@@ -3693,3 +3693,16 @@ GREEN 後、7件すべての新規テストについて独立した deliberate b
 
 - 内容、PROVE、RED の観測、`_Boundary:_` 外の追加は `tasks-w5.md` の 25 の Implementation Notes にある。WebKit を導入し（`playwright install webkit`）3エンジンで 81 件通過。WebKit は Tab でリンクとボタンに止まらないため、`keyboard.spec.ts` は Option+Tab を使う。
 - `mise run gate` → exit 0: Biome 241 files、typecheck 88 files、root `executed=275`、ai-core 687、eval-suite 3、web 301。
+
+### 2026-10-12 /sdd-impl W5（26.2、26.3、27.2、27.4、28.1〜28.7、29.1。29.2・29.3 は一部）
+
+- 実施方法: E2E（26.2・26.3・27.2・27.4）と解説（28.4〜28.7）は、1タスク1サブエージェントで並行実施した。メインは 28.1〜28.3 と 29 を直接実施し、各サブエージェントの成果を `docs:check`・`test:e2e`・`gate` で検証した。
+- RED/PROVE の証跡は `tasks.md` の 26・27・28 の Implementation Notes に記録した（28.1: 11変異を検出、E2E: アプリ側13件・ヘルパー側4種の変異と 150 ms 停止の検出）。
+- 検証: `mise run gate` → exit 0: root `executed=297`、ai-core `executed=687 skipped=4`、eval-suite `executed=3 skipped=1`、web `executed=301`、`Docs: 4 module documents, 51 test references verified`。`mise run test:e2e` → `executed=123 skipped=0 (chromium=41 firefox=41 webkit=41)`。`gate:repeat` 10回成功（1分59秒）。`test:mutation` 91.60。secret-scan・audit クリーン。
+- 未完了: 29.2（Ollama 停止時のスキップ確認、`num_ctx` の再読み込みの実測。モデル未取得で `test:local` が失敗）、29.3（CI の PR 上の確認）、29.4（タグの検証と push。`module/1-1` が存在しない）。
+
+### 2026-10-12 /sdd-ship W5（26.2、26.3、27.2、27.4、28.1〜28.7、29.1）
+
+- 検証: GO。`mise run gate` → exit 0（root 297、ai-core 687 skipped 4、eval-suite 3 skipped 1、web 301、docs 51 参照）。`mise run test:e2e` → `executed=123 skipped=0`。
+- コミット: `7403cc7`（e2e）、`c20ce17`（docs）、`03a285a`（ci）、`6a41888`（ローカルモデル既定。`_Boundary:_` 外だが人間の指示）。
+- 残り: 29.2・29.3・29.4（チェックなし）。
