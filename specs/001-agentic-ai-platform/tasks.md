@@ -256,7 +256,7 @@ _Traces:_ REQ-005, REQ-006, REQ-007, C16, C22
   _Depends:_ 23.2
   _Requirements:_ 5.4, 5.6, 6.2, 6.3
   _Traces:_ REQ-005, REQ-006, C16
-- [ ] 23.5 完成タグ `module/1-2`: モジュール 1-2（Req 3、5、6 のリファレンス実装: ChatCore、GuardedAgent、AciToolkit、ChatFeature、ToolAgentFeature）が完了した統合ブランチのコミットに、注釈付きタグをローカルで付ける（plan C22）。タグの push は 29.4 で人間の承認後に行う
+- [x] 23.5 完成タグ `module/1-2`: モジュール 1-2（Req 3、5、6 のリファレンス実装: ChatCore、GuardedAgent、AciToolkit、ChatFeature、ToolAgentFeature）が完了した統合ブランチのコミットに、注釈付きタグをローカルで付ける（plan C22）。タグの push は 29.4 で人間の承認後に行う
   _Boundary:_ git タグのみ（ファイルの変更なし）
   _Depends:_ 14.6, 15, 16, 17, 22, 23.1, 23.2, 23.3, 23.4
   _Requirements:_ 7.11
@@ -295,7 +295,7 @@ _Traces:_ REQ-004, REQ-007, C17, C22
   _Depends:_ 24.2
   _Requirements:_ 4.8, 4.10, 4.11, 4.12
   _Traces:_ REQ-004, C17
-- [ ] 24.4 完成タグ `module/1-3`: モジュール 1-3（Req 4 のリファレンス実装: SummaryPipeline、SummaryFeature）が完了した統合ブランチのコミットに、注釈付きタグをローカルで付ける（plan C22）。タグの push は 29.4 で人間の承認後に行う
+- [x] 24.4 完成タグ `module/1-3`: モジュール 1-3（Req 4 のリファレンス実装: SummaryPipeline、SummaryFeature）が完了した統合ブランチのコミットに、注釈付きタグをローカルで付ける（plan C22）。タグの push は 29.4 で人間の承認後に行う
   _Boundary:_ git タグのみ（ファイルの変更なし）
   _Depends:_ 14.6, 18, 24.1, 24.2, 24.3
   _Requirements:_ 7.11
