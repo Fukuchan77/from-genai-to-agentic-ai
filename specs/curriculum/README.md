@@ -23,6 +23,7 @@ Python / LangChain / LangGraph ベースの3冊の教材と、Anthropic / IBM �
 | [phase-2.md](phase-2.md) | Phase 2 発展編（モジュール 2-1〜2-4、M2、spec 002） |
 | [phase-3.md](phase-3.md) | Phase 3 現場実践編（モジュール 3-1〜3-6、M3、spec 003） |
 | [phase-4.md](phase-4.md) | Phase 4 運用・品質編（モジュール 4-1〜4-5、M4、spec 004） |
+| [security.md](security.md) | セキュリティ補講。OWASP LLM Top 10 2025 / Agentic Top 10 2026 とモジュールの対応、開発基盤のサプライチェーン対策（secure-dev-roadmap より） |
 | [sources.md](sources.md) | 元教材の章とモジュールの対応、Python → TypeScript の置き換え対照 |
 | [changes-from-drafts.md](changes-from-drafts.md) | ドラフトとの差分（清書時に解消した矛盾の記録） |
 
