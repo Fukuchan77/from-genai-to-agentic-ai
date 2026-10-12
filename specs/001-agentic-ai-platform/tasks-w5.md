@@ -15,23 +15,29 @@ _Depends:_ 22, 23, 24
 _Requirements:_ 1.10, 1.15, 1.17
 _Traces:_ REQ-001, C19, C20
 
-- [ ] 25.1 `scripts/e2e/generate-sse-fixtures.mjs`: `mock` モードの Route Handler を C7 のシナリオで実行した出力から `.sse` fixture を生成する（手書きしない）。先に3つの `route.test.ts` に「生成済み fixture と現在の出力が一致する」検査を加えて失敗を確認し（RED）、生成して通す（GREEN）
+- [x] 25.1 `scripts/e2e/generate-sse-fixtures.mjs`: `mock` モードの Route Handler を C7 のシナリオで実行した出力から `.sse` fixture を生成する（手書きしない）。先に3つの `route.test.ts` に「生成済み fixture と現在の出力が一致する」検査を加えて失敗を確認し（RED）、生成して通す（GREEN）
   _Boundary:_ `scripts/e2e/generate-sse-fixtures.mjs`, `apps/web/app/api/chat/route.test.ts`, `apps/web/app/api/agent/tools/route.test.ts`, `apps/web/app/api/summarize/route.test.ts`
   _Depends:_ 22, 23, 24
   _Requirements:_ 1.17
   _Traces:_ REQ-001, C19
-- [ ] 25.2 (P) `scripts/check-client-bundle.mjs`: `next build` 後の `.next/static` に秘密情報の環境変数名と番兵値が含まれないことを検査する + `check-client-bundle.test.mjs`（fixture ディレクトリで検出・非検出・走査0件での失敗）
+- [x] 25.2 (P) `scripts/check-client-bundle.mjs`: `next build` 後の `.next/static` に秘密情報の環境変数名と番兵値が含まれないことを検査する + `check-client-bundle.test.mjs`（fixture ディレクトリで検出・非検出・走査0件での失敗）
   _Boundary:_ `scripts/check-client-bundle.mjs`, `scripts/check-client-bundle.test.mjs`
   _Depends:_ 20
   _Requirements:_ 1.10
   _Traces:_ REQ-001, C20
-- [ ] 25.3 (P) `scripts/gate/assert-playwright-nonempty.mjs`: Playwright の JSON 結果で「収集0件」「全件スキップ」を失敗にする + `assert-playwright-nonempty.test.mjs`
+- [x] 25.3 (P) `scripts/gate/assert-playwright-nonempty.mjs`: Playwright の JSON 結果で「収集0件」「全件スキップ」を失敗にする + `assert-playwright-nonempty.test.mjs`
   _Boundary:_ `scripts/gate/assert-playwright-nonempty.mjs`, `scripts/gate/assert-playwright-nonempty.test.mjs`
   _Depends:_ 1
   _Requirements:_ 1.15, 1.17
   _Traces:_ REQ-001, C19
 
 ### Implementation Notes
+
+- 2026-10-12: 25.3 `assert-playwright-nonempty.mjs`（7件）。収集0件・全件スキップ・必須プロジェクトの実行0件を失敗にし、`--projects` で3エンジンを要求する。`mise run test:e2e` が Playwright の JSON 結果（`apps/web/test-results/results.json`）をこれに渡す。実際の結果で `executed=81 (chromium=27 firefox=27 webkit=27)` を確認した。PROVE: 全件スキップの検査・収集0件の検査・必須プロジェクトの検査・スキップを実行に数える変異の4つがすべて検出された。
+- 25.2 `check-client-bundle.mjs`（6件）。秘密の変数名は `env-schema.ts` から `API_KEY|SECRET|PASSWORD|SALT|AUTH|ENCRYPTION_KEY` を含む名前を抽出する（13件）。`mise run check:client-bundle` が番兵値（`changeme-bundle-sentinel-*`）を環境変数に入れて `next build` し、`.next/static`（16ファイル）を検査して通した。0ファイルの走査は失敗にする。PROVE: 名前の検査・番兵値の検査・0件の許可・再帰の停止の変異を検出。名前の公開例外（`LANGFUSE_PUBLIC_KEY`）は、パターンに一致しないため冗長と分かり削除した。
+- 25.1 `generate-sse-fixtures.mjs`（5件）は `.sse` を扱う唯一の場所（`verifyOrWriteFixture`）。`scripts/` は `child_process` を使えないため、生成は Route Handler のテスト自身が行う: `SSE_FIXTURES=write`（`mise run e2e:fixtures`）で書き、通常は完全一致を要求する。先に3つの `route.test.ts` へ一致検査を足して「fixture が無い」で失敗する RED を確認し、生成して GREEN にした。生成を2回行い差分が出ない（決定論的）ことと、fixture の1語を書き換えると `stale (line 7: ...)` で失敗することを確認した。fixture は共有の M1_2 / M1_3 シナリオから作る（実サーバーの mock 応答と同じ）。
+- `_Boundary:_` の外: `scripts/e2e/generate-sse-fixtures.test.mjs`、`scripts/check-client-bundle*.mjs` は規約どおり隣にテストを置いた。`mise.toml` に `check:client-bundle`・`e2e:fixtures` を足し、`test:e2e` を変更した。gate・CI への結線は 29 の締めで行う。`mise run gate` → exit 0: root 275、ai-core 687、eval-suite 3、web 301。
+- 26.1 の `_Verify:_`（3エンジンで27のシナリオを実行し、25.3 が0件・全件スキップでないことを確認）を満たしたためチェックした。26.2（`mock-api.ts`）と 26.3 の `latency-probe.ts` は未着手。
 
 ---
 
@@ -44,7 +50,7 @@ _Depends:_ 25
 _Requirements:_ 1.17, 1.19, NFR-04, NFR-09, NFR-10
 _Traces:_ REQ-001, C19
 
-- [ ] 26.1 `playwright.config.ts`: projects（chromium/firefox/webkit）、`webServer`（`next start`、`AI_RUN_MODE=mock`）、JSON レポーター
+- [x] 26.1 `playwright.config.ts`: projects（chromium/firefox/webkit）、`webServer`（`next start`、`AI_RUN_MODE=mock`）、JSON レポーター
   _Boundary:_ `apps/web/playwright.config.ts`
   _Depends:_ 25
   _Requirements:_ 1.17, NFR-10

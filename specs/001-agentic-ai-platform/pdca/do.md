@@ -3688,3 +3688,8 @@ GREEN 後、7件すべての新規テストについて独立した deliberate b
 
 - ローカルの注釈付きタグ `module/1-2`・`module/1-3` を `7cc27cc` に付けた（push は 29.4 で人間の承認後）。元の機能コミット（`64e3a96`、`27112ee`、`a2b70ce`）は Turbopack でビルドできず、学習者が戻る状態として使えないため、実サーバー修正後のコミットを選んだ。plan C22 の「モジュールごとに別のコミット」からは外れる（両方が同じコミット）。別の動くコミットを作るなら、タグを付け替える。
 - `module/1-1`（14.6）のタグは存在しない。
+
+### 2026-10-12 タスク 25.1〜25.3・26.1
+
+- 内容、PROVE、RED の観測、`_Boundary:_` 外の追加は `tasks-w5.md` の 25 の Implementation Notes にある。WebKit を導入し（`playwright install webkit`）3エンジンで 81 件通過。WebKit は Tab でリンクとボタンに止まらないため、`keyboard.spec.ts` は Option+Tab を使う。
+- `mise run gate` → exit 0: Biome 241 files、typecheck 88 files、root `executed=275`、ai-core 687、eval-suite 3、web 301。
