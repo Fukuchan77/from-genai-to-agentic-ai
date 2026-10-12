@@ -3650,3 +3650,16 @@ GREEN 後、7件すべての新規テストについて独立した deliberate b
 - 自動修正: `AGENTS.md` の Project Status（「no web tests yet」「W4 is current」）を実装済みの内容に更新。
 - コミット: `d8fe775`（20・21）、`64e3a96`（22）、`27112ee`（23.1〜23.4）、`a2b70ce`（24.1〜24.3）。
 - 未実施: 実サーバー（`next dev`）での表示確認（27.1・27.3）、完成タグ 23.5・24.4。
+
+### 2026-10-12 タスク 23.1 補強（レビュー修正の回帰テスト）
+
+- 背景: `/sdd-ship` の検証で、`/api/agent/tools` の「検証だけを個別の try に入れる」「検証 → 変換の順序」を守るテストがないことを確認した（変異が生き残った）。`route.test.ts` に2件を追加し、既存の検証失敗テストのリクエスト生成を `invalidToolPartRequest()` に抽出した。履歴アダプタは `vi.mock` で包み、呼び出し回数と失敗を注入できるようにした。
+- 追加テスト: `does not adapt a history that failed validation`（400、アダプタ0回）／`reports a failure after validation as unexpected, not as invalid-request`（500、`unexpected`、`invalid-request` と秘密値を含まない）。
+- PROVE（変異 → 観測した失敗）: `createAgentUIStreamResponse` 呼び出しを広い try で包み 400 に変換 → 後者の1件が失敗／検証の前に `adaptHistoryForModel` を呼ぶ → 前者の1件が失敗。復元済み（`cmp` で一致を確認）。
+- ガード側の2件（bare `image`、データ URL 以外）の PROVE: `isImageMediaType` を `startsWith("image/")` のみに戻す → `counts a bare image media type as an image` が失敗／データ URL の検査を外す → `rejects a non-image file whose URL is not a data URL` が失敗。復元済み。
+- `mise run gate` → exit 0: Biome 229 files、typecheck（`apps/web/tsconfig.json` 78 files）、root `executed=257 passed=257`、ai-core `executed=687 passed=687 skipped=4`、eval-suite `executed=3 passed=3 skipped=1`、web `executed=298 passed=298`（+2、`app/api/agent/tools/route.test.ts` 14件）。
+
+### 2026-10-12 /sdd-ship 再実行（W4 レビュー修正）
+
+- 検証: GO。1回目は `/api/agent/tools` の挙動変更に回帰テストがなく NO-GO（`/sdd-impl 23.1` で補強）。再実行の `mise run gate` → exit 0: Biome 229 files、typecheck（`apps/web/tsconfig.json` 78 files）、root `executed=257 passed=257`、ai-core `executed=687 passed=687 skipped=4`、eval-suite `executed=3 passed=3 skipped=1`、web `executed=298 passed=298`。PROVE は直前の節にある。
+- 自動修正: `traceability.md` の Gaps にレビュー対応と spec drift（データ URL 限定）を追記。レビュー記録に Resolution を追記。
