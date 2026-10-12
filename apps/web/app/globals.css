@@ -80,6 +80,12 @@
 		@apply border-border outline-ring;
 	}
 
+	/* Firefox resets the outline colour to currentcolor while an element has focus, which hides the
+	   indicator on elements whose text colour matches the page (the skip link). */
+	:focus-visible {
+		@apply outline-ring;
+	}
+
 	body {
 		@apply bg-background text-foreground;
 	}
