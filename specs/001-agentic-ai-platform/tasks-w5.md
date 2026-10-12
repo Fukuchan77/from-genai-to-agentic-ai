@@ -65,6 +65,10 @@ _Traces:_ REQ-001, C19
 
 ### Implementation Notes
 
+- 2026-10-12（先行実施。25 の前）: 26.1 の `playwright.config.ts` と、26.3 の `axe.ts`（`latency-probe.ts` は未着手）だけを、27.1・27.3 のために先に作った。26 は 25 に依存するため順序を外れている。25.3（0件・全件スキップの検査）が未実装なので、26.1 の `_Verify:_` は満たしていない。チェックは付けない。
+- webServer は `next build && next start -p 3100`（`AI_RUN_MODE=mock`、`NODE_ENV=production`）。呼び出し側のシェルが `NODE_ENV=development` を export していると `next build` が `/_global-error` のプリレンダーで失敗するため、`env` で上書きする。`gracefulShutdown` を指定しないと `next-server` が残ってポートを握り続ける。
+- 3エンジンのうち chromium と firefox は実行して通した。webkit はブラウザ未導入（`pnpm exec playwright install webkit` が必要）で未実行。
+
 ---
 
 ## 27. E2E シナリオテスト（C19 続き）
@@ -98,6 +102,12 @@ _Traces:_ REQ-001, REQ-003, C19
   _Traces:_ REQ-001, C19
 
 ### Implementation Notes
+
+- 2026-10-12: `real-server.spec.ts`（3ページの 200・スタイル適用・ブラウザエラー0、チャット／ツール／要約の1往復）、`a11y.spec.ts`（3ページ × light/dark）、`keyboard.spec.ts`（スキップリンク、チャットと要約のキーボードだけの操作、フォーカス指示子のコントラスト 3:1 を6要素 × light/dark）を実装した。dark は `.dark` クラスを `<html>` に付けて検査する。
+- 実行結果: chromium 27 件 + firefox 27 件 = 54 件が通過（`playwright test --project=chromium --project=firefox`）。webkit は未実行。
+- PROVE（変異 → 失敗）: `fixtures.ts` を `new URL` 形式に戻す → `next build` が `Module not found` で webServer が起動しない／`postcss.config.mjs` を外す → スタイル適用の3件が失敗／`<html lang>` を外す → axe の6件が失敗／`applyColorScheme` が dark を付けない → dark の3件が失敗。すべて復元済み。
+- 発見と修正: Firefox ではスキップリンクがフォーカスを受けると outline の色が `currentcolor`（本文色 `lab(98.26 0 0)`）になり、ページ背景とのコントラストが 1.0 で指示子が見えなかった（keyboard.spec の2件が失敗）。`globals.css` に `:focus-visible { @apply outline-ring; }` を足して解消した。
+- 27.1・27.3 は webkit の実行が済むまでチェックを付けない。27.1 の「ツール」は天気ツール1回、「要約」は字幕テキスト入力で確認している（記事・YouTube は 27.2 の範囲）。
 
 ---
 

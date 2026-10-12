@@ -3677,3 +3677,9 @@ GREEN 後、7件すべての新規テストについて独立した deliberate b
 - `apps/web` に開発依存 `@tailwindcss/postcss@4.3.3`（`tailwindcss` と同一版、exact pin）を追加し、`apps/web/postcss.config.mjs` を作成した。pnpm のサプライチェーン検査は通過。plan（`apps/web/package.json` の行）と research.md の External dependencies に記録した。
 - 確認（`next dev`、mock）: ビルド警告（Unknown at rule / Module not found）0。`/chat`・`/agent` のスクリーンショットでヘッダー、フォーム、色、枠が描画されることを目視した。3ページとも 200、axe（wcag2a/2aa/21aa/22aa）の違反 0、コンソールエラー 0。これでスタイルありの状態の axe 結果になった。
 - 観察: `prefers-color-scheme: dark` では見た目が変わらない（`@custom-variant dark` はクラス `.dark` 方式）。ダークテーマの切り替え手段は M1 のスコープ外で、27.3 の axe 検査は `.dark` クラスを付けた状態でも行う必要がある。
+
+### 2026-10-12 26.1・26.3（axe のみ）・27.1・27.3 の先行実施
+
+- 内容と PROVE は `tasks-w5.md` の 26・27 の Implementation Notes に記録した。chromium と firefox で 54 件通過、webkit は未実行（ブラウザ未導入）。
+- 発見: Firefox のフォーカス時の outline が `currentcolor` になり、スキップリンクの指示子が見えなかった。`globals.css` の `:focus-visible` で `outline-ring` を明示して解消した。
+- `mise run gate` → exit 0: Biome 235 files、typecheck（`apps/web/tsconfig.json` 88 files）、root 257、ai-core 687、eval-suite 3、web 298（E2E は gate の外。`mise run test:e2e`）。
