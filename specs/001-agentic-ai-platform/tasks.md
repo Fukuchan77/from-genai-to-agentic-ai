@@ -130,18 +130,22 @@ _Depends:_ 8, 10
 _Requirements:_ 1.10, 3.11
 _Traces:_ REQ-001, REQ-003, C14
 
-- [ ] 21.1 `lib/server/errors.ts`: `PlatformError` から HTTP エラーレスポンス（`{ error: { code, message } }`）とストリームエラーへの変換 + `errors.test.ts`（`code` ごとのステータス、スタックや `details` の秘密値を応答に含めない）。`apps/web/package.json` に `test`・`test:coverage`（`vitest run --coverage.enabled --coverage.reporter=html --coverage.thresholds.lines=0`。閾値の強制は gate の `test` 段。plan C18）スクリプトを加える（apps/web の最初のテスト）。`PlatformError`・`PlatformErrorCode` は、`packages/ai-core/package.json` の `exports` に加える `"./errors": "./src/errors.ts"` から import する（plan「依存の方向」。2026-10-04 に決定）
+- [x] 21.1 `lib/server/errors.ts`: `PlatformError` から HTTP エラーレスポンス（`{ error: { code, message } }`）とストリームエラーへの変換 + `errors.test.ts`（`code` ごとのステータス、スタックや `details` の秘密値を応答に含めない）。`apps/web/package.json` に `test`・`test:coverage`（`vitest run --coverage.enabled --coverage.reporter=html --coverage.thresholds.lines=0`。閾値の強制は gate の `test` 段。plan C18）スクリプトを加える（apps/web の最初のテスト）。`PlatformError`・`PlatformErrorCode` は、`packages/ai-core/package.json` の `exports` に加える `"./errors": "./src/errors.ts"` から import する（plan「依存の方向」。2026-10-04 に決定）
   _Boundary:_ `apps/web/lib/server/errors.ts`, `apps/web/lib/server/errors.test.ts`, `apps/web/package.json`, `packages/ai-core/package.json`
   _Depends:_ 8
   _Requirements:_ 1.10, 3.11
   _Traces:_ REQ-001, REQ-003, C14
-- [ ] 21.2 `lib/server/guard.ts`・`guard.test.ts`: `guardRequest`（本文サイズ413→`z.strictObject`400→件数・長さ・画像400→`live`のときだけレート制限429）、`createRateLimiter`（プロセス内固定窓）。検査順序、各拒否コード、`live` 以外でレート制限しないことを検証する
+- [x] 21.2 `lib/server/guard.ts`・`guard.test.ts`: `guardRequest`（本文サイズ413→`z.strictObject`400→件数・長さ・画像400→`live`のときだけレート制限429）、`createRateLimiter`（プロセス内固定窓）。検査順序、各拒否コード、`live` 以外でレート制限しないことを検証する
   _Boundary:_ `apps/web/lib/server/guard.ts`, `apps/web/lib/server/guard.test.ts`
   _Depends:_ 21.1, 10
   _Requirements:_ 3.11
   _Traces:_ REQ-003, C14
 
 ### Implementation Notes
+
+- `errors.ts` が HTTP に返すのは `code` と日本語の `message` だけにした。例外は `source-unavailable` の `details.reason`（`^[a-z][a-z-]{0,31}$`）と `details.status`（100〜599 の整数）で、plan の HTTP API 表（422 の `reason`・`status`）に合わせて許可リスト方式で通す。それ以外の `details`、スタック、エラー名は送らない。`PlatformError` でも `GuardError` でもない例外は、固定文言の 500 `unexpected`（`AgentRunErrorCode` と同じ語）にする。`GuardError` は `GuardErrorCode`（`limit-exceeded` / `payload-too-large` / `rate-limited`）に加えて、ガードが出す形式不正の `invalid-request` も持つ。ストリームの途中のエラーは AI SDK の `onError` が文字列1つしか送れないため、`toStreamErrorText` が `{code, message}` の JSON 文字列にし、UI は `parseStreamErrorText` で読み戻す（読めなければ固定の `unexpected`）。`errors.ts` は `server-only` を import しない（UI が `parseStreamErrorText` を使えるように。`server-only` は 20.1 の `platform.ts` だけ）。
+- `guardRequest` は本文を `Content-Length`（上限超なら本文を読まない）と読み取り中の累積バイト数（上限超で `cancel`）の両方で検査し、JSON・UTF-8 が不正なら 400 `invalid-request`、`schema.safeParse` の失敗も 400 `invalid-request`（最初の issue の `path` だけを message に入れ、値は入れない）とする。`GuardSchema<T>` は `safeParse` だけの構造型で、`apps/web` に `zod` の依存を加えずに `chatRequestSchema` / `agentRequestSchema` を渡せる。件数・長さ・画像の検査は `GuardPolicy#inspect` に分け、会話用は `createConversationPolicy(schema, limits = DEFAULT_INPUT_LIMITS)`。順序は メッセージ件数 → ユーザーメッセージごとのテキスト長（コードポイント数。assistant の返信は対象外で、本文サイズが上限になる） → リクエスト全体の画像枚数 → 画像ごとのデコード後サイズ（`data:` URL だけ測れるため、それ以外の URL は 400 `invalid-request`）。レート制限は最後で、拒否したリクエストは枠を消費しない。
+- `createRateLimiter({ limit, windowMs, clock })` はキーなしの1つの固定窓（最初の `check()` で窓が開き、`windowMs` 後に閉じる。拒否は数えない）で、`/api/chat`・`/api/agent/tools`・`/api/summarize` が 20.1 の1つのインスタンスを共有する（コスト上限が目的。`x-forwarded-for` 等は偽装できるため使わない）。`Retry-After` は残り秒の切り上げ（最小 1）。`apps/web/vitest.config.ts` には coverage 設定がなく（`test:coverage` はコマンドラインの引数だけ）、閾値の強制はまだない。境界外のため変更していない。
 
 ---
 
@@ -154,23 +158,23 @@ _Depends:_ 8, 10, 12, 13, 14, 15, 21
 _Requirements:_ 1.9, 1.10, 2.13, 3.8, 6.4, NFR-09, NFR-12
 _Traces:_ REQ-001, REQ-002, REQ-003, REQ-006, C13
 
-- [ ] 20.1 `lib/server/platform.ts`: 設定・ゲートウェイ・ポート・Clock・レート制限器・ツールの実行時設定（`ToolRuntime`: `clock` と `AGENT_TOOL_TIMEOUT_MS` 由来の `toolTimeoutMs`）の組み立て（`server-only` を import する唯一の場所）。`mock` ではポートを 13.6 の fixture 実装に、`AI_RECORD=1`（`local`/`live`）では3つのポートを 13.4 の録画用ラッパで包む。`local`/`live` の本番の HttpFetcher は、(a) 接続時に名前を解決し、解決後の IP がループバック・プライベート・リンクローカル・メタデータ等（判定は C12 の `isBlockedHostname` を `./summarize` から公開して使う。ただし `isBlockedHostname` は WHATWG URL で正規化済みの hostname を前提とするため、resolver が返す生の IP は `` new URL(`http://${host}/`).hostname ``（`host` は IPv6 なら `[ip]`、IPv4 なら `ip`） で正規化してから渡す。生のまま渡すと `::ffff:10.0.0.1` を通し、公開 IPv6 を拒否する）なら接続せずに `SourceFetchError("disallowed-url")` を投げ（undici は `lookup` の例外を `TypeError: fetch failed` の `cause` に包むため、フェッチャーは `cause` を見て `disallowed-url` に変換し、`network` にしない）（例: undici の `Agent({ connect: { lookup } })`。解決と接続が同じ段なので DNS rebinding も防ぐ）、(b) 本文を読みながら累積バイト数を数えて `ARTICLE_FETCH_LIMITS.maxBodyBytes` を超えた時点で中断し `SourceFetchError("too-large")` を投げる（`Content-Length` が上限超なら本文を読まない）（plan C13、W3 敵対的レビュー r2 の N2・N3）+ `platform.test.ts`（`mock` の設定から各依存が組み立てられる、`AI_RECORD=1` でポートが録画用ラッパになる、`ToolRuntime` に設定値が入る、注入した resolver で公開名が `127.0.0.1`・`169.254.169.254`・`::1`・`::ffff:10.0.0.1` に解決されると接続せずに `disallowed-url`（`network` ではない）、公開 IPv6（`2606:4700::1111`）に解決される名前は通る、1回目は公開・2回目は内部の IP を返す resolver（rebinding）でも接続先は検査済みの IP だけ、上限ちょうどの本文は通り1バイト超で `too-large`、上限超の `Content-Length` では本文を読まない）
+- [x] 20.1 `lib/server/platform.ts`: 設定・ゲートウェイ・ポート・Clock・レート制限器・ツールの実行時設定（`ToolRuntime`: `clock` と `AGENT_TOOL_TIMEOUT_MS` 由来の `toolTimeoutMs`）の組み立て（`server-only` を import する唯一の場所）。`mock` ではポートを 13.6 の fixture 実装に、`AI_RECORD=1`（`local`/`live`）では3つのポートを 13.4 の録画用ラッパで包む。`local`/`live` の本番の HttpFetcher は、(a) 接続時に名前を解決し、解決後の IP がループバック・プライベート・リンクローカル・メタデータ等（判定は C12 の `isBlockedHostname` を `./summarize` から公開して使う。ただし `isBlockedHostname` は WHATWG URL で正規化済みの hostname を前提とするため、resolver が返す生の IP は `` new URL(`http://${host}/`).hostname ``（`host` は IPv6 なら `[ip]`、IPv4 なら `ip`） で正規化してから渡す。生のまま渡すと `::ffff:10.0.0.1` を通し、公開 IPv6 を拒否する）なら接続せずに `SourceFetchError("disallowed-url")` を投げ（undici は `lookup` の例外を `TypeError: fetch failed` の `cause` に包むため、フェッチャーは `cause` を見て `disallowed-url` に変換し、`network` にしない）（例: undici の `Agent({ connect: { lookup } })`。解決と接続が同じ段なので DNS rebinding も防ぐ）、(b) 本文を読みながら累積バイト数を数えて `ARTICLE_FETCH_LIMITS.maxBodyBytes` を超えた時点で中断し `SourceFetchError("too-large")` を投げる（`Content-Length` が上限超なら本文を読まない）（plan C13、W3 敵対的レビュー r2 の N2・N3）+ `platform.test.ts`（`mock` の設定から各依存が組み立てられる、`AI_RECORD=1` でポートが録画用ラッパになる、`ToolRuntime` に設定値が入る、注入した resolver で公開名が `127.0.0.1`・`169.254.169.254`・`::1`・`::ffff:10.0.0.1` に解決されると接続せずに `disallowed-url`（`network` ではない）、公開 IPv6（`2606:4700::1111`）に解決される名前は通る、1回目は公開・2回目は内部の IP を返す resolver（rebinding）でも接続先は検査済みの IP だけ、上限ちょうどの本文は通り1バイト超で `too-large`、上限超の `Content-Length` では本文を読まない）
   _Boundary:_ `apps/web/lib/server/platform.ts`, `apps/web/lib/server/platform.test.ts`, `packages/ai-core/src/summarize/index.ts`（`isBlockedHostname` の公開のみ）
   _Depends:_ 8, 10, 12, 13, 14, 15, 21.2
   _Requirements:_ 1.10, 2.13, 3.8, 6.4
   _Traces:_ REQ-001, REQ-002, REQ-003, REQ-006, C13
-- [ ] 20.2 `instrumentation.ts#register`: `loadPlatformConfig({ features })` の呼び出しと `ConfigError` の整形出力 + `instrumentation.test.ts`（不足変数名・機能名が列挙される）
+- [x] 20.2 `instrumentation.ts#register`: `loadPlatformConfig({ features })` の呼び出しと `ConfigError` の整形出力 + `instrumentation.test.ts`（不足変数名・機能名が列挙される）
   _Boundary:_ `apps/web/instrumentation.ts`, `apps/web/instrumentation.test.ts`
   _Depends:_ 20.1
   _Requirements:_ 1.9
   _Traces:_ REQ-001, C13
-- [ ] 20.3 `app/layout.tsx`（`<html lang="ja">`）・`app/page.tsx`: 日本語レイアウト、ナビゲーション（`/chat`/`/agent`/`/summarize`）、モジュール一覧と実行モードの表示
+- [x] 20.3 `app/layout.tsx`（`<html lang="ja">`）・`app/page.tsx`: 日本語レイアウト、ナビゲーション（`/chat`/`/agent`/`/summarize`）、モジュール一覧と実行モードの表示
   _Boundary:_ `apps/web/app/layout.tsx`, `apps/web/app/page.tsx`
   _Depends:_ 20.1
   _Requirements:_ 3.8, NFR-12
   _Traces:_ REQ-003, C13
   _Verify:_ 27.1（実サーバーでの表示）、27.3（キーボード操作と axe 検査）で確認する
-- [ ] 20.4 (P) `components/ui/*.tsx`: shadcn/ui の基本部品（button/textarea/select/dialog/card/badge/skeleton/alert。WCAG 2.2 AA のコントラストとキーボード操作）。生成物に plan 未宣言の依存が増えた場合は、先に research.md と plan を改訂する（constitution 原則 10）
+- [x] 20.4 (P) `components/ui/*.tsx`: shadcn/ui の基本部品（button/textarea/select/dialog/card/badge/skeleton/alert。WCAG 2.2 AA のコントラストとキーボード操作）。生成物に plan 未宣言の依存が増えた場合は、先に research.md と plan を改訂する（constitution 原則 10）
   _Boundary:_ `apps/web/components/ui/*.tsx`
   _Depends:_ 8
   _Requirements:_ NFR-09
@@ -178,6 +182,10 @@ _Traces:_ REQ-001, REQ-002, REQ-003, REQ-006, C13
   _Verify:_ 生成物のため単独のテストは持たない。22〜24 のコンポーネントテストと 27.3 の axe 検査で確認する
 
 ### Implementation Notes
+
+- `platform.ts` が公開するのは `getPlatform()`（`process.env` から1回だけ組み立てるプロセス共有の `Promise<Platform>`。`globalThis` の `Symbol.for` に持つので dev の再読み込みでレート制限器が戻らない。組み立てに失敗したら捨てて次回やり直す）、テストで差し替える `createPlatform(options)`・`setPlatformForTesting(platform | undefined)`、テスト用の `createGuardedFetch`。`Platform` は `{ mode, config, gateway, clock, ports: { http, transcript, webSearch }, limiter, toolRuntime }`。`mock` は 13.6 の fixture 実装、`local`/`live` は本番実装（`createNodeHttpFetcher(createGuardedFetch())`・youtubei・Tavily。キーがなければ `source-unavailable` を投げる検索を渡して `webSearch` ツールは `disabled` に載せる）で、`AI_RECORD=1` では3つとも録画用ラッパで包む。ゲートウェイの Ollama preflight には内部アドレスを拒否するフェッチャーを使わない（Ollama は localhost のため）。
+- `undici` は `apps/web` の宣言済みの依存になく（plan C13 が「加える場合は先に research と plan を改訂」としている）、node:http の `lookup` オプションで同じことができるため、`undici` の `Agent` ではなく `node:http(s).request` の `lookup` で組んだ（依存の追加なし）。`lookup` が解決とその結果の検査を行い、検査した IP にだけ接続するので DNS rebinding は接続ごとに1回の解決で防げる。解決結果の1つでも内部なら拒否し、`::ffff:10.0.0.1` を通さないよう `new URL(`http://${host}/`).hostname` で正規化してから `isBlockedHostname` に渡す。本文は読みながらバイト数を数え（`Content-Encoding` は `identity` を要求し、それでも圧縮されていれば展開後のバイト数で数える）、`Content-Length` が上限超なら本文を読まない。リダイレクトは追わない（`loadSource` が行き先ごとに検査する）。`createNodeHttpFetcher` は `Response#text()` で読むため、`too-large` はストリームのエラーとして伝わる。
+- `instrumentation.ts#register` は Node.js ランタイムだけで `loadPlatformConfig(process.env, { features: [] })` を呼び（`live` のプロバイダのキーは `loadPlatformConfig` が足し、Web 検索のキーは任意）、`ConfigError` は `formatConfigError`（変数名と機能名の列挙。値は出さない）を `console.error` に出して再スローし起動を止める。`layout.tsx`/`page.tsx` は `/chat`・`/agent`・`/summarize` がまだ存在せず `typedRoutes` が通らないため `as Route` で href を主張している（22〜24 で Route ができたら外せる）。ナビの `aria-current` は Client Component が要るため境界外として入れていない。`components/ui/*.tsx` は shadcn の new-york スタイルを宣言済みの依存（`radix-ui`・`class-variance-authority`・`clsx`・`tailwind-merge`・`lucide-react`）だけで手書きし、`cn` は境界内の `components/ui/utils.tsx` に置いた（`components.json` の `@/lib/utils` とは異なる）。フォーカスは不透明な outline（`outline-ring`）、ボタンとバッジは `*-foreground` の組だけを使う。
 
 ---
 
@@ -190,28 +198,32 @@ _Depends:_ 14, 17, 20, 21
 _Requirements:_ 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8, 3.9, 3.10, 3.11, 6.3
 _Traces:_ REQ-003, REQ-006, C15
 
-- [ ] 22.1 `app/api/chat/route.ts`・`route.test.ts`: `guardRequest`→`gateway.resolve`→`adaptHistoryForModel`（切り替え先モデルに合わせた履歴の変換）→`streamText`（`request.signal` を `abortSignal` に、`sendReasoning: true`、`messageMetadata`）。`mock` でのストリーム内容・メタデータ・中断・エラー変換と、モデル切り替え後の送信で推論パートが除外されることを検証する
+- [x] 22.1 `app/api/chat/route.ts`・`route.test.ts`: `guardRequest`→`gateway.resolve`→`adaptHistoryForModel`（切り替え先モデルに合わせた履歴の変換）→`streamText`（`request.signal` を `abortSignal` に、`sendReasoning: true`、`messageMetadata`）。`mock` でのストリーム内容・メタデータ・中断・エラー変換と、モデル切り替え後の送信で推論パートが除外されることを検証する
   _Boundary:_ `apps/web/app/api/chat/route.ts`, `apps/web/app/api/chat/route.test.ts`
   _Depends:_ 14, 17, 20, 21
   _Requirements:_ 3.1, 3.3, 3.5, 3.6, 3.8, 3.9, 3.11, 6.3
   _Traces:_ REQ-003, REQ-006, C15
-- [ ] 22.2 `app/chat/page.tsx`・`components/chat/ChatPanel.tsx`（停止ボタンを含む）・`MessageList.tsx`・`ReasoningDisclosure.tsx`（+`MessageList.test.tsx`）: `useChat` + `DefaultChatTransport` による送受信、パート種別ごとの描画、推論の折りたたみ
+- [x] 22.2 `app/chat/page.tsx`・`components/chat/ChatPanel.tsx`（停止ボタンを含む）・`MessageList.tsx`・`ReasoningDisclosure.tsx`（+`MessageList.test.tsx`）: `useChat` + `DefaultChatTransport` による送受信、パート種別ごとの描画、推論の折りたたみ
   _Boundary:_ `apps/web/app/chat/page.tsx`, `apps/web/components/chat/ChatPanel.tsx`, `apps/web/components/chat/MessageList.tsx`, `apps/web/components/chat/ReasoningDisclosure.tsx`, `apps/web/components/chat/MessageList.test.tsx`
   _Depends:_ 22.1
   _Requirements:_ 3.1, 3.4, 3.5
   _Traces:_ REQ-003, C15
-- [ ] 22.3 (P) `components/chat/ModelSelector.tsx`・`PersonaSelector.tsx`・`ImageAttachButton.tsx` + `selectors.test.tsx`: モデル一覧、ペルソナ切替、画像添付（画像入力対応モデルのときだけ有効）
+- [x] 22.3 (P) `components/chat/ModelSelector.tsx`・`PersonaSelector.tsx`・`ImageAttachButton.tsx` + `selectors.test.tsx`: モデル一覧、ペルソナ切替、画像添付（画像入力対応モデルのときだけ有効）
   _Boundary:_ `apps/web/components/chat/ModelSelector.tsx`, `apps/web/components/chat/PersonaSelector.tsx`, `apps/web/components/chat/ImageAttachButton.tsx`, `apps/web/components/chat/selectors.test.tsx`
   _Depends:_ 22.2
   _Requirements:_ 3.2, 3.9, 3.10
   _Traces:_ REQ-003, C15
-- [ ] 22.4 (P) `components/chat/MessageMeta.tsx`・`ErrorBanner.tsx` + `MessageMeta.test.tsx`・`ErrorBanner.test.tsx`: モデル名・トークン数表示、エラーと再送
+- [x] 22.4 (P) `components/chat/MessageMeta.tsx`・`ErrorBanner.tsx` + `MessageMeta.test.tsx`・`ErrorBanner.test.tsx`: モデル名・トークン数表示、エラーと再送
   _Boundary:_ `apps/web/components/chat/MessageMeta.tsx`, `apps/web/components/chat/MessageMeta.test.tsx`, `apps/web/components/chat/ErrorBanner.tsx`, `apps/web/components/chat/ErrorBanner.test.tsx`
   _Depends:_ 22.2
   _Requirements:_ 3.6, 3.7
   _Traces:_ REQ-003, C15
 
 ### Implementation Notes
+
+- `POST /api/chat` は `guardRequest` → `validateUIMessages`（失敗は固定文言の 400 `invalid-request`）→ `getPersona` → `gateway.resolve`（最新メッセージに画像があるときだけ `require: ["imageInput"]`。過去の履歴の画像は `adaptHistoryForModel` がプレースホルダーにするため拒否しない）→ `adaptHistoryForModel` → `convertToModelMessages` → `streamText`（`instructions` はペルソナ、`abortSignal: request.signal`、何も出さない `onError`）の順。ストリームのエラーは `PlatformError`/`GuardError` 以外を固定文言の `provider-unavailable` に包んでから `toStreamErrorText` で送る。`apps/web` に `ai` が未宣言だったため `ai@7.0.137` を依存に加えた（人間の承認済み。plan・research も改訂済み）。
+- クライアントは `useChat<ChatMessage>` + `DefaultChatTransport`（`/api/chat`）で、モデル・ペルソナ・画像は `sendMessage`/`regenerate` の `body` で毎回送る。ページ（Server Component）が `availableModels()` と `PERSONAS` の ID・タイトルだけを props で渡し、クライアントは ai-core の値を import しない（型のみ）。`ErrorBanner` の `toDisplayError` は、ストリーム前の拒否（`{error:{code,message}}` の JSON）とストリーム中のエラー（`{code,message}` の JSON）の両方を読み、読めなければ固定の `unexpected` にする。23・24 はこの `ErrorBanner` と `toDisplayError` を再利用できる。
+- 境界との差: `ChatPanel` への部品の組み込み（22.3・22.4）と、`ChatPanel.test.tsx`（停止ボタン・送信・エラー再送・画像の扱い。`useChat` をモックして検証）を追加した。いずれもタスク22の `_Boundary:_` の範囲だが、`ChatPanel.test.tsx` だけは列挙にないテスト専用ファイル。`layout.tsx` の `/chat` の `as Route` は境界外のため変更していない。実サーバーでの表示確認は 27.1・27.3 に残る。
 
 ---
 
@@ -224,22 +236,22 @@ _Depends:_ 14, 15, 16, 20, 21
 _Requirements:_ 5.1, 5.4, 5.5, 5.6, 6.2, 6.3, 6.4, 7.11
 _Traces:_ REQ-005, REQ-006, REQ-007, C16, C22
 
-- [ ] 23.1 `app/api/agent/tools/route.ts`・`route.test.ts`: 20.1 の `ToolRuntime` で `buildToolSet` を呼び、リクエストごとに `createGuardedAgent({ ..., signal: request.signal })` を生成し `createAgentUIStreamResponse` へ渡す。ツールパートの順序、停止理由のメタデータ、無効化ツールの通知、リクエストごとに別の `GuardedAgent` が生成されること、`AGENT_TOOL_TIMEOUT_MS` を超えたツールがタイムアウトのツール結果になりループが続くことを検証する
+- [x] 23.1 `app/api/agent/tools/route.ts`・`route.test.ts`: 20.1 の `ToolRuntime` で `buildToolSet` を呼び、リクエストごとに `createGuardedAgent({ ..., signal: request.signal })` を生成し `createAgentUIStreamResponse` へ渡す。ツールパートの順序、停止理由のメタデータ、無効化ツールの通知、リクエストごとに別の `GuardedAgent` が生成されること、`AGENT_TOOL_TIMEOUT_MS` を超えたツールがタイムアウトのツール結果になりループが続くことを検証する
   _Boundary:_ `apps/web/app/api/agent/tools/route.ts`, `apps/web/app/api/agent/tools/route.test.ts`
   _Depends:_ 14, 15, 16, 20, 21
   _Requirements:_ 5.1, 5.4, 6.2, 6.3, 6.4
   _Traces:_ REQ-005, REQ-006, C16
-- [ ] 23.2 `app/agent/page.tsx`・`components/agent/ToolAgentPanel.tsx`・`ToolPartView.tsx`（+`ToolPartView.test.tsx`）: `tool-<name>` パートの `state` ごとの表示切替
+- [x] 23.2 `app/agent/page.tsx`・`components/agent/ToolAgentPanel.tsx`・`ToolPartView.tsx`（+`ToolPartView.test.tsx`）: `tool-<name>` パートの `state` ごとの表示切替
   _Boundary:_ `apps/web/app/agent/page.tsx`, `apps/web/components/agent/ToolAgentPanel.tsx`, `apps/web/components/agent/ToolPartView.tsx`, `apps/web/components/agent/ToolPartView.test.tsx`
   _Depends:_ 23.1
   _Requirements:_ 5.1, 5.5
   _Traces:_ REQ-005, C16
-- [ ] 23.3 (P) `components/agent/renderers.tsx`・`cards/*.tsx`・`RawJsonView.tsx` + `renderers.test.tsx`: ツール名と表示部品の対応表（`TimeCard`/`CalculationCard`/`CurrencyCard`/`WeatherCard`/`SearchResultsList`）、未登録ツール用の生JSON表示
+- [x] 23.3 (P) `components/agent/renderers.tsx`・`cards/*.tsx`・`RawJsonView.tsx` + `renderers.test.tsx`: ツール名と表示部品の対応表（`TimeCard`/`CalculationCard`/`CurrencyCard`/`WeatherCard`/`SearchResultsList`）、未登録ツール用の生JSON表示
   _Boundary:_ `apps/web/components/agent/renderers.tsx`, `apps/web/components/agent/renderers.test.tsx`, `apps/web/components/agent/cards/TimeCard.tsx`, `apps/web/components/agent/cards/CalculationCard.tsx`, `apps/web/components/agent/cards/CurrencyCard.tsx`, `apps/web/components/agent/cards/WeatherCard.tsx`, `apps/web/components/agent/cards/SearchResultsList.tsx`, `apps/web/components/agent/RawJsonView.tsx`
   _Depends:_ 23.2
   _Requirements:_ 5.5
   _Traces:_ REQ-005, C16
-- [ ] 23.4 (P) `components/agent/DisabledToolsNotice.tsx`・`RunSummaryBadge.tsx` + 各テスト: 無効ツールと有効化に必要な設定の表示（サーバー由来の値のみ使用）、停止理由・ステップ数・トークン・経過時間・呼び出したツールの表示（`run` 未到達時は中断/エラー表示）
+- [x] 23.4 (P) `components/agent/DisabledToolsNotice.tsx`・`RunSummaryBadge.tsx` + 各テスト: 無効ツールと有効化に必要な設定の表示（サーバー由来の値のみ使用）、停止理由・ステップ数・トークン・経過時間・呼び出したツールの表示（`run` 未到達時は中断/エラー表示）
   _Boundary:_ `apps/web/components/agent/DisabledToolsNotice.tsx`, `apps/web/components/agent/DisabledToolsNotice.test.tsx`, `apps/web/components/agent/RunSummaryBadge.tsx`, `apps/web/components/agent/RunSummaryBadge.test.tsx`
   _Depends:_ 23.2
   _Requirements:_ 5.4, 5.6, 6.2, 6.3
@@ -253,6 +265,10 @@ _Traces:_ REQ-005, REQ-006, REQ-007, C16, C22
 
 ### Implementation Notes
 
+- `POST /api/agent/tools` は `guardRequest`（`agentRequestSchema`）→ `gateway.resolve({ purpose: "chat", require: ["tools"] })`（画像が最新メッセージにあれば `imageInput` も）→ サンプル5ツールを `buildToolSet(…, toolAvailabilityFromConfig(platform.config), platform.toolRuntime)` → リクエストごとに `createGuardedAgent({ limits: platform.config.agent, signal: request.signal })` → `createAgentUIStreamResponse` の順。`start` と `finish` の `messageMetadata` を `buildResponseMetadata` で作り、`disabledTools` は `start` から届く（有効化の可否はサーバーの設定だけで決まり、リクエスト本文は `z.strictObject` が拒否する）。`finish` では先に `guarded.messageMetadata` を呼んで `run` を確定させる。ストリームのエラーは `PlatformError`/`GuardError` ならその code、それ以外は `guarded.onError` の固定文言を持つ `provider-unavailable` に包む。履歴のツールパートの検証は `createAgentUIStreamResponse` が行うため、その失敗は固定文言の 400 `invalid-request` に変える。
+- クライアントは `tool-<name>` / `dynamic-tool` パートを `ToolPartView` で `state` ごとに切り替える。結果は `ToolOutcome` として読み、成功なら `TOOL_RENDERERS` のカード（形が違えば `RawJsonView`）、失敗なら種別・要約・次の行動、`output-error` は `parseStreamErrorText` 経由の `message` だけを表示する。カードは `data: unknown` を自分で検査する（ストリームは信頼できない入力）。`DisabledToolsNotice` は `disabledTools[].requiredEnv` だけを表示し、ソースに環境変数名を書かないことをテストが検査する。`RunSummaryBadge` は `run` がなければ `outcome`（`interrupted`/`error`）の表示にする。
+- 境界との差: `components/agent/ToolAgentPanel.test.tsx`（`useChat` をモックし、API パス・パートの順序・中断/エラー表示・停止ボタンを検証）と、カード5個が共有する `components/agent/cards/shared.tsx` を追加した。いずれも `components/agent/` 内だが列挙にないファイル。23.3 のカードが 23.2 の `ToolPartView` から使われるため、実装は 23.3 → 23.4 → 23.2 の順に行った。`layout.tsx`/`page.tsx` の `/agent` の `as Route` は `app/agent/page.tsx` ができた後も `next typegen` が通るため外せるが、境界外のため変更していない（`/chat` も同様）。実サーバーでの表示確認は 27.1・27.3 に残る。
+
 ---
 
 ## 24. SummaryFeature（C17）(P)
@@ -264,17 +280,17 @@ _Depends:_ 14, 18, 20, 21
 _Requirements:_ 4.5, 4.7, 4.8, 4.10, 4.11, 4.12, 7.11
 _Traces:_ REQ-004, REQ-007, C17, C22
 
-- [ ] 24.1 `app/api/summarize/route.ts`・`route.test.ts`: `summarizeRequestSchema` で検査し、`streamSummary` を `data-summary`/`data-summary-meta`/`data-summary-restart` にマッピングする Route Handler。データパートの順序、取得失敗時にLLMを呼ばないことを検証する
+- [x] 24.1 `app/api/summarize/route.ts`・`route.test.ts`: `summarizeRequestSchema` で検査し、`streamSummary` を `data-summary`/`data-summary-meta`/`data-summary-restart` にマッピングする Route Handler。データパートの順序、取得失敗時にLLMを呼ばないことを検証する
   _Boundary:_ `apps/web/app/api/summarize/route.ts`, `apps/web/app/api/summarize/route.test.ts`
   _Depends:_ 14, 18, 20, 21
   _Requirements:_ 4.7, 4.11
   _Traces:_ REQ-004, C17
-- [ ] 24.2 `app/summarize/page.tsx`・`components/summarize/SummaryPanel.tsx`・`SummaryForm.tsx`・`SummaryCard.tsx`（+`SummaryCard.test.tsx`）: 入力フォーム、ストリームの受信、部分オブジェクトの逐次描画（未確定フィールドはスケルトン、`restart` で暫定表示を破棄）
+- [x] 24.2 `app/summarize/page.tsx`・`components/summarize/SummaryPanel.tsx`・`SummaryForm.tsx`・`SummaryCard.tsx`（+`SummaryCard.test.tsx`）: 入力フォーム、ストリームの受信、部分オブジェクトの逐次描画（未確定フィールドはスケルトン、`restart` で暫定表示を破棄）
   _Boundary:_ `apps/web/app/summarize/page.tsx`, `apps/web/components/summarize/SummaryPanel.tsx`, `apps/web/components/summarize/SummaryForm.tsx`, `apps/web/components/summarize/SummaryCard.tsx`, `apps/web/components/summarize/SummaryCard.test.tsx`
   _Depends:_ 24.1
   _Requirements:_ 4.5
   _Traces:_ REQ-004, C17
-- [ ] 24.3 `components/summarize/ChapterList.tsx`・`SummaryMetaPanel.tsx`・`SourceErrorView.tsx` + 各テスト: チャプター表示（`MM:SS`）、戦略・トークン・キャッシュ・再生成回数の表示、取得失敗理由の表示
+- [x] 24.3 `components/summarize/ChapterList.tsx`・`SummaryMetaPanel.tsx`・`SourceErrorView.tsx` + 各テスト: チャプター表示（`MM:SS`）、戦略・トークン・キャッシュ・再生成回数の表示、取得失敗理由の表示
   _Boundary:_ `apps/web/components/summarize/ChapterList.tsx`, `apps/web/components/summarize/ChapterList.test.tsx`, `apps/web/components/summarize/SummaryMetaPanel.tsx`, `apps/web/components/summarize/SummaryMetaPanel.test.tsx`, `apps/web/components/summarize/SourceErrorView.tsx`, `apps/web/components/summarize/SourceErrorView.test.tsx`
   _Depends:_ 24.2
   _Requirements:_ 4.8, 4.10, 4.11, 4.12
@@ -287,3 +303,7 @@ _Traces:_ REQ-004, REQ-007, C17, C22
   _Verify:_ タグのコミットで `mise run gate` が成功する。22・23 より先に完了した場合は `module/1-2` と異なるコミットを指す。タグのメッセージに、そのコミットに含まれる他モジュールの途中の実装を列挙する
 
 ### Implementation Notes
+
+- `POST /api/summarize` は `guardRequest`（`summarizeRequestSchema` + 本文の追加検査: 字幕テキスト 100,000 文字・URL 2,048 文字、超過は 400 `limit-exceeded`）→ `gateway.resolve({ purpose: "structured", require: ["structuredOutput"] })` → `loadSource` → `planSummary` →（`createUIMessageStream` の中で）`streamSummary` の順。ソースの失敗はストリームを開始する前に投げるので 422 `source-unavailable`（`details.reason`/`status`）で返り、LLM は呼ばれない。データパートは試行ごとに別の `id`（`summary-<attempt>`）で書き、`final` も同じ `data-summary` で送る。`data-summary-restart`（`summary-restart-<attempt>`、`{ attempt, issues }`）を受けたクライアントは新しい試行の `id` のパートだけを表示するので、破棄された暫定表示は残らない。`data-summary-meta` は完了の合図を兼ねる。ストリーム中のエラーは `PlatformError`/`GuardError` ならその code、それ以外は固定文言の `provider-unavailable`。
+- クライアントは `useChat<SummaryMessage>` + `DefaultChatTransport`。`summarizeRequestSchema` は strict で `messages` を受け付けないため、`prepareSendMessagesRequest` で本文を `{ id, input, modelId }` に組み替える（`sendMessage` の `body` で入力を渡す）。422 の本文は `SourceErrorView`（理由コードは表示せず日本語の説明、`http-status` のときだけステータス）、その他は 22.4 の `ErrorBanner`。進捗は `role="status"` + `aria-live="polite"` の1文で伝え、スケルトンは `aria-hidden`、カードは `aria-busy`。ai-core からは型だけを import する（Zod はクライアントに入らない）。チャプターは `MM:SS`、1時間以上は `H:MM:SS`（決定。YouTube の表記に合わせた）。
+- 境界との差: `components/summarize/SummaryPanel.test.tsx`・`SummaryForm.test.tsx`（`useChat` をモックして検証）を追加した（列挙にないテスト専用ファイル）。`layout.tsx` の `/summarize` の `as Route` は `app/summarize/page.tsx` ができた後も `next typegen && tsc` が通るため外せるが、境界外のため変更していない（`/chat`・`/agent` も同様）。E2E の `.sse` fixture との一致検査（plan C17/27）は fixture 生成スクリプトが未実装のため 27 に残る。実サーバーでの表示確認も 27.1・27.3 に残る。

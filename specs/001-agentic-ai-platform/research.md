@@ -184,7 +184,7 @@ New feature（greenfield、full discovery）。リポジトリにはソースコ
 | next | 16.4.0-canary.40 | Web アプリ（App Router、Turbopack、`reactCompiler`、`typedRoutes`） | yes（参照リポジトリ） |
 | react / react-dom | 19.3.0 | UI | yes |
 | babel-plugin-react-compiler | 1.0.x | React Compiler | yes（`vaz-agentic-ai-next`） |
-| ai | 7.0.113 | AI SDK Core | yes（d.ts を直接確認） |
+| ai | 7.0.113 | AI SDK Core（`packages/ai-core` に加え、`apps/web` も Route Handler の `streamText`・`validateUIMessages`・`convertToModelMessages` とクライアントの `DefaultChatTransport`・`UIMessage` 型のために直接依存する。2026-10-12 に W4 の 22 着手前に判明した宣言漏れを訂正。版は ai-core と完全一致の 7.0.137） | yes（d.ts を直接確認） |
 | @ai-sdk/react | 4.0.116 | `useChat` | yes |
 | @ai-sdk/anthropic | 4.0.65 | Anthropic | yes（レジストリ） |
 | @ai-sdk/openai | 4.0.74 以上 | OpenAI | partial（`ai` の devDependency から推定） |
