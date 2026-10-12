@@ -8,8 +8,10 @@ const PHASES_DIRECTORY = path.join("docs", "phases");
 const MODULE_FILE = /^(\d-\d)-.+\.md$/u;
 const PHASE_FILE = /^phase-\d+\.md$/u;
 const TEST_MARKER = /<!--\s*test:\s*(.*?)\s*-->/gu;
-// Only declarations that run: a `.skip` / `.only` / `.todo` / `.fails` test, or a method call such
-// as `PATTERN.test("…")`, is not something a checklist item may point at (Req 7.6).
+// Only declarations that run as a passing test: a `.skip` / `.only` / `.todo` test, a `.fails` test
+// (it passes only while the behaviour is broken), or a method call such as `PATTERN.test("…")` is
+// not something a checklist item may point at (Req 7.6). Commented-out tests and tests nested in a
+// `describe.skip` are not detected; the module doc review covers them.
 const TEST_CALL =
 	/(?<![.\w$])(?:describe|it|test|describeLocal|itLocal)(?:\.(?:concurrent|sequential))*\(\s*(["'`])((?:\\.|(?!\1)[^\\])*)\1/gu;
 

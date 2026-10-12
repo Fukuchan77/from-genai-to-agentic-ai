@@ -32,7 +32,7 @@
 | `check:repo-rules` | リポジトリの規則（9 規則。例: `frozen-lockfile`、`ai-core-no-ui-deps`、`tool-risk-declared`） | 規則ごとに検査 |
 | `typecheck` | `turbo run typecheck` に続けて、tsconfig ごとの走査ファイル数を数える | tsconfig が 0 ファイルなら失敗（`scripts/gate/count-tsc.mjs`） |
 | `test` | `mock` モードで全ワークスペースの Vitest を1回ずつ実行 | 実行件数が 0 なら失敗（`gate-reporter`） |
-| `docs:check` | 解説（`docs/modules/`）の必須の節・トピック・手順の表記と、チェックリストが参照するテストの実在（`.skip` / `.todo` などの実行されないテストは参照できない） | 解説が 0 件、または参照が 0 件なら失敗 |
+| `docs:check` | 解説（`docs/modules/`）の必須の節・トピック・手順の表記と、チェックリストが参照するテストの実在（修飾子付きの宣言 `.skip` / `.only` / `.todo` / `.fails` と、`PATTERN.test("…")` のようなメソッド呼び出しは参照先にならない。コメントアウトしたテストや `describe.skip` の中の `it` は検出できないため、レビューで確かめる） | 解説が 0 件、または参照が 0 件なら失敗 |
 
 E2E（`mise run test:e2e`）、クライアントバンドル検査（`mise run check:client-bundle`）、ミューテーションテスト（`mise run test:mutation`）も `gate` の外にあり、CI の別ジョブで実行します。`gate` に Docker は要りません（Req 1.11）。Docker が要るテストは `*.pg.test.ts` に分け、`mise run test:db` でだけ実行します。
 
@@ -65,7 +65,7 @@ E2E（`mise run test:e2e`）、クライアントバンドル検査（`mise run 
 
 環境変数は Zod のスキーマ（`config/env-schema.ts`）で検証し、機能ごとの必須変数は `FEATURE_REQUIREMENTS` に集約しています。必須の変数が不足していると、`ConfigError` が不足した変数名とそれを必要とする機能名を列挙します（Req 1.9）。たとえば `live` + Azure で Tavily も使う構成なら、`AZURE_API_KEY`（`live-azure`）、`AZURE_RESOURCE_NAME`（`live-azure`）、`TAVILY_API_KEY`（`web-search`）がまとめて報告されます。1つずつ直しては起動し直す往復をなくすためです。
 
-Web アプリでは `apps/web/instrumentation.ts` の `register()` が、サーバーの起動時に `loadPlatformConfig` を呼びます。設定の誤りは最初のリクエストではなく起動時に、値を出力せずに（変数名と機能名だけ）報告されます。変数名の一覧は `.env.example` にあり（値は空）、リポジトリのルートで `.env.local` にコピーして使います。`.env.local` はバージョン管理の対象外です。Next.js 自身は `apps/web` の中の env ファイルしか読まないため、ルートの `.env.local` は `mise run dev` が Node の `--env-file-if-exists` で読み込んでから `next dev` を起動します。シェルで設定済みの変数は、ファイルの値より優先されます。
+Web アプリでは `apps/web/instrumentation.ts` の `register()` が、サーバーの起動時に `loadPlatformConfig` を呼びます。設定の誤りは最初のリクエストではなく起動時に、値を出力せずに（変数名と機能名だけ）報告されます。変数名の一覧は `.env.example` にあり（値は空）、リポジトリのルートで `.env.local` にコピーして使います。`.env.local` はバージョン管理の対象外です。Next.js 自身は `apps/web` の中の env ファイルしか読まないため、ルートの `.env.local` は `mise run dev` が Node の `--env-file-if-exists` で読み込んでから `next dev` を起動します。シェルで設定済みの変数は、ファイルの値より優先されます。Next.js と違い、値の中の `${VAR}` は展開されません。
 
 ### Streamlit の全行再実行モデルと App Router の差分ストリーミング
 
@@ -317,4 +317,4 @@ Streamlit で作ったアプリを移植するとき、手が止まりやすい�
 
 - **タグ**: `module/1-1`（注釈付きタグ）。付与はタスク 14.6 で、ModelGateway の完成（14.1〜14.5）までを統合したコミットに対して行います。指すコミットは `f671813` で、タスク 29.4 で人間の承認後にリモートへ push しました（2026-10-12）。`git fetch --tags` で取得し、`git diff module/1-1` で自分の作業と比べられます。
 - **含まれるもの**: モジュール 1-1 のリファレンス実装（Req 1、2）。モノレポ基盤（pnpm workspaces、Turborepo、mise タスク、Biome、TypeScript の設定）、品質ゲートとゲート補助スクリプト、ネットワーク遮断とゲートレポーター、`compose.yaml`、`@platform/ai-core` の `config`・`models`（モデルカタログとゲートウェイ）・`mock`・`ports`・`testing`、`@platform/eval-suite` と `apps/web` の土台。
-- **含まれないもの**: E2E テスト（`apps/web/e2e`、Playwright）と、本書を含む解説（`docs/`）は含まれません（plan C22）。後続のモジュールの実装（1-2 のストリーミングチャットと `ToolLoopAgent`、1-3 の要約パイプライン、Route Handler と各ページ）も含まれません。
+- **含まれないもの**: E2E テスト（`apps/web/e2e`、Playwright）と、本書を含む解説（`docs/`）は含まれません（plan C22）。後続のモジュールの実装（1-2 のストリーミングチャットと `ToolLoopAgent`、1-3 の要約パイプライン、Route Handler と各ページ）も含まれません。タグより後に入った基盤の変更として、`check:repo-rules` の `tool-risk-declared` 規則（W3）、`gate` の `docs:check` の段（タスク 29.1）、`local` の既定モデルの変更（2026-10-12）、ルートの `.env.local` を読み込んで起動する `mise run dev`（W5 のレビュー対応）も含まれません。タグの時点では、ルートの `.env.local` は Web アプリに届かないため、変数はシェルで渡すか `apps/web/.env.local` に置きます。
