@@ -108,11 +108,34 @@ describe("extractTestNames", () => {
 	it("reads the first string literal of describe, it, test and the local variants", () => {
 		expect([...extractTestNames(TEST_SOURCE)].sort()).toEqual([
 			"demo suite",
-			"is skipped but named",
 			"keeps the stop reason",
 			"needs a local model",
 			"single quoted name",
 		]);
+	});
+
+	it("never names a test that does not run: skip, only, todo, fails", () => {
+		const names = extractTestNames(`
+it.skip("skipped", () => {});
+it.only("focused", () => {});
+it.todo("planned only");
+it.fails("expected to fail", () => {});
+describe.skip("skipped suite", () => {});
+describe.concurrent("concurrent suite", () => {});
+test.sequential("sequential case", () => {});
+`);
+
+		expect([...names].sort()).toEqual(["concurrent suite", "sequential case"]);
+	});
+
+	it("ignores .test(...) calls that are not test declarations", () => {
+		const names = extractTestNames(`
+if (PATTERN.test("not a test")) {}
+const ok = schema.it("not a test either");
+it("real test", () => {});
+`);
+
+		expect([...names]).toEqual(["real test"]);
 	});
 
 	it("cannot name tests built with it.each or a template literal", () => {

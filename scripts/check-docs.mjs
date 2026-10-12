@@ -8,8 +8,10 @@ const PHASES_DIRECTORY = path.join("docs", "phases");
 const MODULE_FILE = /^(\d-\d)-.+\.md$/u;
 const PHASE_FILE = /^phase-\d+\.md$/u;
 const TEST_MARKER = /<!--\s*test:\s*(.*?)\s*-->/gu;
+// Only declarations that run: a `.skip` / `.only` / `.todo` / `.fails` test, or a method call such
+// as `PATTERN.test("…")`, is not something a checklist item may point at (Req 7.6).
 const TEST_CALL =
-	/\b(?:describe|it|test|describeLocal|itLocal)(?:\.(?:skip|only|todo|concurrent|sequential|fails))*\(\s*(["'`])((?:\\.|(?!\1)[^\\])*)\1/gu;
+	/(?<![.\w$])(?:describe|it|test|describeLocal|itLocal)(?:\.(?:concurrent|sequential))*\(\s*(["'`])((?:\\.|(?!\1)[^\\])*)\1/gu;
 
 const HANDS_ON = "ハンズオン手順";
 const CHECKLIST = "習熟度判定チェックリスト";
