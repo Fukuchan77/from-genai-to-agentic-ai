@@ -7,10 +7,18 @@ import { applyColorScheme, type ColorScheme } from "./support/axe";
 
 const MAX_TABS = 30;
 
+/**
+ * Safari's default skips links and buttons when tabbing; Option+Tab visits every focusable
+ * element, so WebKit uses it. Other engines use plain Tab.
+ */
+function tabKey(page: Page): string {
+	return page.context().browser()?.browserType().name() === "webkit" ? "Alt+Tab" : "Tab";
+}
+
 /** Presses Tab until the element matching `selector` has focus. Fails if it is never reached. */
 async function tabTo(page: Page, selector: string): Promise<void> {
 	for (let presses = 0; presses < MAX_TABS; presses += 1) {
-		await page.keyboard.press("Tab");
+		await page.keyboard.press(tabKey(page));
 		if (await page.evaluate((query) => document.activeElement?.matches(query) ?? false, selector)) {
 			return;
 		}
@@ -21,7 +29,7 @@ async function tabTo(page: Page, selector: string): Promise<void> {
 test("skip link is the first stop and moves focus to the main region", async ({ page }) => {
 	await page.goto("/chat");
 
-	await page.keyboard.press("Tab");
+	await page.keyboard.press(tabKey(page));
 	await expect(page.getByRole("link", { name: "本文へ移動" })).toBeFocused();
 	await page.keyboard.press("Enter");
 
