@@ -3663,3 +3663,17 @@ GREEN 後、7件すべての新規テストについて独立した deliberate b
 
 - 検証: GO。1回目は `/api/agent/tools` の挙動変更に回帰テストがなく NO-GO（`/sdd-impl 23.1` で補強）。再実行の `mise run gate` → exit 0: Biome 229 files、typecheck（`apps/web/tsconfig.json` 78 files）、root `executed=257 passed=257`、ai-core `executed=687 passed=687 skipped=4`、eval-suite `executed=3 passed=3 skipped=1`、web `executed=298 passed=298`。PROVE は直前の節にある。
 - 自動修正: `traceability.md` の Gaps にレビュー対応と spec drift（データ URL 限定）を追記。レビュー記録に Resolution を追記。
+
+### 2026-10-12 実サーバー確認で見つかった不具合（`next dev`、`AI_RUN_MODE=mock`）
+
+- 発見: gate（Vitest）は通っていたが、`next dev` では `/chat`・`/agent`・`/summarize` がすべて 500 だった。原因は2つ。(1) `packages/ai-core/src/mock/fixtures.ts` の `new URL("../../fixtures", import.meta.url)` を Turbopack がファイルアセットとして解決しようとし、対象がディレクトリのため失敗。(2) `globals.css` の `@import "tw-animate-css"`。このパッケージの `exports` は `style` 条件だけで、Turbopack が解決しない。
+- 修正: (1) `path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "fixtures")` に変更。(2) `../node_modules/tw-animate-css/dist/tw-animate.css` を指す相対 `@import` に変更。
+- 確認: 3ページとも 200、axe（wcag2a/2aa/21aa/22aa）の違反 0（light/dark）、コンソールエラー 0。`POST /api/chat`・`/api/agent/tools` は mock で 200（agent は `tool-output-available` を含む）。`mise run gate` → exit 0（web `executed=298 passed=298`、ai-core 687、root 257、eval-suite 3）。
+- 未解決（スクリーンショットで判明）: Tailwind が処理されていない。`apps/web` に `@tailwindcss/postcss` も `postcss.config` もなく、`@theme`・`@custom-variant`・`@apply` が「Unknown at rule」になり、ページは CSS なしで描画される。axe の違反 0 はスタイルなしの状態の結果で、コントラストの確認にならない。`@tailwindcss/postcss` は plan に宣言がないため、追加は人間の承認が要る。
+- 回帰テスト: Turbopack のビルド失敗は Vitest では再現できない。27.1 の `real-server.spec.ts`（実サーバーで3ページが 200）で守る。
+
+### 2026-10-12 Tailwind の処理を有効化（人間の承認済みの依存追加）
+
+- `apps/web` に開発依存 `@tailwindcss/postcss@4.3.3`（`tailwindcss` と同一版、exact pin）を追加し、`apps/web/postcss.config.mjs` を作成した。pnpm のサプライチェーン検査は通過。plan（`apps/web/package.json` の行）と research.md の External dependencies に記録した。
+- 確認（`next dev`、mock）: ビルド警告（Unknown at rule / Module not found）0。`/chat`・`/agent` のスクリーンショットでヘッダー、フォーム、色、枠が描画されることを目視した。3ページとも 200、axe（wcag2a/2aa/21aa/22aa）の違反 0、コンソールエラー 0。これでスタイルありの状態の axe 結果になった。
+- 観察: `prefers-color-scheme: dark` では見た目が変わらない（`@custom-variant dark` はクラス `.dark` 方式）。ダークテーマの切り替え手段は M1 のスコープ外で、27.3 の axe 検査は `.dark` クラスを付けた状態でも行う必要がある。

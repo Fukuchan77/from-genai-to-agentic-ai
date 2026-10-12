@@ -75,6 +75,12 @@ packages/ai-core/src/agents/
 - 新しい HTTP エンドポイント → `apps/web/app/api/<name>/route.ts`（`guardRequest` を通す。検査順は
   本文サイズ 413 → `z.strictObject` 400 → 件数・長さ 400 → `live` のときだけレート制限 429。LLM ロジックは
   `ai-core` の関数を呼ぶだけ）
+- Route Handler の処理順は `guard → resolve → validate → adapt → stream`。検証（`validateUIMessages` など）を
+  通す前の入力を変換関数（`adaptHistoryForModel` など）に渡さない。検証の失敗だけを個別の `try` で
+  `invalid-request` に変換し、その外の例外は `toErrorResponse` に任せる（広い `catch {}` で 400 に偽装しない）
+- 同じ概念の判定（画像か、ブロック対象か）は1か所の関数に置き、他の層は import する
+  （例: `lib/server/guard.ts` の `isImageMediaType` を両ルートが使う）。ガードのテストには同じ概念の別表記
+  （`image`、`image/png`、大文字小文字）を入れる
 - エージェント実行の結果を記録・送出する処理（トレース、評価レポート）→ `RunObserver` の実装として
   `createGuardedAgent` の `observers` に渡す（`guarded-agent.ts` を直接改変しない）
 - 新しいモデル → `packages/ai-core/src/models/catalog.ts` だけ
