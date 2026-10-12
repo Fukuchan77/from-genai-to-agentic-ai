@@ -1,0 +1,444 @@
+import { EventEmitter } from "node:events";
+import { Readable } from "node:stream";
+import { gzipSync } from "node:zlib";
+import type { HttpFetcher, TranscriptSource, WebSearchProvider } from "@platform/ai-core/ports";
+import { createFakeClock, createNodeHttpFetcher } from "@platform/ai-core/ports";
+import { ARTICLE_FETCH_LIMITS, SourceFetchError } from "@platform/ai-core/summarize";
+import { describe, expect, it, vi } from "vitest";
+import {
+	createGuardedFetch,
+	createPlatform,
+	getPlatform,
+	type HttpRequestFunction,
+	setPlatformForTesting,
+} from "./platform";
+
+const MOCK_ENV = { VITEST: "1", AI_TEST_RUN_MODE: "mock" } as const;
+const LOCAL_ENV = { VITEST: "1", AI_TEST_RUN_MODE: "local" } as const;
+
+// --- A fake of node:http(s).request that follows the real lookup contract ---
+
+interface FakeResponse {
+	readonly status: number;
+	readonly headers?: Record<string, string | string[]>;
+	readonly chunks: readonly (string | Uint8Array)[];
+}
+
+interface FakeTransport {
+	readonly request: HttpRequestFunction;
+	/** Addresses a "connection" was opened to (the lookup result, or an IP literal). */
+	readonly connections: string[];
+	/** Chunks the consumer pulled from the response body. */
+	readonly pulled: { count: number };
+}
+
+function fakeTransport(respond: (address: string) => FakeResponse): FakeTransport {
+	const connections: string[] = [];
+	const pulled = { count: 0 };
+	const request: HttpRequestFunction = (url, options, onResponse) => {
+		const emitter = new EventEmitter() as EventEmitter & {
+			end(): void;
+			destroy(error?: Error): void;
+			write(): boolean;
+		};
+		const deliver = (address: string): void => {
+			connections.push(address);
+			const scripted = respond(address);
+			const stream = Readable.from(
+				(async function* () {
+					for (const chunk of scripted.chunks) {
+						pulled.count += 1;
+						yield typeof chunk === "string" ? Buffer.from(chunk) : Buffer.from(chunk);
+					}
+				})(),
+			);
+			Object.assign(stream, { statusCode: scripted.status, headers: scripted.headers ?? {} });
+			onResponse(stream as never);
+		};
+		emitter.write = () => true;
+		emitter.destroy = (error) => {
+			if (error) queueMicrotask(() => emitter.emit("error", error));
+		};
+		emitter.end = () => {
+			const hostname = url.hostname.replace(/^\[|\]$/gu, "");
+			if (/^[\d.]+$/u.test(hostname) || hostname.includes(":")) {
+				deliver(hostname);
+				return;
+			}
+			options.lookup?.(hostname, {}, (error, address) => {
+				if (error) {
+					// Real node:http emits the lookup error on the request unchanged.
+					emitter.emit("error", error);
+					return;
+				}
+				deliver(address as string);
+			});
+		};
+		return emitter as never;
+	};
+	return { request, connections, pulled };
+}
+
+function resolverTo(...answers: string[][]) {
+	let call = 0;
+	return vi.fn(async (_hostname: string): Promise<readonly string[]> => {
+		const answer = answers[Math.min(call, answers.length - 1)] ?? [];
+		call += 1;
+		return answer;
+	});
+}
+
+async function rejection(promise: Promise<unknown>): Promise<unknown> {
+	try {
+		await promise;
+	} catch (error) {
+		return error;
+	}
+	throw new Error("expected the promise to reject");
+}
+
+const OK_BODY: FakeResponse = { status: 200, headers: {}, chunks: ["ok"] };
+
+// --- assembly ---
+
+describe("createPlatform in mock mode", () => {
+	it("assembles config, gateway, fixture ports, clock, limiter and tool runtime from the config", async () => {
+		const platform = await createPlatform({
+			env: { ...MOCK_ENV, AGENT_TOOL_TIMEOUT_MS: "1234", CHAT_RATE_LIMIT_MAX: "2" },
+		});
+
+		expect(platform.mode).toBe("mock");
+		expect(platform.config.mode).toBe("mock");
+		expect(platform.toolRuntime).toEqual({ clock: platform.clock, toolTimeoutMs: 1234 });
+		const resolved = await platform.gateway.resolve({ purpose: "chat" });
+		expect(resolved.mode).toBe("mock");
+
+		// The fixture HttpFetcher serves recorded pages and never touches the network.
+		const article = await platform.ports.http.fetch("https://example.test/articles/agentic-ai");
+		expect(article.status).toBe(200);
+		expect(article.body).toContain("Agentic AI");
+		await expect(platform.ports.webSearch.search("anything-unrecorded")).rejects.toThrow();
+		await expect(platform.ports.transcript.fetchTranscript("unrecorded-id")).rejects.toThrow();
+
+		// One shared limiter built from CHAT_RATE_LIMIT_*.
+		expect(platform.limiter.check()).toEqual({ allowed: true });
+		expect(platform.limiter.check()).toEqual({ allowed: true });
+		expect(platform.limiter.check().allowed).toBe(false);
+	});
+
+	it("uses the injected clock for the tool runtime, the limiter and the gateway", async () => {
+		const clock = createFakeClock(1_000);
+		const platform = await createPlatform({
+			env: { ...MOCK_ENV, CHAT_RATE_LIMIT_MAX: "1", CHAT_RATE_LIMIT_WINDOW_SECONDS: "10" },
+			clock,
+		});
+
+		expect(platform.clock).toBe(clock);
+		expect(platform.toolRuntime.clock).toBe(clock);
+		expect(platform.limiter.check().allowed).toBe(true);
+		expect(platform.limiter.check().allowed).toBe(false);
+		clock.advanceBy(10_000);
+		expect(platform.limiter.check().allowed).toBe(true);
+	});
+
+	it("rejects an invalid configuration with ConfigError instead of building a platform", async () => {
+		await expect(createPlatform({ env: { ...MOCK_ENV, AGENT_MAX_STEPS: "zero" } })).rejects.toThrow(
+			/環境変数/u,
+		);
+	});
+});
+
+describe("createPlatform ports outside mock mode", () => {
+	const inner = {
+		http: {
+			fetch: vi.fn(async () => ({ status: 200, headers: {}, body: "<p>live</p>" })),
+		} satisfies HttpFetcher,
+		transcript: {
+			fetchTranscript: vi.fn(async (videoId: string) => ({ videoId, segments: [] })),
+		} as unknown as TranscriptSource,
+		webSearch: { search: vi.fn(async () => []) } satisfies WebSearchProvider,
+	};
+
+	it("uses the production ports unchanged when AI_RECORD is not set", async () => {
+		const store = { put: vi.fn() };
+		const platform = await createPlatform({
+			env: LOCAL_ENV,
+			productionPorts: inner,
+			recording: { store },
+		});
+
+		expect(platform.ports.http).toBe(inner.http);
+		expect(platform.ports.transcript).toBe(inner.transcript);
+		expect(platform.ports.webSearch).toBe(inner.webSearch);
+		expect(store.put).not.toHaveBeenCalled();
+	});
+
+	it("wraps all three ports in recording wrappers when AI_RECORD=1", async () => {
+		const store = { put: vi.fn() };
+		const platform = await createPlatform({
+			env: { ...LOCAL_ENV, AI_RECORD: "1", TAVILY_API_KEY: "tvly-secret-value-0123" },
+			productionPorts: inner,
+			recording: { store },
+		});
+
+		expect(platform.ports.http).not.toBe(inner.http);
+		await platform.ports.http.fetch("https://example.com/a?api_key=tvly-secret-value-0123");
+		await platform.ports.transcript.fetchTranscript("abc");
+		await platform.ports.webSearch.search("q tvly-secret-value-0123");
+
+		const keys = store.put.mock.calls.map(([key]) => String(key).split("/")[0]);
+		expect(keys).toEqual(["http", "transcripts", "web-search"]);
+		expect(JSON.stringify(store.put.mock.calls)).not.toContain("tvly-secret-value-0123");
+	});
+
+	it("never builds recording wrappers in mock mode", async () => {
+		const store = { put: vi.fn() };
+		const platform = await createPlatform({ env: MOCK_ENV, recording: { store } });
+		await platform.ports.http.fetch("https://example.test/articles/agentic-ai");
+		expect(store.put).not.toHaveBeenCalled();
+	});
+
+	it("builds a web search provider that fails closed when no Tavily key is configured", async () => {
+		// A store that discards writes keeps a recording bug from touching the real fixtures.
+		const platform = await createPlatform({
+			env: LOCAL_ENV,
+			recording: { store: { put: vi.fn() } },
+		});
+		const error = await rejection(platform.ports.webSearch.search("q"));
+		expect(error).toMatchObject({ code: "source-unavailable" });
+	});
+});
+
+// --- guarded fetch: connect-time DNS check ---
+
+describe("createGuardedFetch connect-time address check", () => {
+	const blocked = ["127.0.0.1", "169.254.169.254", "::1", "::ffff:10.0.0.1"];
+
+	it.each(blocked)("refuses a public name that resolves to %s as disallowed-url", async (ip) => {
+		const transport = fakeTransport(() => OK_BODY);
+		const fetcher = createNodeHttpFetcher(
+			createGuardedFetch({ resolve: resolverTo([ip]), request: transport.request }),
+		);
+
+		const error = await rejection(fetcher.fetch("http://news.example.com/a"));
+
+		expect(error).toBeInstanceOf(SourceFetchError);
+		expect(error).toMatchObject({ reason: "disallowed-url" });
+		expect(transport.connections).toEqual([]);
+	});
+
+	it("refuses when any of several resolved addresses is internal", async () => {
+		const transport = fakeTransport(() => OK_BODY);
+		const guarded = createGuardedFetch({
+			resolve: resolverTo(["93.184.216.34", "10.0.0.5"]),
+			request: transport.request,
+		});
+		await expect(guarded("http://news.example.com/a")).rejects.toMatchObject({
+			reason: "disallowed-url",
+		});
+		expect(transport.connections).toEqual([]);
+	});
+
+	it("converts a disallowed-url hidden in an Error cause chain (undici-style) instead of network", async () => {
+		const wrapped = new TypeError("fetch failed", {
+			cause: new SourceFetchError("disallowed-url"),
+		});
+		const request: HttpRequestFunction = () => {
+			const emitter = new EventEmitter() as never as ReturnType<HttpRequestFunction>;
+			Object.assign(emitter, {
+				write: () => true,
+				destroy: () => undefined,
+				end: () => queueMicrotask(() => emitter.emit("error", wrapped)),
+			});
+			return emitter;
+		};
+		const guarded = createGuardedFetch({ resolve: resolverTo(["93.184.216.34"]), request });
+		await expect(guarded("http://news.example.com/a")).rejects.toMatchObject({
+			reason: "disallowed-url",
+		});
+	});
+
+	it("passes a name that resolves to a public IPv6 address (2606:4700::1111)", async () => {
+		const transport = fakeTransport(() => OK_BODY);
+		const fetcher = createNodeHttpFetcher(
+			createGuardedFetch({ resolve: resolverTo(["2606:4700::1111"]), request: transport.request }),
+		);
+
+		const response = await fetcher.fetch("https://news.example.com/a");
+
+		expect(response).toMatchObject({ status: 200, body: "ok" });
+		expect(transport.connections).toEqual(["2606:4700::1111"]);
+	});
+
+	it("connects only to the address it validated: a rebinding resolver cannot reach an internal IP", async () => {
+		const transport = fakeTransport(() => OK_BODY);
+		// Answers: 1st lookup public, 2nd lookup internal. One lookup per connection, so the
+		// address that was checked is the address that is connected to.
+		const resolve = resolverTo(["93.184.216.34"], ["169.254.169.254"]);
+		const guarded = createGuardedFetch({ resolve, request: transport.request });
+
+		await guarded("http://rebind.example.com/first");
+		const second = await rejection(guarded("http://rebind.example.com/second"));
+
+		expect(second).toMatchObject({ reason: "disallowed-url" });
+		expect(resolve).toHaveBeenCalledTimes(2);
+		expect(transport.connections).toEqual(["93.184.216.34"]);
+	});
+
+	it("checks an IP-literal URL without resolving (defence in depth)", async () => {
+		const transport = fakeTransport(() => OK_BODY);
+		const resolve = resolverTo(["93.184.216.34"]);
+		const guarded = createGuardedFetch({ resolve, request: transport.request });
+
+		await expect(guarded("http://[::ffff:10.0.0.1]/a")).rejects.toMatchObject({
+			reason: "disallowed-url",
+		});
+		await expect(guarded("http://0x7f.1/a")).rejects.toMatchObject({ reason: "disallowed-url" });
+		expect(resolve).not.toHaveBeenCalled();
+		expect(transport.connections).toEqual([]);
+	});
+
+	it("returns an address for the `all` lookup form as well", async () => {
+		const guarded = createGuardedFetch({
+			resolve: resolverTo(["93.184.216.34", "2606:4700::1111"]),
+			request: (_url, options, onResponse) => {
+				const emitter = new EventEmitter() as never as ReturnType<HttpRequestFunction>;
+				Object.assign(emitter, {
+					write: () => true,
+					destroy: () => undefined,
+					end: () =>
+						options.lookup?.("news.example.com", { all: true }, (error, addresses) => {
+							expect(error).toBeNull();
+							expect(addresses).toEqual([
+								{ address: "93.184.216.34", family: 4 },
+								{ address: "2606:4700::1111", family: 6 },
+							]);
+							const stream = Readable.from([Buffer.from("ok")]);
+							Object.assign(stream, { statusCode: 200, headers: {} });
+							onResponse(stream as never);
+						}),
+				});
+				return emitter;
+			},
+		});
+		expect((await guarded("http://news.example.com/")).status).toBe(200);
+	});
+});
+
+// --- guarded fetch: body limits ---
+
+describe("createGuardedFetch body limits", () => {
+	const max = ARTICLE_FETCH_LIMITS.maxBodyBytes;
+	const publicIp = ["93.184.216.34"];
+
+	it("accepts a body of exactly maxBodyBytes", async () => {
+		const transport = fakeTransport(() => ({
+			status: 200,
+			chunks: ["a".repeat(max / 2), "a".repeat(max / 2)],
+		}));
+		const fetcher = createNodeHttpFetcher(
+			createGuardedFetch({ resolve: resolverTo(publicIp), request: transport.request }),
+		);
+		const response = await fetcher.fetch("https://news.example.com/big");
+		expect(response.body).toHaveLength(max);
+	});
+
+	it("aborts with too-large at one byte over maxBodyBytes and stops reading", async () => {
+		const transport = fakeTransport(() => ({
+			status: 200,
+			chunks: ["a".repeat(max), "b", "never-read", "never-read-either"],
+		}));
+		const fetcher = createNodeHttpFetcher(
+			createGuardedFetch({ resolve: resolverTo(publicIp), request: transport.request }),
+		);
+
+		const error = await rejection(fetcher.fetch("https://news.example.com/big"));
+
+		expect(error).toBeInstanceOf(SourceFetchError);
+		expect(error).toMatchObject({ reason: "too-large" });
+		expect(transport.pulled.count).toBeLessThan(4);
+	});
+
+	it("counts bytes, not characters", async () => {
+		// 3 bytes per "あ": 1,747,627 of them are 5,242,881 bytes, one over the limit.
+		const transport = fakeTransport(() => ({ status: 200, chunks: ["あ".repeat(1_747_627)] }));
+		const fetcher = createNodeHttpFetcher(
+			createGuardedFetch({ resolve: resolverTo(publicIp), request: transport.request }),
+		);
+		await expect(fetcher.fetch("https://news.example.com/big")).rejects.toMatchObject({
+			reason: "too-large",
+		});
+	});
+
+	it("does not read the body when Content-Length is over the limit", async () => {
+		const transport = fakeTransport(() => ({
+			status: 200,
+			headers: { "content-length": String(max + 1) },
+			chunks: ["a", "b", "c"],
+		}));
+		const fetcher = createNodeHttpFetcher(
+			createGuardedFetch({ resolve: resolverTo(publicIp), request: transport.request }),
+		);
+
+		await expect(fetcher.fetch("https://news.example.com/big")).rejects.toMatchObject({
+			reason: "too-large",
+		});
+		expect(transport.pulled.count).toBe(0);
+	});
+
+	it("limits the decompressed size of an encoded body", async () => {
+		const bomb = gzipSync(Buffer.alloc(max + 1, 97));
+		const transport = fakeTransport(() => ({
+			status: 200,
+			headers: { "content-encoding": "gzip" },
+			chunks: [bomb],
+		}));
+		const fetcher = createNodeHttpFetcher(
+			createGuardedFetch({ resolve: resolverTo(publicIp), request: transport.request }),
+		);
+		await expect(fetcher.fetch("https://news.example.com/bomb")).rejects.toMatchObject({
+			reason: "too-large",
+		});
+	});
+
+	it("returns redirects unfollowed so the caller can check every location", async () => {
+		const transport = fakeTransport(() => ({
+			status: 302,
+			headers: { location: "http://169.254.169.254/latest" },
+			chunks: [],
+		}));
+		const fetcher = createNodeHttpFetcher(
+			createGuardedFetch({ resolve: resolverTo(publicIp), request: transport.request }),
+		);
+		const response = await fetcher.fetch("https://news.example.com/r", { redirect: "manual" });
+		expect(response.status).toBe(302);
+		expect(response.headers.location).toBe("http://169.254.169.254/latest");
+		expect(transport.connections).toEqual(publicIp);
+	});
+
+	it("rejects a non-http(s) URL as disallowed-url", async () => {
+		const transport = fakeTransport(() => OK_BODY);
+		const guarded = createGuardedFetch({
+			resolve: resolverTo(publicIp),
+			request: transport.request,
+		});
+		await expect(guarded("ftp://news.example.com/a")).rejects.toMatchObject({
+			reason: "disallowed-url",
+		});
+	});
+});
+
+// --- singleton ---
+
+describe("getPlatform", () => {
+	it("caches the assembled platform until it is reset", async () => {
+		const first = await createPlatform({ env: MOCK_ENV });
+		setPlatformForTesting(first);
+		expect(await getPlatform()).toBe(first);
+		expect(await getPlatform()).toBe(first);
+		setPlatformForTesting(undefined);
+		setPlatformForTesting(await createPlatform({ env: MOCK_ENV }));
+		expect(await getPlatform()).not.toBe(first);
+		setPlatformForTesting(undefined);
+	});
+});

@@ -205,6 +205,9 @@ importers:
       '@platform/ai-core':
         specifier: workspace:*
         version: link:../../packages/ai-core
+      ai:
+        specifier: 7.0.137
+        version: 7.0.137(zod@4.6.5)
       babel-plugin-react-compiler:
         specifier: 1.0.0
         version: 1.0.0
