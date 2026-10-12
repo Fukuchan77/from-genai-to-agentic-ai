@@ -16,6 +16,9 @@ export default {
 		"packages/ai-core/src/mock/resolve.ts",
 		"packages/ai-core/src/summarize/plan.ts",
 		"packages/ai-core/src/summarize/retry.ts",
+		"packages/ai-core/src/rag/ingest/markdown.ts",
+		"packages/ai-core/src/rag/ingest/chunk.ts",
+		"packages/ai-core/src/rag/ingest/search-text.ts",
 	],
 	vitest: {
 		configFile: "packages/ai-core/vitest.config.ts",
