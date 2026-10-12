@@ -6,3 +6,4 @@ export {
 	createToolCallingModel,
 	type MockToolCall,
 } from "./mock-models";
+export { buildTextPdf } from "./pdf-builder";
