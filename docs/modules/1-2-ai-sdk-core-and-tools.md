@@ -233,7 +233,9 @@ Generative UI は、「AI が React を生成する」ことではなく、**ツ
 - 実行モード: `local`（既定。`live` でも可。キーなしで挙動だけ見るなら `mock`）
 - 外部サービス: `local` は Ollama（カタログ `local.ollama.chat` のモデルを取得済みであること）。`live` はプロバイダの API キー（`.env.local` の `ANTHROPIC_API_KEY` など。プロバイダは `AI_LIVE_PROVIDER`）
 
-`.env.local` に `AI_RUN_MODE=local` を書き、`mise exec -- pnpm --filter web dev` で起動して `/chat` を開きます。
+リポジトリのルートの `.env.local` に `AI_RUN_MODE=local` を書き、`mise run dev` で起動して `/chat` を開きます（`mise run dev` がこのファイルを読み込みます。以降の手順で `.env.local` を書き換えたら、`mise run dev` を起動し直します）。
+
+`local` では、チャットとエージェントも要約と同じ `num_ctx`（カタログの `contextWindow`、既定のモデルで 32,768）を Ollama に渡します（`@platform/ai-core/models` の `ollamaRuntimeOptions`）。呼び出しごとに値が違うと Ollama がモデルを読み込み直し、1回ごとに数秒かかるためです。代わりに、既定のモデルでは約 10 GB のメモリが常駐します。
 
 1. 質問を送り、チャンクが届くたびに表示が伸びることを確かめる（Req 3.1）。
 2. ペルソナを `general-assistant` から `python-mentor`、`strict-reviewer` に切り替え、同じ質問の答え方の違いを比べる。応答の下のモデル名とトークン数も確かめる（Req 3.7）。
@@ -359,7 +361,7 @@ Streamlit では、入力のたびにスクリプトが先頭から再実行さ�
 
 ## 完成時点のタグ
 
-- **タグ**: `module/1-2`（ローカルの注釈付きタグ。指すコミットは `7cc27cc`）
+- **タグ**: `module/1-2`（注釈付きタグ。指すコミットは `7cc27cc`）
 - **含まれるもの**: ChatCore（`chat/`）、GuardedAgent（`agents/`）、AciToolkit（`aci/`）、チャット機能（`/chat`）、ツールエージェント機能（`/agent`）、リクエストガード。`next dev` / `next start` で `mock` モードで動きます。Turbopack でのビルド修正、Tailwind、フォーカスのアウトライン色の修正を済ませた後に付けたタグで、最初の機能コミット（`64e3a96`、`27112ee`）は Turbopack ではビルドできません。
-- **含まれないもの**: E2E テスト（`apps/web/e2e`）と、この解説を含む `docs/`（plan C22）。同じコミットに、要約機能（`module/1-3`）や Playwright の設定が入っていますが、このモジュールの一部ではありません。
+- **含まれないもの**: E2E テスト（`apps/web/e2e`）と、この解説を含む `docs/`（plan C22）。同じコミットに、要約機能（`module/1-3`）や Playwright の設定が入っていますが、このモジュールの一部ではありません。タグより後の変更として、2026-10-12 の `local` の既定モデルの変更と、チャット・エージェントが要約と同じ Ollama の `num_ctx` を渡す変更（タスク 29.5。モデルの再読み込みを避ける）も含まれません。タグの時点では、チャットとエージェントは Ollama のサーバー既定のコンテキスト長で動きます。
 - **公開状況**: タスク 29.4 で、人間の承認後にリモートへ push しました（2026-10-12。`git ls-remote --tags origin 'module/*'` で確認できます）。

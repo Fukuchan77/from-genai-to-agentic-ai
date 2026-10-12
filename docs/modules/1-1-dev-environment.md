@@ -32,8 +32,9 @@
 | `check:repo-rules` | リポジトリの規則（9 規則。例: `frozen-lockfile`、`ai-core-no-ui-deps`、`tool-risk-declared`） | 規則ごとに検査 |
 | `typecheck` | `turbo run typecheck` に続けて、tsconfig ごとの走査ファイル数を数える | tsconfig が 0 ファイルなら失敗（`scripts/gate/count-tsc.mjs`） |
 | `test` | `mock` モードで全ワークスペースの Vitest を1回ずつ実行 | 実行件数が 0 なら失敗（`gate-reporter`） |
+| `docs:check` | 解説（`docs/modules/`）の必須の節・トピック・手順の表記と、チェックリストが参照するテストの実在（`.skip` / `.todo` などの実行されないテストは参照できない） | 解説が 0 件、または参照が 0 件なら失敗 |
 
-本書の執筆時点では、`docs:check`（本書を含む解説の構造検査）は W5 の締めのタスク（29.1）で `gate` の最後の段として結線される予定です。それまでは `mise run docs:check` を単独で実行します。E2E（`mise run test:e2e`）、クライアントバンドル検査（`mise run check:client-bundle`）、ミューテーションテスト（`mise run test:mutation`）も `gate` の外にあり、CI の別ジョブで実行します。`gate` に Docker は要りません（Req 1.11）。Docker が要るテストは `*.pg.test.ts` に分け、`mise run test:db` でだけ実行します。
+E2E（`mise run test:e2e`）、クライアントバンドル検査（`mise run check:client-bundle`）、ミューテーションテスト（`mise run test:mutation`）も `gate` の外にあり、CI の別ジョブで実行します。`gate` に Docker は要りません（Req 1.11）。Docker が要るテストは `*.pg.test.ts` に分け、`mise run test:db` でだけ実行します。
 
 「空振りの合格」を防ぐ仕組みが、このゲートの核です（Req 1.15）。Vitest の既定は、テストファイルが 1 件もなければ失敗しますが、ファイルがあって全件スキップなら合格にします。`gate-reporter`（`tooling/vitest/gate-reporter.ts`）は実行件数・成功・失敗・スキップ（理由別）を表示し、実行件数が 0 の実行単位を失敗にします。Ollama がなくてスキップされた `local` 限定のテストは「スキップ」として理由付きで報告され、合格には数えません（Req 1.14）。
 
@@ -64,7 +65,7 @@
 
 環境変数は Zod のスキーマ（`config/env-schema.ts`）で検証し、機能ごとの必須変数は `FEATURE_REQUIREMENTS` に集約しています。必須の変数が不足していると、`ConfigError` が不足した変数名とそれを必要とする機能名を列挙します（Req 1.9）。たとえば `live` + Azure で Tavily も使う構成なら、`AZURE_API_KEY`（`live-azure`）、`AZURE_RESOURCE_NAME`（`live-azure`）、`TAVILY_API_KEY`（`web-search`）がまとめて報告されます。1つずつ直しては起動し直す往復をなくすためです。
 
-Web アプリでは `apps/web/instrumentation.ts` の `register()` が、サーバーの起動時に `loadPlatformConfig` を呼びます。設定の誤りは最初のリクエストではなく起動時に、値を出力せずに（変数名と機能名だけ）報告されます。変数名の一覧は `.env.example` にあり（値は空）、`.env.local` にコピーして使います。`.env.local` はバージョン管理の対象外です。
+Web アプリでは `apps/web/instrumentation.ts` の `register()` が、サーバーの起動時に `loadPlatformConfig` を呼びます。設定の誤りは最初のリクエストではなく起動時に、値を出力せずに（変数名と機能名だけ）報告されます。変数名の一覧は `.env.example` にあり（値は空）、リポジトリのルートで `.env.local` にコピーして使います。`.env.local` はバージョン管理の対象外です。Next.js 自身は `apps/web` の中の env ファイルしか読まないため、ルートの `.env.local` は `mise run dev` が Node の `--env-file-if-exists` で読み込んでから `next dev` を起動します。シェルで設定済みの変数は、ファイルの値より優先されます。
 
 ### Streamlit の全行再実行モデルと App Router の差分ストリーミング
 
@@ -184,8 +185,8 @@ mise run gate
 
 ```bash
 ollama serve                      # 別のターミナルで
-cp .env.example .env.local        # 値は空のままでよい（local の既定で動く）
-mise exec -- pnpm --filter web dev
+cp .env.example .env.local        # リポジトリのルートで。値は空のままでよい（local の既定で動く）
+mise run dev                      # ルートの .env.local を読み込んで next dev を起動する
 ```
 
 `http://localhost:3000/chat` を開いてメッセージを送ります。モデルの取得が済んでいないと、事前検査が取得すべきモデル名を示します。Ollama を止めてから送ると、接続先 URL と起動方法を含むエラーが出ることも確かめます。`mise run test:local` は `local` 限定のテスト（`catalog.local.test.ts` など）を実行します。
@@ -196,7 +197,7 @@ mise exec -- pnpm --filter web dev
 - 外部サービス: なし
 
 ```bash
-AI_RUN_MODE=live AI_LIVE_PROVIDER=anthropic mise exec -- pnpm --filter web dev
+AI_RUN_MODE=live AI_LIVE_PROVIDER=anthropic mise run dev   # シェルの値が .env.local より優先される
 ```
 
 `ANTHROPIC_API_KEY` を設定していない状態では、起動時に `[設定エラー]` と、不足した変数名とその機能名（`live-anthropic`）が出力されます。`AI_LIVE_PROVIDER=azure` に変えて、変数名が複数列挙されることも確かめます。キーの値がどこにも出力されないことを確認します。
