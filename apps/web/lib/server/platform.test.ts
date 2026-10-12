@@ -3,6 +3,7 @@ import { access } from "node:fs/promises";
 import path from "node:path";
 import { Readable } from "node:stream";
 import { gzipSync } from "node:zlib";
+import { defaultRerankModel, ModelSelectionError } from "@platform/ai-core/models";
 import type { HttpFetcher, TranscriptSource, WebSearchProvider } from "@platform/ai-core/ports";
 import { createFakeClock, createNodeHttpFetcher } from "@platform/ai-core/ports";
 import { KnowledgeBaseUnavailableError, type RagDatabaseHandle } from "@platform/ai-core/rag";
@@ -16,6 +17,7 @@ import {
 	getPlatform,
 	type HttpRequestFunction,
 	type KnowledgeBaseFactories,
+	resolveKnowledgeEmbedding,
 	setKnowledgeBaseForTesting,
 	setPlatformForTesting,
 } from "./platform";
@@ -601,7 +603,8 @@ describe("getKnowledgeBase", () => {
 			setKnowledgeBaseForTesting(undefined);
 			setPlatformForTesting(undefined);
 		}
-	});
+		// Starting PGlite takes seconds when the gate runs every workspace at once.
+	}, 30_000);
 
 	it("does not cache a failure: the next call tries again", async () => {
 		await withPlatform(LOCAL_ENV);
@@ -626,5 +629,106 @@ describe("getKnowledgeBase", () => {
 			setKnowledgeBaseForTesting(undefined);
 			setPlatformForTesting(undefined);
 		}
+	});
+});
+
+describe("createPlatform rerank port (CL-6)", () => {
+	const inner = {
+		http: { fetch: vi.fn() } as unknown as HttpFetcher,
+		transcript: { fetchTranscript: vi.fn() } as unknown as TranscriptSource,
+		webSearch: { search: vi.fn() } as unknown as WebSearchProvider,
+	};
+
+	it("uses the deterministic pseudo implementation in mock mode, without any key", async () => {
+		const platform = await createPlatform({ env: MOCK_ENV });
+
+		expect(platform.ports.rerank?.modelId).toMatch(/mock/iu);
+		const ranked = await platform.ports.rerank?.rerank(
+			"検索",
+			[
+				{ id: "a", text: "無関係" },
+				{ id: "b", text: "検索の話" },
+			],
+			{ topN: 1 },
+		);
+		expect(ranked?.map((row) => row.id)).toEqual(["b"]);
+	});
+
+	it("ignores a Cohere key in mock mode (the pseudo implementation stays)", async () => {
+		const platform = await createPlatform({ env: { ...MOCK_ENV, COHERE_API_KEY: "co-test-key" } });
+
+		expect(platform.ports.rerank?.modelId).toMatch(/mock/iu);
+	});
+
+	it("has no Rerank provider outside mock mode when COHERE_API_KEY is not set", async () => {
+		const platform = await createPlatform({ env: LOCAL_ENV, productionPorts: inner });
+
+		expect(platform.ports.rerank).toBeUndefined();
+	});
+
+	it("treats an empty COHERE_API_KEY as not set", async () => {
+		const platform = await createPlatform({
+			env: { ...LOCAL_ENV, COHERE_API_KEY: "" },
+			productionPorts: inner,
+		});
+
+		expect(platform.ports.rerank).toBeUndefined();
+	});
+
+	it("builds the Cohere provider outside mock mode when the key is set, without connecting", async () => {
+		const platform = await createPlatform({
+			env: { ...LOCAL_ENV, COHERE_API_KEY: "co-test-key" },
+			productionPorts: inner,
+		});
+
+		expect(platform.ports.rerank?.modelId).toBe(defaultRerankModel().id);
+	});
+
+	it("does not record the Rerank provider when AI_RECORD=1", async () => {
+		const store = { put: vi.fn() };
+		const platform = await createPlatform({
+			env: { ...LOCAL_ENV, AI_RECORD: "1", COHERE_API_KEY: "co-test-key" },
+			productionPorts: inner,
+			recording: { store },
+		});
+
+		expect(platform.ports.rerank?.modelId).toBe(defaultRerankModel().id);
+		expect(store.put).not.toHaveBeenCalled();
+	});
+});
+
+describe("resolveKnowledgeEmbedding", () => {
+	it("returns the embedding model the gateway resolves", async () => {
+		const platform = await createPlatform({ env: MOCK_ENV });
+
+		const resolved = await resolveKnowledgeEmbedding(platform);
+
+		expect(resolved.entry.id).toBe("mock:embedding-v1");
+	});
+
+	it("explains AI_MODEL_EMBEDDING as an invalid request when the provider has no default", async () => {
+		const platform = await createPlatform({ env: MOCK_ENV });
+		const noDefault = new ModelSelectionError({
+			reason: "no-default",
+			mode: "live",
+			provider: "anthropic",
+			purpose: "chat",
+		});
+		const gateway = {
+			...platform.gateway,
+			resolveEmbedding: async () => Promise.reject(noDefault),
+		};
+
+		await expect(resolveKnowledgeEmbedding({ gateway: gateway as never })).rejects.toMatchObject({
+			code: "invalid-request",
+			message: expect.stringContaining("AI_MODEL_EMBEDDING"),
+		});
+	});
+
+	it("rethrows any other failure unchanged", async () => {
+		const failure = new Error("boom");
+		const gateway = { resolveEmbedding: async () => Promise.reject(failure) };
+
+		await expect(resolveKnowledgeEmbedding({ gateway: gateway as never })).rejects.toBe(failure);
 	});
 });
