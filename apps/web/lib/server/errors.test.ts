@@ -226,3 +226,36 @@ describe("stream error text", () => {
 		});
 	});
 });
+
+describe("invalid-request reasons (review F-3)", () => {
+	it.each(["embedding-model-changed", "too-many-files", "invalid-file-name"])(
+		"passes the closed reason %s to the browser",
+		(reason) => {
+			const error = toPublicError(
+				new PlatformError("invalid-request", "形式が正しくありません。", { reason }),
+			);
+
+			expect(error.details).toEqual({ reason });
+		},
+	);
+
+	it("drops an invalid-request reason that is not on the allow-list, and every other detail", () => {
+		const error = toPublicError(
+			new PlatformError("invalid-request", "形式が正しくありません。", {
+				reason: "unknown-model",
+				modelId: "secret-model",
+				status: 418,
+			}),
+		);
+
+		expect(error.details).toBeUndefined();
+	});
+
+	it("still sends no details for other codes", () => {
+		const error = toPublicError(
+			new PlatformError("output-invalid", "不正です。", { reason: "embedding-model-changed" }),
+		);
+
+		expect(error.details).toBeUndefined();
+	});
+});

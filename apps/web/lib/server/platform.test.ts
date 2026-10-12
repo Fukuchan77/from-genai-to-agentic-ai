@@ -1,15 +1,22 @@
 import { EventEmitter } from "node:events";
+import { access } from "node:fs/promises";
+import path from "node:path";
 import { Readable } from "node:stream";
 import { gzipSync } from "node:zlib";
 import type { HttpFetcher, TranscriptSource, WebSearchProvider } from "@platform/ai-core/ports";
 import { createFakeClock, createNodeHttpFetcher } from "@platform/ai-core/ports";
+import { KnowledgeBaseUnavailableError, type RagDatabaseHandle } from "@platform/ai-core/rag";
 import { ARTICLE_FETCH_LIMITS, SourceFetchError } from "@platform/ai-core/summarize";
 import { describe, expect, it, vi } from "vitest";
 import {
 	createGuardedFetch,
+	createKnowledgeBase,
 	createPlatform,
+	getKnowledgeBase,
 	getPlatform,
 	type HttpRequestFunction,
+	type KnowledgeBaseFactories,
+	setKnowledgeBaseForTesting,
 	setPlatformForTesting,
 } from "./platform";
 
@@ -440,5 +447,184 @@ describe("getPlatform", () => {
 		setPlatformForTesting(await createPlatform({ env: MOCK_ENV }));
 		expect(await getPlatform()).not.toBe(first);
 		setPlatformForTesting(undefined);
+	});
+});
+
+// --- knowledge base (plan C13, Req 1.1) ---
+
+function fakeHandle(kind: RagDatabaseHandle["kind"]): RagDatabaseHandle & { closed: number } {
+	const handle = {
+		db: {} as RagDatabaseHandle["db"],
+		kind,
+		closed: 0,
+		async close() {
+			handle.closed += 1;
+		},
+	};
+	return handle;
+}
+
+function fakeFactories(overrides: Partial<KnowledgeBaseFactories> = {}) {
+	const calls = { pglite: 0, postgres: [] as unknown[] };
+	const factories: KnowledgeBaseFactories = {
+		pglite: async () => {
+			calls.pglite += 1;
+			return fakeHandle("pglite");
+		},
+		postgres: async (config) => {
+			calls.postgres.push(config);
+			return fakeHandle("postgres");
+		},
+		...overrides,
+	};
+	return { factories, calls };
+}
+
+describe("knowledgeRoots", () => {
+	it("are absolute paths to the learner's knowledge/ and the evaluation corpus", async () => {
+		const { knowledgeRoots } = await createPlatform({ env: MOCK_ENV });
+
+		expect(path.isAbsolute(knowledgeRoots.knowledge)).toBe(true);
+		expect(path.isAbsolute(knowledgeRoots.evalCorpus)).toBe(true);
+		expect(knowledgeRoots.knowledge.endsWith(`${path.sep}knowledge`)).toBe(true);
+		expect(
+			knowledgeRoots.evalCorpus.endsWith(
+				path.join("packages", "ai-core", "fixtures", "rag", "corpus"),
+			),
+		).toBe(true);
+		// The tracked README proves the path points at the repository's knowledge/ directory.
+		await expect(access(path.join(knowledgeRoots.knowledge, "README.md"))).resolves.toBeUndefined();
+	});
+
+	it("do not depend on the working directory", async () => {
+		const original = process.cwd();
+		const before = (await createPlatform({ env: MOCK_ENV })).knowledgeRoots;
+		process.chdir(path.dirname(original));
+		try {
+			expect((await createPlatform({ env: MOCK_ENV })).knowledgeRoots).toEqual(before);
+		} finally {
+			process.chdir(original);
+		}
+	});
+
+	it("can be replaced for tests", async () => {
+		const roots = { knowledge: "/tmp/k", evalCorpus: "/tmp/e" };
+
+		expect((await createPlatform({ env: MOCK_ENV, knowledgeRoots: roots })).knowledgeRoots).toEqual(
+			roots,
+		);
+	});
+});
+
+describe("createKnowledgeBase", () => {
+	it("uses in-memory PGlite in mock mode and does not touch Postgres", async () => {
+		const platform = await createPlatform({ env: MOCK_ENV });
+		const { factories, calls } = fakeFactories();
+
+		const handle = await createKnowledgeBase(platform, factories);
+
+		expect(handle.kind).toBe("pglite");
+		expect(calls).toEqual({ pglite: 1, postgres: [] });
+	});
+
+	it.each([
+		["local", LOCAL_ENV],
+		[
+			"live",
+			{
+				VITEST: "1",
+				AI_TEST_RUN_MODE: "live",
+				AI_LIVE_PROVIDER: "openai",
+				OPENAI_API_KEY: "test-key",
+			},
+		],
+	] as const)("connects to Postgres with the configured database in %s mode", async (_, env) => {
+		const platform = await createPlatform({ env: { ...env, POSTGRES_PORT: "5544" } });
+		const { factories, calls } = fakeFactories();
+
+		const handle = await createKnowledgeBase(platform, factories);
+
+		expect(handle.kind).toBe("postgres");
+		expect(calls.pglite).toBe(0);
+		expect(calls.postgres).toEqual([platform.config.database]);
+		expect(platform.config.database.port).toBe(5544);
+	});
+
+	it("propagates provider-unavailable when Postgres cannot be reached", async () => {
+		const platform = await createPlatform({ env: LOCAL_ENV });
+		const { factories } = fakeFactories({
+			postgres: async () => {
+				throw new KnowledgeBaseUnavailableError();
+			},
+		});
+
+		await expect(createKnowledgeBase(platform, factories)).rejects.toMatchObject({
+			code: "provider-unavailable",
+		});
+	});
+});
+
+describe("getKnowledgeBase", () => {
+	async function withPlatform(env: Record<string, string>) {
+		setPlatformForTesting(await createPlatform({ env }));
+		setKnowledgeBaseForTesting(undefined);
+	}
+
+	it("builds the handle once, even for concurrent callers", async () => {
+		await withPlatform(MOCK_ENV);
+		const { factories, calls } = fakeFactories();
+		try {
+			const [first, second] = await Promise.all([
+				getKnowledgeBase(factories),
+				getKnowledgeBase(factories),
+			]);
+			const third = await getKnowledgeBase(factories);
+
+			expect(second).toBe(first);
+			expect(third).toBe(first);
+			expect(calls.pglite).toBe(1);
+		} finally {
+			setKnowledgeBaseForTesting(undefined);
+			setPlatformForTesting(undefined);
+		}
+	});
+
+	it("builds a real in-memory PGlite database in mock mode", async () => {
+		await withPlatform(MOCK_ENV);
+		try {
+			const handle = await getKnowledgeBase();
+
+			expect(handle.kind).toBe("pglite");
+			expect(await getKnowledgeBase()).toBe(handle);
+			await handle.close();
+		} finally {
+			setKnowledgeBaseForTesting(undefined);
+			setPlatformForTesting(undefined);
+		}
+	});
+
+	it("does not cache a failure: the next call tries again", async () => {
+		await withPlatform(LOCAL_ENV);
+		let attempts = 0;
+		const { factories } = fakeFactories({
+			postgres: async () => {
+				attempts += 1;
+				if (attempts === 1) throw new KnowledgeBaseUnavailableError();
+				return fakeHandle("postgres");
+			},
+		});
+		try {
+			await expect(getKnowledgeBase(factories)).rejects.toBeInstanceOf(
+				KnowledgeBaseUnavailableError,
+			);
+
+			const handle = await getKnowledgeBase(factories);
+
+			expect(handle.kind).toBe("postgres");
+			expect(attempts).toBe(2);
+		} finally {
+			setKnowledgeBaseForTesting(undefined);
+			setPlatformForTesting(undefined);
+		}
 	});
 });

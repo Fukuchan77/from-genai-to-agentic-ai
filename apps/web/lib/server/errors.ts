@@ -82,11 +82,33 @@ function publicDetails(details: Readonly<Record<string, unknown>>): PublicErrorD
 	return safeReason || safeStatus ? { ...safeReason, ...safeStatus } : undefined;
 }
 
+// Machine-readable reasons of `invalid-request` the UI acts on (e.g. offering `reset`). Other
+// reasons (model selection, for one) stay server-side.
+const PUBLIC_INVALID_REQUEST_REASONS: ReadonlySet<string> = new Set([
+	"embedding-model-changed",
+	"too-many-files",
+	"invalid-file-name",
+]);
+
+function invalidRequestDetails(
+	details: Readonly<Record<string, unknown>>,
+): PublicErrorDetails | undefined {
+	const { reason } = details;
+	return typeof reason === "string" && PUBLIC_INVALID_REQUEST_REASONS.has(reason)
+		? { reason }
+		: undefined;
+}
+
 /** The browser-safe view of any thrown value. */
 export function toPublicError(error: unknown): PublicError {
 	if (error instanceof GuardError) return { code: error.code, message: error.message };
 	if (error instanceof PlatformError) {
-		const details = error.code === "source-unavailable" ? publicDetails(error.details) : undefined;
+		const details =
+			error.code === "source-unavailable"
+				? publicDetails(error.details)
+				: error.code === "invalid-request"
+					? invalidRequestDetails(error.details)
+					: undefined;
 		return {
 			code: error.code,
 			message: error.message,
