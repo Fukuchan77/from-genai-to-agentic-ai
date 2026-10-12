@@ -7,6 +7,7 @@ import {
 	streamText,
 } from "ai";
 import type { z } from "zod";
+import { ollamaRuntimeOptions } from "../models/runtime-options";
 import type { ModelEntry } from "../models/types";
 import { type CachePolicy, cachePolicyFor } from "./cache-policy";
 import {
@@ -79,18 +80,6 @@ function issuesFromText(text: string | undefined, schema: z.ZodType<Summary>): s
 		: formatSchemaIssues(parsed.error);
 }
 
-/**
- * Ollama runs a request with its server default context length (a few thousand tokens) unless
- * `num_ctx` is given, and silently truncates a longer prompt. The planner budgets against the
- * catalog `contextWindow` (ADR-9), so every Ollama summary call runs with exactly that window.
- */
-function runtimeOptions(entry: ModelEntry): {
-	providerOptions?: { ollama: { options: { num_ctx: number } } };
-} {
-	if (entry.provider !== "ollama") return {};
-	return { providerOptions: { ollama: { options: { num_ctx: entry.contextWindow } } } };
-}
-
 interface CallContext {
 	readonly deps: SummaryDeps;
 	readonly schema: z.ZodType<Summary>;
@@ -109,7 +98,8 @@ async function* generateSummaryObject(
 		messages: prompt.messages,
 		output: Output.object({ schema: context.schema }),
 		maxOutputTokens: Math.min(OUTPUT_RESERVE_TOKENS, context.deps.entry.maxOutputTokens),
-		...runtimeOptions(context.deps.entry),
+		// The planner budgets against the catalog `contextWindow` (ADR-9); Ollama runs with exactly it.
+		...ollamaRuntimeOptions(context.deps.entry),
 		...(context.deps.abortSignal ? { abortSignal: context.deps.abortSignal } : {}),
 		// Errors are rethrown below; the default handler would log them with their content.
 		onError: ({ error }) => {

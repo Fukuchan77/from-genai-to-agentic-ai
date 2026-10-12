@@ -15,6 +15,7 @@ import {
 	getPersona,
 } from "@platform/ai-core/chat";
 import { PlatformError } from "@platform/ai-core/errors";
+import { ollamaRuntimeOptions } from "@platform/ai-core/models";
 import { createAgentUIStreamResponse, type UIMessage, validateUIMessages } from "ai";
 import { GuardError, toErrorResponse, toStreamErrorText } from "@/lib/server/errors";
 import { createConversationPolicy, guardRequest, isImageMediaType } from "@/lib/server/guard";
@@ -90,6 +91,8 @@ export async function POST(request: Request): Promise<Response> {
 			limits: platform.config.agent,
 			clock: platform.clock,
 			signal: request.signal,
+			// Same `num_ctx` as chat and summaries, so Ollama never reloads the model (plan C8).
+			...ollamaRuntimeOptions(entry),
 		});
 
 		// Only the SDK's validation of the history is reported as invalid-request (its message echoes

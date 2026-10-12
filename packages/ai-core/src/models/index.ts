@@ -52,6 +52,7 @@ export {
 	type ProviderSettings,
 	type SdkProviderId,
 } from "./providers";
+export { type OllamaRuntimeOptions, ollamaRuntimeOptions } from "./runtime-options";
 export type {
 	Capability,
 	CostEstimate,

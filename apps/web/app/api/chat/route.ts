@@ -5,6 +5,7 @@ import {
 	getPersona,
 } from "@platform/ai-core/chat";
 import { PlatformError } from "@platform/ai-core/errors";
+import { ollamaRuntimeOptions } from "@platform/ai-core/models";
 import { convertToModelMessages, streamText, type UIMessage, validateUIMessages } from "ai";
 import { GuardError, toErrorResponse, toStreamErrorText } from "@/lib/server/errors";
 import { createConversationPolicy, guardRequest, isImageMediaType } from "@/lib/server/guard";
@@ -70,6 +71,8 @@ export async function POST(request: Request): Promise<Response> {
 				today: new Date(platform.clock.now()).toISOString().slice(0, 10),
 			}),
 			messages: modelMessages,
+			// Same `num_ctx` as the agent and summaries, so Ollama never reloads the model (plan C11).
+			...ollamaRuntimeOptions(entry),
 			abortSignal: request.signal,
 			// The SDK's default logs the raw error; failures are reported through the stream instead.
 			onError: () => {},

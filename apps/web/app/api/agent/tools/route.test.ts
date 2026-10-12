@@ -1,8 +1,8 @@
 import type { GuardedAgent } from "@platform/ai-core/agents";
 import { defineScenario, M1_2_SCENARIOS, type ScenarioDefinition } from "@platform/ai-core/mock";
-import { MODEL_CATALOG } from "@platform/ai-core/models";
+import { defaultModelFor, getModelEntry, MODEL_CATALOG } from "@platform/ai-core/models";
 import type { HttpFetcher } from "@platform/ai-core/ports";
-import { createFakeClock } from "@platform/ai-core/testing";
+import { createFakeClock, createTextStreamModel } from "@platform/ai-core/testing";
 import { MockLanguageModelV4 } from "ai/test";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { parseStreamErrorText } from "@/lib/server/errors";
@@ -399,6 +399,32 @@ describe("POST /api/agent/tools", () => {
 		expect(text).not.toContain("invalid-request");
 		expect(text).not.toContain("TOP-SECRET");
 	});
+
+	it.each([
+		["local", "ollama"],
+		["mock", "mock"],
+	] as const)(
+		"sends the shared Ollama num_ctx only to Ollama models (%s / %s, plan C8)",
+		async (mode, provider) => {
+			const platform = await mockPlatform();
+			const model = createTextStreamModel("こんにちは。");
+			const entry = getModelEntry(defaultModelFor(mode, provider, "chat"));
+			const expected =
+				provider === "ollama"
+					? { ollama: { options: { num_ctx: entry.contextWindow } } }
+					: undefined;
+			setPlatformForTesting({
+				...platform,
+				gateway: { ...platform.gateway, resolve: async () => ({ model, entry, mode }) },
+			});
+
+			await readChunks(await POST(agentRequest("こんにちは")));
+
+			expect(created.agents).toHaveLength(1);
+			expect(model.doStreamCalls).toHaveLength(1);
+			expect(model.doStreamCalls[0]?.providerOptions).toEqual(expected);
+		},
+	);
 
 	it("matches the generated SSE fixture used by the E2E specs (Req 1.17)", async () => {
 		setPlatformForTesting(await mockPlatform());

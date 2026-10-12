@@ -98,6 +98,11 @@ export interface GuardedAgentOptions<TOOLS extends ToolSet> {
 	 * An exception thrown by this callback itself is ignored.
 	 */
 	readonly onObserverError?: ((error: unknown, observer: RunObserver) => void) | undefined;
+	/**
+	 * Sent with the LLM call of every step. For Ollama pass `ollamaRuntimeOptions(entry)`'s value so
+	 * the agent runs with the same `num_ctx` as chat and summaries (plan C8).
+	 */
+	readonly providerOptions?: ToolLoopAgentSettings<never, TOOLS>["providerOptions"] | undefined;
 }
 
 /** The `run` message metadata sent with the UI stream's `finish` chunk. */
@@ -299,6 +304,7 @@ export function createGuardedAgent<TOOLS extends ToolSet>(
 		instructions: options.instructions,
 		tools: options.tools,
 		stopWhen: stopWhen satisfies StopCondition<TOOLS>[],
+		...(options.providerOptions ? { providerOptions: options.providerOptions } : {}),
 		onStepEnd,
 		onEnd: () => {
 			finalise();

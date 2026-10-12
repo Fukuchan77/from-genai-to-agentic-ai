@@ -1,6 +1,8 @@
 import { defineScenario, M1_2_SCENARIOS, type ScenarioDefinition } from "@platform/ai-core/mock";
 import {
 	CapabilityUnsupportedError,
+	defaultModelFor,
+	getModelEntry,
 	MODEL_CATALOG,
 	OllamaUnavailableError,
 } from "@platform/ai-core/models";
@@ -298,6 +300,31 @@ describe("POST /api/chat", () => {
 
 		expect(response.status).toBe(503);
 	});
+
+	it.each([
+		["local", "ollama"],
+		["mock", "mock"],
+	] as const)(
+		"sends the shared Ollama num_ctx only to Ollama models (%s / %s, plan C11)",
+		async (mode, provider) => {
+			const platform = await mockPlatform();
+			const model = createTextStreamModel("こんにちは。");
+			const entry = getModelEntry(defaultModelFor(mode, provider, "chat"));
+			const expected =
+				provider === "ollama"
+					? { ollama: { options: { num_ctx: entry.contextWindow } } }
+					: undefined;
+			setPlatformForTesting({
+				...platform,
+				gateway: { ...platform.gateway, resolve: async () => ({ model, entry, mode }) },
+			});
+
+			await readChunks(await POST(chatRequest([userMessage("hi")])));
+
+			expect(model.doStreamCalls).toHaveLength(1);
+			expect(model.doStreamCalls[0]?.providerOptions).toEqual(expected);
+		},
+	);
 
 	it("matches the generated SSE fixture used by the E2E specs (Req 1.17)", async () => {
 		// The shared m1-2 scenarios are what the real server answers with in mock mode.
