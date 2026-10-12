@@ -26,7 +26,8 @@ const VERSIONED = String.raw`(?:\d|[-:](?:\d|(?:${VARIANT_WORDS})(?![a-z])))`;
 
 /**
  * Model families detected by the check, kept in sync with the catalog's providers
- * (anthropic, openai, azure, google, ollama; plan C5 / C6) and their embedding models.
+ * (anthropic, openai, azure, google, ollama; plan C5 / C6), their embedding models, and the
+ * rerank models of the catalog (cohere).
  * `pattern` is the regex source that must follow the ID's left boundary.
  */
 export const MODEL_ID_FAMILIES = Object.freeze([
@@ -57,6 +58,13 @@ export const MODEL_ID_FAMILIES = Object.freeze([
 	{ prefix: "nomic-embed-", pattern: "nomic-embed-" },
 	{ prefix: "mxbai-embed-", pattern: "mxbai-embed-" },
 	{ prefix: "snowflake-arctic-embed", pattern: "snowflake-arctic-embed" },
+	// Rerank IDs take one of the published shapes (`rerank-v4.0-pro`, `rerank-multilingual-v3.0`,
+	// `rerank-2.5`, `rerank-lite-1`) and must not follow a hyphen, so names such as
+	// `05-rerank-and-evaluation.md`, `rerank-skipped`, and `stage-rerank-2` stay free.
+	{
+		prefix: "rerank-",
+		pattern: String.raw`(?<!-)rerank-(?:v\d|(?:english|multilingual)-v\d|\d+\.\d|lite-\d)`,
+	},
 ]);
 
 export const MODEL_ID_PREFIXES = Object.freeze(MODEL_ID_FAMILIES.map(({ prefix }) => prefix));

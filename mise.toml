@@ -175,12 +175,12 @@ run = "node scripts/check-model-ids.mjs"
 
 [tasks."check:client-bundle"]
 description = "Build the web app with sentinel secrets and check the client bundle for them"
-env = { AI_RUN_MODE = "mock", NODE_ENV = "production", ANTHROPIC_API_KEY = "changeme-bundle-sentinel-anthropic", TAVILY_API_KEY = "changeme-bundle-sentinel-tavily" }
+env = { AI_RUN_MODE = "mock", NODE_ENV = "production", ANTHROPIC_API_KEY = "changeme-bundle-sentinel-anthropic", TAVILY_API_KEY = "changeme-bundle-sentinel-tavily", COHERE_API_KEY = "changeme-bundle-sentinel-cohere" }
 run = """
 pnpm --filter web exec next build
-node scripts/check-client-bundle.mjs --dir apps/web/.next/static --sentinel changeme-bundle-sentinel-anthropic --sentinel changeme-bundle-sentinel-tavily
+node scripts/check-client-bundle.mjs --dir apps/web/.next/static --sentinel changeme-bundle-sentinel-anthropic --sentinel changeme-bundle-sentinel-tavily --sentinel changeme-bundle-sentinel-cohere
 """
 
 [tasks."check:repo-rules"]
 description = "Validate repository governance rules"
-run = "node scripts/check-repo-rules.mjs --only no-dynamic-eval,actions-pinned,frozen-lockfile,allow-builds-reasoned,no-deprecated-object-api,guarded-agent-only,ai-core-no-ui-deps,no-sensitive-logging,tool-risk-declared"
+run = "node scripts/check-repo-rules.mjs --only no-dynamic-eval,actions-pinned,frozen-lockfile,allow-builds-reasoned,no-deprecated-object-api,guarded-agent-only,ai-core-no-ui-deps,no-sensitive-logging,tool-risk-declared,no-sql-raw"

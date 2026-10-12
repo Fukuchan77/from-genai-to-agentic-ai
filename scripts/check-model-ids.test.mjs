@@ -165,6 +165,7 @@ describe("checkModelIds", () => {
 				"nomic-embed-",
 				"mxbai-embed-",
 				"embeddinggemma",
+				"rerank-",
 			]),
 		);
 		expect(new Set(MODEL_ID_PREFIXES).size).toBe(MODEL_ID_PREFIXES.length);
@@ -189,6 +190,66 @@ describe("checkModelIds", () => {
 			"embeddinggemma:300m",
 			"mxbai-embed-large",
 		]);
+	});
+
+	it("detects rerank model IDs outside the catalog", () => {
+		const root = createRoot();
+		writeFixture(
+			root,
+			"packages/ai-core/src/ports/rerank.ts",
+			[
+				'const cohere = "rerank-v4.0-pro";',
+				'const older = "rerank-multilingual-v3.0";',
+				'const english = "rerank-english-v3.0";',
+				'const voyage = "rerank-2.5";',
+				'const lite = "rerank-lite-1";',
+			].join("\n"),
+		);
+		writeFixture(root, "docs/modules/2-1-rag.md", "Rerank with rerank-v3.5 in production.\n");
+
+		expect(checkModelIds(root).violations.map(({ modelId }) => modelId)).toEqual([
+			"rerank-v3.5",
+			"rerank-v4.0-pro",
+			"rerank-multilingual-v3.0",
+			"rerank-english-v3.0",
+			"rerank-2.5",
+			"rerank-lite-1",
+		]);
+	});
+
+	it("does not flag rerank words that are not model IDs", () => {
+		const root = createRoot();
+		writeFixture(
+			root,
+			"packages/ai-core/src/rag/names.ts",
+			[
+				'import { createLexicalRerank } from "./lexical-rerank";',
+				'const file = "05-rerank-and-evaluation.md";',
+				'const status = "rerank-skipped";',
+				'const part = "data-rerank-result";',
+				'const kind = "rerank";',
+				'const stage = "stage-rerank-2";',
+				'const data = "data-rerank-1";',
+				'const first = "rerank-1st-stage";',
+				'const count = "rerank-3-candidates";',
+				'const tips = "rerank-pro-tips";',
+				'const fast = "rerank-fast-path";',
+			].join("\n"),
+		);
+		writeFixture(root, "docs/modules/2-1-rag.md", "See 05-rerank-and-evaluation.md for rerank.\n");
+
+		expect(checkModelIds(root)).toEqual({ scannedFiles: 2, violations: [] });
+	});
+
+	it("allows the catalog's rerank ID and accepts the real repository", () => {
+		const root = createRoot();
+		writeFixture(root, "packages/ai-core/src/models/catalog.ts", 'const id = "rerank-v4.0-pro";\n');
+		writeFixture(root, "apps/web/clean.ts", "export {};\n");
+
+		expect(checkModelIds(root)).toEqual({ scannedFiles: 1, violations: [] });
+		const repository = checkModelIds(join(import.meta.dirname, ".."));
+		expect(repository.violations).toEqual([]);
+		expect(repository.scannedFiles).toBeGreaterThan(0);
 	});
 
 	it("requires a model-ID shape for families that are also common words", () => {

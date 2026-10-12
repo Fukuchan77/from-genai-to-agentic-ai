@@ -543,6 +543,27 @@ describe("W2/W3 rule evasions (M-13)", () => {
 		);
 	});
 
+	test.each([
+		[
+			"the Experimental_Agent alias",
+			'import { Experimental_Agent } from "ai";\nconst agent = new Experimental_Agent({});\n',
+		],
+		[
+			"an aliased Experimental_Agent",
+			'import { Experimental_Agent as A } from "ai";\nconst agent = new A({});\n',
+		],
+		[
+			"a namespace Experimental_Agent",
+			'import * as ai from "ai";\nconst agent = new ai.Experimental_Agent({});\n',
+		],
+	])("guarded-agent-only detects %s", async (_name, source) => {
+		await expectViolation(
+			"guarded-agent-only",
+			{ "packages/feature/src/agent.ts": source },
+			"ToolLoopAgent must be guarded",
+		);
+	});
+
 	test("tool-risk-declared checks calls with type arguments", async () => {
 		await expectViolation(
 			"tool-risk-declared",
@@ -633,6 +654,240 @@ describe("generated directories (L-4)", () => {
 		});
 		await expect(run(root, "no-dynamic-eval")).resolves.toMatchObject({
 			reports: [{ fileCount: 1, violations: [] }],
+		});
+	});
+});
+
+describe("workflow-no-agent-loop", () => {
+	test.each([
+		["a relative import", 'import { createGuardedAgent } from "../agents";\n'],
+		["a relative sub-path import", 'import { x } from "../agents/guarded-agent";\n'],
+		["a deeper relative import", 'export { x } from "../../agents/index";\n'],
+		[
+			"a package sub-path import",
+			'import { createGuardedAgent } from "@platform/ai-core/agents";\n',
+		],
+		[
+			"a package sub-path import below the entry",
+			'import { x } from "@platform/ai-core/agents/guarded";\n',
+		],
+		["a type-only import", 'import type { GuardedAgent } from "../agents";\n'],
+		["a side-effect import", 'import "../agents";\n'],
+		["a dynamic import", 'const agents = await import("../agents");\n'],
+		[
+			"the ToolLoopAgent identifier",
+			'import { ToolLoopAgent } from "ai";\nexport { ToolLoopAgent };\n',
+		],
+		[
+			"a namespace use of ToolLoopAgent",
+			'import * as ai from "ai";\nconst agent = ai.ToolLoopAgent;\n',
+		],
+		["ToolLoopAgent as a type", "let agent: ToolLoopAgent | undefined;\n"],
+		[
+			"the Experimental_Agent alias of ai",
+			'import { Experimental_Agent } from "ai";\nnew Experimental_Agent({});\n',
+		],
+		[
+			"a string-indexed ai namespace",
+			'import * as ai from "ai";\nconst agent = new ai["ToolLoopAgent"]({});\n',
+		],
+		[
+			"a string-indexed Experimental_Agent",
+			'import * as ai from "ai";\nconst agent = ai["Experimental_Agent"];\n',
+		],
+	])("detects %s in workflows/", async (_name, source) => {
+		await expectViolation(
+			"workflow-no-agent-loop",
+			{ "packages/ai-core/src/workflows/routing.ts": source },
+			"workflows and patterns must not use the agent loop",
+		);
+	});
+
+	test("also scans patterns/ and reports the file and line", async () => {
+		const root = await fixture({
+			"packages/ai-core/src/patterns/reflection.ts": 'export {};\nimport { x } from "../agents";\n',
+		});
+		const error = await run(root, "workflow-no-agent-loop").catch((rejection) => rejection);
+		expect(error.result.reports[0].violations).toEqual([
+			expect.stringContaining("packages/ai-core/src/patterns/reflection.ts:2:"),
+		]);
+	});
+
+	test("scans test files in those directories as well", async () => {
+		await expectViolation(
+			"workflow-no-agent-loop",
+			{ "packages/ai-core/src/workflows/routing.test.ts": "new ToolLoopAgent({});\n" },
+			"workflows and patterns must not use the agent loop",
+		);
+	});
+
+	test("allows the agent loop in patterns/role-based-cooperation.ts only", async () => {
+		const root = await fixture({
+			"packages/ai-core/src/patterns/role-based-cooperation.ts":
+				'import { createGuardedAgent } from "../agents";\nexport { createGuardedAgent };\n',
+			"packages/ai-core/src/patterns/reflection.ts": "export {};\n",
+			"packages/ai-core/src/workflows/routing.ts": "export {};\n",
+		});
+		await expect(run(root, "workflow-no-agent-loop")).resolves.toMatchObject({
+			reports: [{ rule: "workflow-no-agent-loop", fileCount: 3, violations: [] }],
+		});
+		await expectViolation(
+			"workflow-no-agent-loop",
+			{
+				"packages/ai-core/src/workflows/role-based-cooperation.ts": 'import "../agents";\n',
+			},
+			"workflows and patterns must not use the agent loop",
+		);
+	});
+
+	test("does not flag other agent-named modules, strings, or comments", async () => {
+		const root = await fixture({
+			"packages/ai-core/src/workflows/safe.ts": [
+				'import { agentLabel } from "./agents-label";',
+				'import { chat } from "../models";',
+				'const note = "../agents ToolLoopAgent";',
+				"// import { x } from '../agents'; ToolLoopAgent",
+				"export { agentLabel, chat, note };",
+			].join("\n"),
+		});
+		await expect(run(root, "workflow-no-agent-loop")).resolves.toMatchObject({
+			reports: [{ fileCount: 1, violations: [] }],
+		});
+	});
+
+	test("fails when neither directory has a file to scan", async () => {
+		const root = await fixture({ "packages/ai-core/src/rag/a.ts": "export {};\n" });
+		await expect(run(root, "workflow-no-agent-loop")).rejects.toThrow(
+			"workflow-no-agent-loop: scanned 0 FILES",
+		);
+	});
+
+	test("prints the scanned FILE count", async () => {
+		const root = await fixture({
+			"packages/ai-core/src/workflows/a.ts": "export {};\n",
+			"packages/ai-core/src/patterns/b.ts": "export {};\n",
+			"packages/ai-core/src/rag/c.ts": "export {};\n",
+		});
+		const result = await run(root, "workflow-no-agent-loop");
+		expect(result.output).toBe("workflow-no-agent-loop: scanned 2 FILES");
+	});
+});
+
+describe("no-sql-raw", () => {
+	test.each([
+		["a direct call", 'import { sql } from "drizzle-orm";\nsql.raw(text);\n'],
+		["an optional call", 'import { sql } from "drizzle-orm";\nsql?.raw(text);\n'],
+		["an aliased import", 'import { sql as q } from "drizzle-orm";\nq.raw(text);\n'],
+		["a namespace import", 'import * as d from "drizzle-orm";\nd.sql.raw(text);\n'],
+		["a bracket access", 'import { sql } from "drizzle-orm";\nsql["raw"](text);\n'],
+		["an optional bracket access", 'sql?.["raw"](text);\n'],
+		["a parenthesized object", "(sql).raw(text);\n"],
+		["a destructured raw", "const { raw } = sql;\nraw(text);\n"],
+		["a destructured raw with a rename", "const { raw: unsafeText, other } = sql;\n"],
+		["an alias of sql", "const builder = sql;\nbuilder.raw(text);\n"],
+		[
+			"an alias of the drizzle namespace sql",
+			'import * as d from "drizzle-orm";\nconst s = d.sql;\ns.raw(text);\n',
+		],
+		["postgres.js unsafe", 'const rows = await sql.unsafe("select " + text);\n'],
+		[
+			"a call inside a template placeholder",
+			// Built in pieces so the source file itself holds no `${` inside a plain string.
+			`const query = sql\`select $${"{"}sql.raw(column)}\`;\n`,
+		],
+	])("detects %s", async (_name, source) => {
+		await expectViolation(
+			"no-sql-raw",
+			{ "packages/ai-core/src/rag/store.ts": source },
+			"is forbidden",
+		);
+	});
+
+	test("allows sql.raw in rag/db/migrate.ts only", async () => {
+		const root = await fixture({
+			"packages/ai-core/src/rag/db/migrate.ts": "sql.raw(statement);\n",
+			"packages/ai-core/src/rag/store.ts": "export {};\n",
+		});
+		await expect(run(root, "no-sql-raw")).resolves.toMatchObject({
+			reports: [{ rule: "no-sql-raw", fileCount: 2, violations: [] }],
+		});
+		await expectViolation(
+			"no-sql-raw",
+			{ "packages/ai-core/src/rag/db/other.ts": "sql.raw(statement);\n" },
+			"sql.raw is forbidden",
+		);
+	});
+
+	test("does not flag String.raw, other raw members, strings, or comments", async () => {
+		const root = await fixture({
+			"packages/ai-core/src/rag/safe.ts": [
+				"const path = String.raw`a\\b`;",
+				"const raw = response.raw;",
+				"const note = 'sql.raw(x)';",
+				"// sql.raw(x)",
+				"export { path, raw, note };",
+			].join("\n"),
+		});
+		await expect(run(root, "no-sql-raw")).resolves.toMatchObject({
+			reports: [{ fileCount: 1, violations: [] }],
+		});
+	});
+
+	test("does not flag raw or unsafe on objects that are not sql", async () => {
+		const root = await fixture({
+			"packages/ai-core/src/rag/other.ts": [
+				"const { raw } = response;",
+				"const { unsafe: flag } = options;",
+				"const alias = response;",
+				"alias.raw(x);",
+				"policy.unsafe(x);",
+				'import { raw as rawText } from "./text";',
+				"export { raw, flag, rawText };",
+			].join("\n"),
+		});
+		await expect(run(root, "no-sql-raw")).resolves.toMatchObject({
+			reports: [{ fileCount: 1, violations: [] }],
+		});
+	});
+
+	test("reports the file and line of the violation", async () => {
+		const root = await fixture({
+			"packages/ai-core/src/rag/store.ts": "export {};\nsql.raw(x);\n",
+		});
+		const error = await run(root, "no-sql-raw").catch((rejection) => rejection);
+		expect(error.result.reports[0].violations).toEqual([
+			"packages/ai-core/src/rag/store.ts:2: sql.raw is forbidden",
+		]);
+	});
+
+	test("scans only ai-core source files", async () => {
+		const root = await fixture({
+			"packages/ai-core/src/rag/a.ts": "export {};\n",
+			"apps/web/lib/b.ts": "sql.raw(x);\n",
+			"packages/ai-core/fixtures/c.ts": "sql.raw(x);\n",
+		});
+		await expect(run(root, "no-sql-raw")).resolves.toMatchObject({
+			reports: [{ fileCount: 1, violations: [] }],
+		});
+	});
+
+	test("fails when ai-core has no source to scan", async () => {
+		const root = await fixture({ "README.md": "empty\n" });
+		await expect(run(root, "no-sql-raw")).rejects.toThrow("no-sql-raw: scanned 0 FILES");
+	});
+});
+
+describe("rule registry", () => {
+	test("lists eleven rules including the two M2 rules", async () => {
+		const { RULE_NAMES } = await import("./check-repo-rules.mjs");
+		expect(RULE_NAMES).toHaveLength(11);
+		expect(RULE_NAMES).toEqual(expect.arrayContaining(["workflow-no-agent-loop", "no-sql-raw"]));
+		expect(new Set(RULE_NAMES).size).toBe(RULE_NAMES.length);
+	});
+
+	test("accepts the new rules in --only", () => {
+		expect(parseArgs(["--only", "no-sql-raw,workflow-no-agent-loop"])).toEqual({
+			only: ["no-sql-raw", "workflow-no-agent-loop"],
 		});
 	});
 });
