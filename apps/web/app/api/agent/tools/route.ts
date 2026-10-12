@@ -15,9 +15,9 @@ import {
 	getPersona,
 } from "@platform/ai-core/chat";
 import { PlatformError } from "@platform/ai-core/errors";
-import { createAgentUIStreamResponse, type UIMessage } from "ai";
+import { createAgentUIStreamResponse, type UIMessage, validateUIMessages } from "ai";
 import { GuardError, toErrorResponse, toStreamErrorText } from "@/lib/server/errors";
-import { createConversationPolicy, guardRequest } from "@/lib/server/guard";
+import { createConversationPolicy, guardRequest, isImageMediaType } from "@/lib/server/guard";
 import { getPlatform } from "@/lib/server/platform";
 
 // POST /api/agent/tools (plan C16, Req 5.1, 5.4-5.6, 6.2-6.4): guard -> resolve a tool-capable
@@ -33,11 +33,7 @@ function newestMessageHasImage(messages: readonly { role: string; parts: readonl
 		newest?.role === "user" &&
 		newest.parts.some((part) => {
 			const { type, mediaType } = part as { type?: unknown; mediaType?: unknown };
-			return (
-				type === "file" &&
-				typeof mediaType === "string" &&
-				(mediaType === "image" || mediaType.startsWith("image/"))
-			);
+			return type === "file" && typeof mediaType === "string" && isImageMediaType(mediaType);
 		})
 	);
 }
@@ -96,35 +92,41 @@ export async function POST(request: Request): Promise<Response> {
 			signal: request.signal,
 		});
 
-		const uiMessages = adaptHistoryForModel(body.messages as unknown as UIMessage[], entry);
+		// Only the SDK's validation of the history is reported as invalid-request (its message echoes
+		// part content, so a fixed text is sent); any other failure keeps its own handling.
+		let validated: UIMessage[];
 		try {
-			return await createAgentUIStreamResponse({
-				agent: agent.agent,
-				uiMessages,
-				abortSignal: agent.abortSignal,
-				sendReasoning: true,
-				messageMetadata: ({ part }) => {
-					if (part.type === "start") {
-						return buildResponseMetadata({ entry, persona, disabledTools: disabled });
-					}
-					if (part.type === "finish") {
-						// The guarded agent finalises its summary here, before the metadata is built.
-						return buildResponseMetadata({
-							entry,
-							persona,
-							usage: part.totalUsage,
-							disabledTools: disabled,
-							...agent.messageMetadata({ part }),
-						});
-					}
-					return undefined;
-				},
-				onError: (error) => toStreamError(error, agent.onError(error)),
+			validated = await validateUIMessages<UIMessage>({
+				messages: body.messages,
+				tools: tools as never,
 			});
 		} catch {
-			// The SDK validates the history against the tool schemas; its message echoes part content.
 			throw new PlatformError("invalid-request", INVALID_MESSAGES_MESSAGE);
 		}
+
+		return await createAgentUIStreamResponse({
+			agent: agent.agent,
+			uiMessages: adaptHistoryForModel(validated, entry),
+			abortSignal: agent.abortSignal,
+			sendReasoning: true,
+			messageMetadata: ({ part }) => {
+				if (part.type === "start") {
+					return buildResponseMetadata({ entry, persona, disabledTools: disabled });
+				}
+				if (part.type === "finish") {
+					// The guarded agent finalises its summary here, before the metadata is built.
+					return buildResponseMetadata({
+						entry,
+						persona,
+						usage: part.totalUsage,
+						disabledTools: disabled,
+						...agent.messageMetadata({ part }),
+					});
+				}
+				return undefined;
+			},
+			onError: (error) => toStreamError(error, agent.onError(error)),
+		});
 	} catch (error) {
 		return toErrorResponse(error);
 	}

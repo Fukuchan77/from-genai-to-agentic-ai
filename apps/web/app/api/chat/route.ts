@@ -7,7 +7,7 @@ import {
 import { PlatformError } from "@platform/ai-core/errors";
 import { convertToModelMessages, streamText, type UIMessage, validateUIMessages } from "ai";
 import { GuardError, toErrorResponse, toStreamErrorText } from "@/lib/server/errors";
-import { createConversationPolicy, guardRequest } from "@/lib/server/guard";
+import { createConversationPolicy, guardRequest, isImageMediaType } from "@/lib/server/guard";
 import { getPlatform } from "@/lib/server/platform";
 
 // POST /api/chat (plan C15, Req 3.1-3.11): guard -> resolve model -> adapt history -> stream.
@@ -22,10 +22,7 @@ function newestMessageHasImage(messages: readonly UIMessage[]): boolean {
 	const newest = messages.at(-1);
 	return (
 		newest?.role === "user" &&
-		newest.parts.some(
-			(part) =>
-				part.type === "file" && (part.mediaType === "image" || part.mediaType.startsWith("image/")),
-		)
+		newest.parts.some((part) => part.type === "file" && isImageMediaType(part.mediaType))
 	);
 }
 

@@ -15,6 +15,24 @@ const created = vi.hoisted(() => ({
 	options: [] as { signal: AbortSignal }[],
 }));
 
+// The history adapter is wrapped so a test can observe its inputs or make it fail.
+const adapter = vi.hoisted(() => ({
+	calls: 0,
+	failWith: undefined as Error | undefined,
+}));
+
+vi.mock("@platform/ai-core/chat", async (importOriginal) => {
+	const original = await importOriginal<typeof import("@platform/ai-core/chat")>();
+	return {
+		...original,
+		adaptHistoryForModel: ((...args: Parameters<typeof original.adaptHistoryForModel>) => {
+			adapter.calls += 1;
+			if (adapter.failWith) throw adapter.failWith;
+			return original.adaptHistoryForModel(...args);
+		}) as typeof original.adaptHistoryForModel,
+	};
+});
+
 vi.mock("@platform/ai-core/agents", async (importOriginal) => {
 	const original = await importOriginal<typeof import("@platform/ai-core/agents")>();
 	return {
@@ -67,6 +85,8 @@ afterEach(() => {
 	setPlatformForTesting(undefined);
 	created.agents.length = 0;
 	created.options.length = 0;
+	adapter.calls = 0;
+	adapter.failWith = undefined;
 });
 
 function agentRequest(
@@ -97,6 +117,35 @@ async function readChunks(response: Response): Promise<Chunk[]> {
 		.map((event) => event.trim())
 		.filter((event) => event.startsWith("data: ") && event !== "data: [DONE]")
 		.map((event) => JSON.parse(event.slice("data: ".length)) as Chunk);
+}
+
+/** A history whose tool part does not match the weather tool's schema. */
+function invalidToolPartRequest(): Request {
+	return new Request("http://localhost/api/agent/tools", {
+		method: "POST",
+		headers: { "content-type": "application/json" },
+		body: JSON.stringify({
+			id: "agent-1",
+			messages: [
+				{
+					id: "a1",
+					role: "assistant",
+					parts: [
+						{
+							type: "tool-weather",
+							toolCallId: "c1",
+							state: "output-available",
+							input: { city: 42, leak: "TOP-SECRET" },
+							output: {},
+						},
+					],
+				},
+				{ id: "u1", role: "user", parts: [{ type: "text", text: "続けて" }] },
+			],
+			modelId: MOCK_MODEL,
+			personaId: "general-assistant",
+		}),
+	});
 }
 
 /** A fetcher whose request never settles on its own; it reports when a request has started. */
@@ -319,37 +368,34 @@ describe("POST /api/agent/tools", () => {
 
 	it("rejects tool parts that do not match the tool schemas with a fixed message", async () => {
 		setPlatformForTesting(await mockPlatform());
-		const request = new Request("http://localhost/api/agent/tools", {
-			method: "POST",
-			headers: { "content-type": "application/json" },
-			body: JSON.stringify({
-				id: "agent-1",
-				messages: [
-					{
-						id: "a1",
-						role: "assistant",
-						parts: [
-							{
-								type: "tool-weather",
-								toolCallId: "c1",
-								state: "output-available",
-								input: { city: 42, leak: "TOP-SECRET" },
-								output: {},
-							},
-						],
-					},
-					{ id: "u1", role: "user", parts: [{ type: "text", text: "続けて" }] },
-				],
-				modelId: MOCK_MODEL,
-				personaId: "general-assistant",
-			}),
-		});
 
-		const response = await POST(request);
+		const response = await POST(invalidToolPartRequest());
 
 		expect(response.status).toBe(400);
 		const text = await response.text();
 		expect(text).toContain("invalid-request");
+		expect(text).not.toContain("TOP-SECRET");
+	});
+
+	it("does not adapt a history that failed validation", async () => {
+		setPlatformForTesting(await mockPlatform());
+
+		const response = await POST(invalidToolPartRequest());
+
+		expect(response.status).toBe(400);
+		expect(adapter.calls).toBe(0);
+	});
+
+	it("reports a failure after validation as unexpected, not as invalid-request", async () => {
+		setPlatformForTesting(await mockPlatform());
+		adapter.failWith = new Error("adapter exploded: TOP-SECRET");
+
+		const response = await POST(agentRequest("東京の天気を教えて"));
+
+		expect(response.status).toBe(500);
+		const text = await response.text();
+		expect(text).toContain("unexpected");
+		expect(text).not.toContain("invalid-request");
 		expect(text).not.toContain("TOP-SECRET");
 	});
 });

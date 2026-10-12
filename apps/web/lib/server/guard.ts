@@ -176,6 +176,11 @@ function codePointLength(value: string): number {
 	return count;
 }
 
+/** Same predicate as `adaptHistoryForModel` and the routes: a bare `image` counts too. */
+export function isImageMediaType(mediaType: string): boolean {
+	return mediaType === "image" || mediaType.startsWith("image/");
+}
+
 /** Decoded size of a `data:` URL, or undefined for any other URL. Percent-encoded data counts as-is. */
 function dataUrlBytes(url: string): number | undefined {
 	if (!url.startsWith("data:")) return undefined;
@@ -209,12 +214,16 @@ export function inspectConversation(
 			if (message.role === "user" && part.type === "text" && typeof fields.text === "string") {
 				characters += codePointLength(fields.text);
 			}
-			if (
-				part.type === "file" &&
-				typeof fields.mediaType === "string" &&
-				fields.mediaType.startsWith("image/")
-			) {
-				images.push(typeof fields.url === "string" ? fields.url : "");
+			if (part.type === "file") {
+				// Every file must be a data URL: only those can be measured here, and a remote URL
+				// would be fetched by the SDK on the server's behalf.
+				const url = typeof fields.url === "string" ? fields.url : "";
+				if (!url.startsWith("data:")) {
+					return invalidRequest("添付ファイルはデータ URL で送信してください。");
+				}
+				if (typeof fields.mediaType === "string" && isImageMediaType(fields.mediaType)) {
+					images.push(url);
+				}
 			}
 		}
 		if (characters > limits.maxTextCharacters) {

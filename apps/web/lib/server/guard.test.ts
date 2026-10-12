@@ -355,6 +355,26 @@ describe("guardRequest: content limits (400 limit-exceeded)", () => {
 		);
 	});
 
+	it("counts a bare `image` media type as an image", async () => {
+		const bare = { type: "file", mediaType: "image", url: "data:image/png;base64,AA==" };
+
+		const result = await run(post(body([message("user", Array(5).fill(bare))])));
+
+		await expectRejected(result, "limit-exceeded", 400);
+	});
+
+	it("rejects a non-image file whose URL is not a data URL", async () => {
+		const remote = {
+			type: "file",
+			mediaType: "application/pdf",
+			url: "https://example.com/a.pdf",
+		};
+
+		const result = await run(post(body([message("user", [remote])])));
+
+		await expectRejected(result, "invalid-request", 400);
+	});
+
 	it("does not count non-image files as images", async () => {
 		const pdf = {
 			type: "file",
