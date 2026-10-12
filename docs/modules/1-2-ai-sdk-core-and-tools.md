@@ -362,4 +362,4 @@ Streamlit では、入力のたびにスクリプトが先頭から再実行さ�
 - **タグ**: `module/1-2`（ローカルの注釈付きタグ。指すコミットは `7cc27cc`）
 - **含まれるもの**: ChatCore（`chat/`）、GuardedAgent（`agents/`）、AciToolkit（`aci/`）、チャット機能（`/chat`）、ツールエージェント機能（`/agent`）、リクエストガード。`next dev` / `next start` で `mock` モードで動きます。Turbopack でのビルド修正、Tailwind、フォーカスのアウトライン色の修正を済ませた後に付けたタグで、最初の機能コミット（`64e3a96`、`27112ee`）は Turbopack ではビルドできません。
 - **含まれないもの**: E2E テスト（`apps/web/e2e`）と、この解説を含む `docs/`（plan C22）。同じコミットに、要約機能（`module/1-3`）や Playwright の設定が入っていますが、このモジュールの一部ではありません。
-- **公開状況**: このタグは、まだリモートへ push していません（`git ls-remote --tags` で確認）。push は、人間の承認後に行うタスク 29.4 で行います。
+- **公開状況**: タスク 29.4 で、人間の承認後にリモートへ push しました（2026-10-12。`git ls-remote --tags origin 'module/*'` で確認できます）。

@@ -3719,3 +3719,5 @@ GREEN 後、7件すべての新規テストについて独立した deliberate b
 - `mise run gate` → exit 0: Biome 251 files、Model ID check 234 files、typecheck（root 10、ai-core 110、eval-suite 3、web 94 files）、root 297、ai-core 702 skipped 4、eval-suite 3 skipped 1、web 305、`Docs: 4 module documents, 51 test references verified`。
 - 未完了: 29.5 の実 Ollama での `load_duration` 確認、29.3（PR 上の CI）、29.4（タグ。`module/1-1` は `f671813` に作り直す予定のまま未作成）。
 - 続き（同日）: PR #35 を作成し、CI の9チェックすべて成功 → 29.3 を完了にした。29.4 は `module/1-1` を `f671813` にローカルで作り直し、2つのタグのコミットで gate が exit 0 であることを worktree で確認した（`/tmp` のシンボリックリンクでは `count-tsc` が0件になるため実パスで実行）。タグの push は PR のマージ後。29.5 の実 Ollama の確認は、ユーザーの承認後も権限設定で Ollama への接続が拒否されたため未実施。
+- 29.5 の実 Ollama 確認（同日、権限の解除後）: 要約・チャット・エージェント相当の要求を `num_ctx` 32,768 で交互に9回送り、`load_duration` 7〜40 ms（100 ms 未満）、常駐 10.6 GB のままで再読み込みなし。29.5 を完了にした。試行錯誤: zsh の `echo "$r"` が応答中の `\n` を展開して jq が失敗した → `printf '%s'` に直した。PR #35 はマージコミット `52b77a6` で `main` に入り、`f671813`・`7cc27cc` は `origin/main` に含まれる。
+- 29.4（同日、人間の承認後）: 3つの完成タグを push し、リモートで `f671813`・`7cc27cc` を指すことを確認した。解説 1-1〜1-3 のタグの節の「未 push」の記述を改めた。これで大タスク 29 と W5 の全サブタスクが完了した。

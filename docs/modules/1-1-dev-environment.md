@@ -314,6 +314,6 @@ Streamlit で作ったアプリを移植するとき、手が止まりやすい�
 
 ## 完成時点のタグ
 
-- **タグ**: `module/1-1`（注釈付きタグ）。付与はタスク 14.6 で、ModelGateway の完成（14.1〜14.5）までを統合したコミットに対して行います。push はタスク 29.4 で、人間の承認後に行います。本書の執筆時点では、このタグはローカルの `git tag --list 'module/*'` に表示されないことがあります（作業環境が使い捨てのため、29.4 で同じ内容から付け直します）。タグが手元にある場合は、`git diff module/1-1` で自分の作業と比べられます。
+- **タグ**: `module/1-1`（注釈付きタグ）。付与はタスク 14.6 で、ModelGateway の完成（14.1〜14.5）までを統合したコミットに対して行います。指すコミットは `f671813` で、タスク 29.4 で人間の承認後にリモートへ push しました（2026-10-12）。`git fetch --tags` で取得し、`git diff module/1-1` で自分の作業と比べられます。
 - **含まれるもの**: モジュール 1-1 のリファレンス実装（Req 1、2）。モノレポ基盤（pnpm workspaces、Turborepo、mise タスク、Biome、TypeScript の設定）、品質ゲートとゲート補助スクリプト、ネットワーク遮断とゲートレポーター、`compose.yaml`、`@platform/ai-core` の `config`・`models`（モデルカタログとゲートウェイ）・`mock`・`ports`・`testing`、`@platform/eval-suite` と `apps/web` の土台。
 - **含まれないもの**: E2E テスト（`apps/web/e2e`、Playwright）と、本書を含む解説（`docs/`）は含まれません（plan C22）。後続のモジュールの実装（1-2 のストリーミングチャットと `ToolLoopAgent`、1-3 の要約パイプライン、Route Handler と各ページ）も含まれません。
