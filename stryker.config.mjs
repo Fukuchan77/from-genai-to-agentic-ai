@@ -19,6 +19,9 @@ export default {
 		"packages/ai-core/src/rag/ingest/markdown.ts",
 		"packages/ai-core/src/rag/ingest/chunk.ts",
 		"packages/ai-core/src/rag/ingest/search-text.ts",
+		"packages/ai-core/src/rag/retrieve/rrf.ts",
+		"packages/ai-core/src/rag/answer/citations.ts",
+		"packages/ai-core/src/rag/eval/recall.ts",
 	],
 	vitest: {
 		configFile: "packages/ai-core/vitest.config.ts",
