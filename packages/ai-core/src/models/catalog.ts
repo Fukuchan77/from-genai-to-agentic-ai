@@ -15,7 +15,10 @@ import type {
 // OpenAI: https://developers.openai.com/api/docs/models and /api/docs/pricing
 // Azure: https://learn.microsoft.com/azure/foundry/foundry-models/concepts/models-sold-directly-by-azure
 // Google: https://ai.google.dev/gemini-api/docs/models and /docs/pricing
-// Ollama: https://ollama.com/library/qwen3:8b and /library/embeddinggemma:300m
+// Ollama: `ollama show <model>` on 2026-10-12 (capabilities; native context length 131,072 for the
+// three chat models, 2,048 for nomic-embed-text). The chat models' `contextWindow` is the context
+// the app runs them with (sent as `num_ctx`), not the native maximum: 131,072 tokens of KV cache
+// is too much memory for a learner's machine.
 export const MODEL_CATALOG = {
 	"claude-sonnet-4-6": {
 		id: "claude-sonnet-4-6",
@@ -129,8 +132,8 @@ export const MODEL_CATALOG = {
 		pricing: { inputPerMTok: 0.15, outputPerMTok: 0, currency: "USD" },
 		displayName: "Gemini Embedding 001",
 	},
-	"qwen3:8b": {
-		id: "qwen3:8b",
+	"granite4.2:latest": {
+		id: "granite4.2:latest",
 		provider: "ollama",
 		modes: ["local"],
 		capabilities: {
@@ -141,13 +144,47 @@ export const MODEL_CATALOG = {
 			embedding: false,
 			promptCache: "none",
 		},
-		contextWindow: 40_960,
+		contextWindow: 32_768,
 		maxOutputTokens: 8_192,
 		pricing: null,
-		displayName: "Qwen 3 8B (Ollama)",
+		displayName: "Granite 4.2 (Ollama)",
 	},
-	"embeddinggemma:300m": {
-		id: "embeddinggemma:300m",
+	"gemma4:e2b": {
+		id: "gemma4:e2b",
+		provider: "ollama",
+		modes: ["local"],
+		capabilities: {
+			tools: true,
+			structuredOutput: true,
+			reasoning: true,
+			imageInput: true,
+			embedding: false,
+			promptCache: "none",
+		},
+		contextWindow: 32_768,
+		maxOutputTokens: 8_192,
+		pricing: null,
+		displayName: "Gemma 4 E2B (Ollama)",
+	},
+	"llama3.2:latest": {
+		id: "llama3.2:latest",
+		provider: "ollama",
+		modes: ["local"],
+		capabilities: {
+			tools: true,
+			structuredOutput: true,
+			reasoning: false,
+			imageInput: false,
+			embedding: false,
+			promptCache: "none",
+		},
+		contextWindow: 32_768,
+		maxOutputTokens: 8_192,
+		pricing: null,
+		displayName: "Llama 3.2 (Ollama)",
+	},
+	"nomic-embed-text:latest": {
+		id: "nomic-embed-text:latest",
 		provider: "ollama",
 		modes: ["local"],
 		capabilities: {
@@ -161,7 +198,7 @@ export const MODEL_CATALOG = {
 		contextWindow: 2_048,
 		maxOutputTokens: 0,
 		pricing: null,
-		displayName: "EmbeddingGemma 300M (Ollama)",
+		displayName: "Nomic Embed Text (Ollama)",
 	},
 	"mock:general-v1": {
 		id: "mock:general-v1",
@@ -212,10 +249,10 @@ export const MODEL_DEFAULTS = {
 	},
 	local: {
 		ollama: {
-			chat: "qwen3:8b",
-			structured: "qwen3:8b",
-			embedding: "embeddinggemma:300m",
-			judge: "qwen3:8b",
+			chat: "granite4.2:latest",
+			structured: "granite4.2:latest",
+			embedding: "nomic-embed-text:latest",
+			judge: "gemma4:e2b",
 		},
 	},
 	live: {
