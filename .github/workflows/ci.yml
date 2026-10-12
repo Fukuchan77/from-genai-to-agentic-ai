@@ -96,21 +96,73 @@ jobs:
       - name: Run mutation tests
         run: mise run test:mutation
 
+  e2e:
+    name: E2E (${{ matrix.browser }})
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, firefox, webkit]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install mise and toolchain
+        uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
+        with:
+          version: 2026.9.14
+          install: true
+          cache: true
+      - name: Install dependencies
+        run: mise run setup
+      - name: Install browser
+        run: pnpm --filter web exec playwright install --with-deps ${{ matrix.browser }}
+      - name: Run E2E tests
+        env:
+          E2E_PROJECTS: ${{ matrix.browser }}
+        run: mise run test:e2e
+
+  client-bundle:
+    name: Client bundle check
+    timeout-minutes: 15
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install mise and toolchain
+        uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
+        with:
+          version: 2026.9.14
+          install: true
+          cache: true
+      - name: Install dependencies
+        run: mise run setup
+      - name: Build and scan the client bundle with sentinel secrets
+        run: mise run check:client-bundle
+
   ci-status:
     name: CI status
     timeout-minutes: 5
     if: ${{ always() }}
-    needs: [gate, secret-scan, audit, mutation]
+    needs: [gate, e2e, secret-scan, audit, mutation, client-bundle]
     runs-on: ubuntu-latest
     steps:
       - name: Require all CI jobs to succeed
         env:
           GATE_RESULT: ${{ needs.gate.result }}
+          E2E_RESULT: ${{ needs.e2e.result }}
           SECRET_SCAN_RESULT: ${{ needs.secret-scan.result }}
           AUDIT_RESULT: ${{ needs.audit.result }}
           MUTATION_RESULT: ${{ needs.mutation.result }}
+          CLIENT_BUNDLE_RESULT: ${{ needs.client-bundle.result }}
         run: |
           test "$GATE_RESULT" = "success"
+          test "$E2E_RESULT" = "success"
           test "$SECRET_SCAN_RESULT" = "success"
           test "$AUDIT_RESULT" = "success"
           test "$MUTATION_RESULT" = "success"
+          test "$CLIENT_BUNDLE_RESULT" = "success"

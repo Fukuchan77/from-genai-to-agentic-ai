@@ -65,9 +65,13 @@ run = "pnpm --filter web exec vitest run app/api -t 'generated SSE fixture'"
 
 [tasks."test:e2e"]
 description = "Run Playwright tests in Chromium, Firefox, and WebKit"
+# CI runs one engine per matrix job through E2E_PROJECTS (comma-separated); the default is all three.
 run = """
-pnpm --filter web exec playwright test
-node scripts/gate/assert-playwright-nonempty.mjs --projects chromium,firefox,webkit < apps/web/test-results/results.json
+projects="${E2E_PROJECTS:-chromium,firefox,webkit}"
+flags=""
+for project in $(echo "$projects" | tr ',' ' '); do flags="$flags --project=$project"; done
+pnpm --filter web exec playwright test $flags
+node scripts/gate/assert-playwright-nonempty.mjs --projects "$projects" < apps/web/test-results/results.json
 """
 
 [tasks."test:mutation"]
@@ -87,6 +91,7 @@ run = [
   "mise run check:repo-rules",
   "mise run typecheck",
   "mise run test",
+  "mise run docs:check",
 ]
 
 [tasks."gate:repeat"]
