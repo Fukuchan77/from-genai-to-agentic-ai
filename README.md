@@ -60,7 +60,7 @@ commitしてください。miseを有効にしていないGitクライアント�
 `.env.local`（リポジトリのルート）は、`mise run dev`・`mise run record`（Nodeの`--env-file-if-exists`で
 読み込んでから`next dev`を起動する。Next.js自身は`apps/web`の中のenvファイルしか読まない）と
 `mise run services:*`（Composeへ`--env-file .env.local`として渡す）が読みます。シェルで設定済みの変数は
-ファイルの値より優先されます。Next.jsと違い、値の中の`${VAR}`は展開されません。ファイルがなければComposeは`compose.yaml`の既定値で起動します。既定の秘密値は
+ファイルの値より優先されます。`mise run dev`では、Next.jsと違い値の中の`${VAR}`は展開されません。ファイルがなければComposeは`compose.yaml`の既定値で起動します。既定の秘密値は
 ローカル専用なので、共有環境では`.env.local`に独自の値を設定してください。
 
 ## 主なコマンド

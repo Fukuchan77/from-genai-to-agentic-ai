@@ -531,7 +531,7 @@ erDiagram
 | `audit` | `pnpm audit --audit-level=moderate` | 不要 | 要 |
 | `outdated` | `pnpm outdated` + `scripts/check-updates.mjs` | 不要 | 要 |
 | `services:up` / `services:up:db` / `services:down` | `docker compose --profile db --profile trace up -d` など | 要 | 要（イメージ取得） |
-| `dev` | ルートの `.env.local` を Node の `--env-file-if-exists` で読み込んでから `pnpm --filter web dev`（`next dev`）を起動する。Next.js は `apps/web` の env ファイルしか読まないため（2026-10-12、W5 敵対的レビューの HIGH への対応）。シェルで設定済みの変数が優先され、`${VAR}` は展開しない | 不要 | 実行モードによる |
+| `dev` | ルートの `.env.local` を Node の `--env-file-if-exists` で読み込んでから `pnpm --filter web dev`（`next dev`）を起動する。Next.js は `apps/web` の env ファイルしか読まないため（2026-10-12、W5 敵対的レビューの HIGH への対応。人間の承認済み）。シェルで設定済みの変数が優先され、`${VAR}` は展開しない | 不要 | 実行モードによる |
 | `record` | `AI_RECORD=1` を付けて `dev` を実行し、Web アプリを `local` または `live` で起動し、学習者が操作した LLM・外部サービスの呼び出しを `packages/ai-core/fixtures/cassettes/` に録画する（`AI_RUN_MODE=mock` なら起動を拒否する） | 任意 | 要 |
 
 ### 後続 spec への契約（M1 が固定するもの）
