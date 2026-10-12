@@ -82,13 +82,13 @@
 | W2 ai-core の土台 | 6 ai-core scaffold、7 eval-suite scaffold、8 apps/web scaffold、9 ModelCatalog、10 Ports、11 testing ヘルパ、12 PlatformConfig、13 MockRuntime | 完了（2026-09-30。敵対的レビュー3ラウンド、2026-10-04 の検証で追加の修正） | [tasks-comp-w2.md](tasks-comp-w2.md) |
 | W3 ai-core の機能 | 14 ModelGateway、15 AciToolkit、16 GuardedAgent、17 ChatCore、18 SummaryPipeline、19 評価スイート | 完了（2026-10-07。敵対的レビュー3ラウンド） | [tasks-comp-w3.md](tasks-comp-w3.md) |
 | W4 apps/web | 21 RequestGuard、20 AppShell、22 ChatFeature、23 ToolAgentFeature、24 SummaryFeature | 完了（2026-10-12。敵対的レビュー1ラウンド。実サーバーの確認で Turbopack・Tailwind・フォーカス指示子の欠陥を追加で修正） | [tasks-comp-w4.md](tasks-comp-w4.md) |
-| W5 E2E・解説・最終統合 | 25 E2E 生成・検査スクリプト、26 E2E 基盤、27 E2E シナリオ、28 解説ドキュメント、29 最終統合と NFR 検証 | 着手（現在の波。25.1〜25.3、26.1、27.1、27.3 は W4 の実サーバー確認で先行して完了） | 本ファイル |
+| W5 E2E・解説・最終統合 | 25 E2E 生成・検査スクリプト、26 E2E 基盤、27 E2E シナリオ、28 解説ドキュメント、29 最終統合と NFR 検証 | 全タスク完了（2026-10-12。完成タグ3つを push 済み）。波の移行（`tasks-comp-w5.md`）は未実施 | 本ファイル |
 
 波の順序は依存関係で決まる。W4 は 21 を 20 より先に行う（20.1 がレート制限器を組み立てるため）。
 
 モジュールの完成タグ（Req 7.11、plan C22）は、そのモジュールのリファレンス実装が完了した波の中で付ける:
 `module/1-1` は 14.6（W3）、`module/1-2` は 23.5（W4）、`module/1-3` は 24.4（W4）。29.4 は3つのタグの検証と
-push だけを行う。`module/1-2`・`module/1-3` は 2026-10-12 にローカルで付けた（`7cc27cc`）。`module/1-1` のタグはまだない。
+push だけを行う。`module/1-2`・`module/1-3` は 2026-10-12 に `7cc27cc` に付け、`module/1-1` は 29.4 で `f671813` に作り直した。3つとも 29.4 で push 済み。
 
 ## gate と CI の段階的な結線
 
@@ -325,7 +325,7 @@ _Traces:_ REQ-001, REQ-007, C1, C2, C22
   _Requirements:_ 1.16, 1.18
   _Traces:_ REQ-001, C1
   _Verify:_ `test:mutation` の閾値（70）を満たすことと、CI の全ジョブの成功を PR 上で確認する
-- [ ] 29.4 完成タグの検証と push: 14.6・23.5・24.4 で付けた `module/1-1`・`module/1-2`・`module/1-3`（1-0 は解説のみのためタグなし。plan C22）を検証し、人間の承認後に push する。タグは付け直さない（完成時点を示すため）。各解説（28.5〜28.7）の「完成時点のタグ」の節が、タグ名と、そのタグに含まれない後続の成果（E2E、解説）を示していることも確認する
+- [x] 29.4 完成タグの検証と push: 14.6・23.5・24.4 で付けた `module/1-1`・`module/1-2`・`module/1-3`（1-0 は解説のみのためタグなし。plan C22）を検証し、人間の承認後に push する。タグは付け直さない（完成時点を示すため）。各解説（28.5〜28.7）の「完成時点のタグ」の節が、タグ名と、そのタグに含まれない後続の成果（E2E、解説）を示していることも確認する
   _Boundary:_ git タグのみ（ファイルの変更なし）
   _Depends:_ 14.6, 23.5, 24.4, 29.2, 29.3
   _Requirements:_ 7.11
@@ -348,4 +348,4 @@ _Traces:_ REQ-001, REQ-007, C1, C2, C22
 - 29.5（2026-10-12）: `models/runtime-options.ts` に `ollamaRuntimeOptions(entry)` を置き（`@platform/ai-core/models` から公開）、`summarize/pipeline.ts` の `runtimeOptions` を置き換えた。`GuardedAgentOptions.providerOptions` を加えて `ToolLoopAgent` の settings へ渡し、チャットの Route は `streamText` に、エージェントの Route は `createGuardedAgent` に `...ollamaRuntimeOptions(entry)` を渡す。テスト: `runtime-options.test.ts`（カタログの全 Ollama エントリで `num_ctx` = `contextWindow`、他は `{}`）、`guarded-agent.test.ts`（3ステップすべての LLM 呼び出しに `providerOptions` が届く／渡さなければ付かない）、両 Route の `it.each`（Ollama の既定のチャットモデルなら `num_ctx` = `contextWindow`、mock なら `providerOptions` なし）。RED: モジュール未作成と `expected undefined to deeply equal { ollama: … }`。PROVE: `ollamaRuntimeOptions` を常に `{}` にすると新規4件・要約の既存2件・両 Route の Ollama ケースが失敗、`providerOptions` の受け渡しを消すとエージェントのテストとエージェント Route が失敗した（復元済み）。Route のテストはモデル ID リテラルの規則（`check:model-ids`）に従い `defaultModelFor("local", "ollama", "chat")` で引く。実 Ollama の確認（2026-10-12、Ollama 0.40.3、granite4.2:latest、未読み込みの状態から）: 要約（`format: json`）・チャット・エージェント（ツール定義付き）を、3経路の実装と同じ `num_ctx` 32,768 で交互に3往復（9回）呼んだ。`load_duration` は 7〜40 ms ですべて 100 ms 未満で、`ollama ps` は `ctx=32768`・10.6 GB のまま入れ替わらなかった（29.2 のそろえない場合は毎回 2.6〜5.6 秒）。1回あたり 2.7〜4.8 秒は生成時間（`eval_duration`）。これで 29.5 を完了にした。
 - 29.3（ローカル分）: `mise run secret-scan` → `162 commits scanned … no leaks found`、`mise run audit` → `No known vulnerabilities found`、`mise run test:mutation` → `Final mutation score of 91.60 … break threshold 70`（exit 0）。**未完了**: CI の全ジョブ成功の PR 上での確認。
 - 29.3（CI。2026-10-12）: PR #35（`feat/w4-apps-web` → `main`）で9チェックすべて成功: `CI status`、`Secret scan`、`Quality gate`、`Dependency audit`、`Mutation tests`、`E2E (chromium)`、`E2E (firefox)`、`E2E (webkit)`、`Client bundle check`。`ci-status` の `needs` は plan C2 の6ジョブ（29.1）。これで 29.3 を完了にした。
-- 29.4（検証のみ。2026-10-12）: `module/1-1` を W3 の記録どおり `f671813`（`origin/main` に含まれる）に注釈付きタグとして作り直した（ローカル）。`git tag --list 'module/*'` は3つ（`module/1-1` → `f671813`、`module/1-2`・`module/1-3` → `7cc27cc`）。各タグのコミットを `git worktree add --detach` で取り出し、`mise run setup` の後に `TURBO_FORCE=true mise run gate` → どちらも exit 0（1-1: root 257、ai-core 150 skipped 4。1-2/1-3: root 257、ai-core 687 skipped 4、eval-suite 3 skipped 1、web 298）。注意: worktree を `/tmp`（`/private/tmp` へのシンボリックリンク）に置くと、tsc が実パスを出すため `count-tsc` が0件と数えて `typecheck` が失敗する。実パスから実行すること。解説 1-1〜1-3 の「完成時点のタグ」の節は、タグ名と、含まれない後続の成果（E2E、`docs/`）を示している。**未完了**: タグの push。`7cc27cc` が `main` に入る（PR #35 をマージコミットで取り込む）までは push しない。
+- 29.4（検証のみ。2026-10-12）: `module/1-1` を W3 の記録どおり `f671813`（`origin/main` に含まれる）に注釈付きタグとして作り直した（ローカル）。`git tag --list 'module/*'` は3つ（`module/1-1` → `f671813`、`module/1-2`・`module/1-3` → `7cc27cc`）。各タグのコミットを `git worktree add --detach` で取り出し、`mise run setup` の後に `TURBO_FORCE=true mise run gate` → どちらも exit 0（1-1: root 257、ai-core 150 skipped 4。1-2/1-3: root 257、ai-core 687 skipped 4、eval-suite 3 skipped 1、web 298）。注意: worktree を `/tmp`（`/private/tmp` へのシンボリックリンク）に置くと、tsc が実パスを出すため `count-tsc` が0件と数えて `typecheck` が失敗する。実パスから実行すること。解説 1-1〜1-3 の「完成時点のタグ」の節は、タグ名と、含まれない後続の成果（E2E、`docs/`）を示している。push（2026-10-12、人間の承認後）: PR #35 がマージコミット `52b77a6` で `main` に入り、`f671813`・`7cc27cc` が `origin/main` に含まれることを確認してから `git push origin module/1-1 module/1-2 module/1-3`。`git ls-remote --tags origin 'module/*'` で3つが同じコミットを指すことを確認した。解説 1-1〜1-3 の「完成時点のタグ」の節の「未 push」の記述を、push 済みに改めた。これで 29.4 を完了にした。
