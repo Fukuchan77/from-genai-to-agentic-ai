@@ -4,8 +4,8 @@
 版の実測値と ADR の詳細は `specs/001-agentic-ai-platform/research.md`、コンポーネントの契約は
 同 `plan.md` にある。
 
-> **状態（2026-09-27）**: 実装前。001 の要件と設計（plan.md）は承認済み、タスクは未生成。以下の
-> 「計画」は承認済みの plan.md / research.md の決定であり、実装で実測した値（版など）が変われば更新する。
+> **状態（2026-10-12）**: M1（001）の W1〜W5 は実装済み。以下は承認済みの plan.md / research.md の
+> 決定と実測値で、実装で版などが変われば更新する。
 
 ## Stack
 
@@ -73,9 +73,12 @@
 - **Non-vacuous gate**: 各段で実行件数・走査件数が 0 なら失敗。スキップは合格に数えない。
 - **Language**: spec・解説・UI 文言は日本語。コード、識別子、コメント、コミット、PR は英語。
 - **Commands**: `mise run <task>` → `pnpm exec <cmd>` の順。
-- **Gate command**: `mise run gate`。現在の W1 構成は `lint`（Biome の非空走査を含む）→
-  `check:model-ids` → `check:repo-rules`（W1 の4規則）→ `test`。Docker・API キー・ネットワーク不要。
-  後続の波で `typecheck` と残りの規則を加え、W5 で `docs:check` を結線する。
+- **Gate command**: `mise run gate`。`lint`（Biome の非空走査を含む）→ `check:model-ids` →
+  `check:repo-rules`（9規則）→ `typecheck`（tsc の対象ファイル数を検査）→ `test`（`mock`）→
+  `docs:check`。Docker・API キー・ネットワーク不要。後続 milestone で規則や段を足すときも「0 件なら失敗」を保つ。
+- **CI**: `gate`、`secret-scan`、`audit`、`mutation`、`client-bundle`、`e2e`（3エンジン）の各ジョブを
+  `ci-status` が集約する。E2E は `mise run test:e2e`、SSE fixture は Route Handler から
+  `mise run e2e:fixtures` で生成する。
 - **Dev command**: `mise run dev`（ルートの `.env.local` を読み込んで `next dev` を起動する。Next.js は `apps/web` の env ファイルしか読まない）。
 - **Preflight command**: なし。`local` の可否は Vitest の global setup が Ollama の到達性で判定する。
 

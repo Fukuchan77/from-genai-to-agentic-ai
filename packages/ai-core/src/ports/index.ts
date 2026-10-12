@@ -6,6 +6,16 @@ export {
 	type HttpResponse,
 } from "./http";
 export {
+	type CohereRerankOptions,
+	createCohereRerank,
+	type RerankCandidate,
+	type RerankOptions,
+	type RerankProvider,
+	type RerankScore,
+	type RerankSdkCall,
+	type RerankSdkRequest,
+} from "./rerank";
+export {
 	createYoutubeiTranscriptSource,
 	type TranscriptFailureReason,
 	type TranscriptResult,

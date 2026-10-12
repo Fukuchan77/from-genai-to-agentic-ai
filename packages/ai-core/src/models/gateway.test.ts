@@ -2,6 +2,7 @@ import { embed, generateText } from "ai";
 import { describe, expect, it, vi } from "vitest";
 import { type EnvSource, loadPlatformConfig } from "../config";
 import { PlatformError } from "../errors";
+import { M2_1_SAMPLE_QUESTIONS, M2_CORPUS_TEXT } from "../mock";
 import type { RecordingStore } from "../mock/recording";
 import { createFakeClock } from "../ports/clock";
 import { createTextStreamModel } from "../testing/mock-models";
@@ -73,6 +74,34 @@ describe("createModelGateway resolve (mock)", () => {
 		expect(resolved.model.modelId).toBe("mock:chat");
 		const result = await generateText({ model: resolved.model, prompt: "こんにちは" });
 		expect(result.text).toContain("モックモード");
+	});
+
+	it("resolves the judge purpose to a catalog model different from the chat model (CL-5)", async () => {
+		const gateway = createModelGateway({ config: configFor({}) });
+
+		const judge = await gateway.resolve({ purpose: "judge" });
+		const chat = await gateway.resolve({ purpose: "chat" });
+
+		expect(judge.entry.id).toBe(defaultModelFor("mock", "mock", "judge"));
+		expect(judge.entry.id).not.toBe(chat.entry.id);
+		expect(gateway.availableModels().map((option) => option.id)).toContain(judge.entry.id);
+	});
+
+	it("includes the M2 scenarios by default while the M1 scenarios still match", async () => {
+		const gateway = createModelGateway({ config: configFor({}) });
+
+		const chat = await gateway.resolve({ purpose: "chat" });
+		const structured = await gateway.resolve({ purpose: "structured" });
+
+		// M1 (summary and chat) still answers ...
+		const m1 = await generateText({ model: chat.model, prompt: "こんにちは" });
+		expect(m1.text).toContain("モックモード");
+		// ... and the M2 HyDE scenario answers a question it was written for.
+		const m2 = await generateText({
+			model: structured.model,
+			prompt: M2_1_SAMPLE_QUESTIONS.hyde,
+		});
+		expect(m2.text).toBe(M2_CORPUS_TEXT.whyRag);
 	});
 
 	it("binds a separate mock model per purpose and uses injected scenarios", async () => {
@@ -539,6 +568,37 @@ describe("createModelGateway recording", () => {
 			request: { purpose: "judge" },
 		});
 		expect(JSON.stringify(cassette)).not.toContain(FAKE_ANTHROPIC_KEY);
+	});
+
+	it("redacts the Cohere key from recorded cassettes like the other credentials", async () => {
+		const store = recordingStore();
+		const cohereKey = "test-cohere-key";
+		const providers = {
+			...spyProviders(),
+			anthropic: () => ({
+				languageModel: () => createTextStreamModel(`echo ${cohereKey}`),
+				embeddingModel: (): never => {
+					throw new Error("unused");
+				},
+			}),
+		};
+		const gateway = createModelGateway({
+			config: configFor({
+				AI_TEST_RUN_MODE: "live",
+				ANTHROPIC_API_KEY: FAKE_ANTHROPIC_KEY,
+				COHERE_API_KEY: cohereKey,
+				AI_RECORD: "1",
+			}),
+			providers,
+			clock: createFakeClock(Date.UTC(2026, 9, 7)),
+			recording: { store },
+		});
+
+		const { model } = await gateway.resolve({ purpose: "chat" });
+		await generateText({ model, prompt: "hi" });
+
+		expect(store.put).toHaveBeenCalledTimes(1);
+		expect(JSON.stringify(store.put.mock.calls[0]?.[1])).not.toContain(cohereKey);
 	});
 
 	it("records local calls with recordedWith local", async () => {

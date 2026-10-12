@@ -160,3 +160,7 @@ reports/
 # Temporary cassette recordings
 packages/ai-core/fixtures/cassettes/.tmp/
 packages/ai-core/fixtures/cassettes/**/*.tmp
+
+# Learner documents for the RAG knowledge base (only the README is tracked)
+knowledge/*
+!knowledge/README.md

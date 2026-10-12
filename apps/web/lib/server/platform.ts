@@ -5,6 +5,7 @@ import type { IncomingMessage, RequestOptions } from "node:http";
 import http from "node:http";
 import https from "node:https";
 import { isIP, type LookupFunction } from "node:net";
+import path from "node:path";
 import { pipeline, type Readable, type Transform } from "node:stream";
 import { createBrotliDecompress, createUnzip } from "node:zlib";
 import type { ToolRuntime } from "@platform/ai-core/aci";
@@ -17,6 +18,7 @@ import {
 	createFixtureTranscriptSource,
 	createFixtureWebSearch,
 	createRedactor,
+	DEFAULT_FIXTURE_DIRECTORY,
 	type FixtureSet,
 	loadFixtureSet,
 	type RecordingStore,
@@ -29,18 +31,28 @@ import {
 	createModelGateway,
 	type GatewayDeps,
 	type ModelGateway,
+	ModelSelectionError,
+	type ResolvedEmbeddingModel,
 	type RunMode,
 } from "@platform/ai-core/models";
 import {
 	type Clock,
+	createCohereRerank,
 	createNodeHttpFetcher,
 	createTavilySearch,
 	createYoutubeiTranscriptSource,
 	type HttpFetcher,
+	type RerankProvider,
 	systemClock,
 	type TranscriptSource,
 	type WebSearchProvider,
 } from "@platform/ai-core/ports";
+import {
+	createLexicalRerank,
+	createPgliteDatabase,
+	createPostgresDatabase,
+	type RagDatabaseHandle,
+} from "@platform/ai-core/rag";
 import {
 	ARTICLE_FETCH_LIMITS,
 	isBlockedHostname,
@@ -283,15 +295,30 @@ export interface PlatformPorts {
 	readonly webSearch: WebSearchProvider;
 }
 
+/** The ports plus the Rerank provider, which has no recorded fixture (plan ADR-7). */
+export interface PlatformPortSet extends PlatformPorts {
+	/** `undefined` when no Cohere key is set outside `mock`: the Rerank stage is skipped (Req 2.6). */
+	readonly rerank: RerankProvider | undefined;
+}
+
+/** Server-side directories the ingest API reads from (Req 1.1); callers pass file names only. */
+export interface KnowledgeRoots {
+	/** The learner's documents (`knowledge/` at the repository root). */
+	readonly knowledge: string;
+	/** The Japanese evaluation corpus under `packages/ai-core/fixtures/rag/corpus`. */
+	readonly evalCorpus: string;
+}
+
 export interface Platform {
 	readonly mode: RunMode;
 	readonly config: PlatformConfig;
 	readonly gateway: ModelGateway;
 	readonly clock: Clock;
-	readonly ports: PlatformPorts;
+	readonly ports: PlatformPortSet;
 	/** One window shared by every LLM-calling route. */
 	readonly limiter: RateLimiter;
 	readonly toolRuntime: ToolRuntime;
+	readonly knowledgeRoots: KnowledgeRoots;
 }
 
 export interface PlatformOptions {
@@ -308,6 +335,8 @@ export interface PlatformOptions {
 	readonly recording?: { readonly store?: RecordingStore; readonly redactor?: Redactor };
 	/** Gateway test seams (scenarios, cassettes, provider factories, Ollama fetcher). */
 	readonly gateway?: Pick<GatewayDeps, "mock" | "providers" | "fetcher">;
+	/** Replaces the ingest directories (tests); defaults to {@link defaultKnowledgeRoots}. */
+	readonly knowledgeRoots?: KnowledgeRoots;
 }
 
 const unavailableWebSearch: WebSearchProvider = {
@@ -325,6 +354,7 @@ function credentialSecrets(credentials: PlatformConfig["credentials"]) {
 		AZURE_API_KEY: credentials.azure?.apiKey,
 		GOOGLE_GENERATIVE_AI_API_KEY: credentials.google,
 		TAVILY_API_KEY: credentials.tavily,
+		COHERE_API_KEY: credentials.cohere,
 	};
 }
 
@@ -343,12 +373,27 @@ function createProductionPorts(
 	};
 }
 
+/** `mock` always uses the pseudo implementation; elsewhere a Cohere key decides (CL-6). */
+function createRerank(config: PlatformConfig): RerankProvider | undefined {
+	if (config.mode === "mock") return createLexicalRerank();
+	return config.credentials.cohere ? createCohereRerank(config.credentials.cohere) : undefined;
+}
+
 function recordedPorts(ports: PlatformPorts, store: RecordingStore, redactor: Redactor) {
 	return {
 		http: recordingHttpFetcher(ports.http, store, redactor),
 		transcript: recordingTranscriptSource(ports.transcript, store, redactor),
 		webSearch: recordingWebSearch(ports.webSearch, store, redactor),
 	} satisfies PlatformPorts;
+}
+
+// Derived from the fixtures directory (`packages/ai-core/fixtures`), not from the working
+// directory: `next dev` runs in `apps/web`, other tools run at the repository root.
+function defaultKnowledgeRoots(): KnowledgeRoots {
+	return {
+		knowledge: path.resolve(DEFAULT_FIXTURE_DIRECTORY, "..", "..", "..", "knowledge"),
+		evalCorpus: path.join(DEFAULT_FIXTURE_DIRECTORY, "rag", "corpus"),
+	};
 }
 
 /** Builds a platform from the environment. Throws `ConfigError` when the configuration is invalid. */
@@ -382,13 +427,14 @@ export async function createPlatform(options: PlatformOptions = {}): Promise<Pla
 			...options.gateway,
 		}),
 		clock,
-		ports,
+		ports: { ...ports, rerank: createRerank(config) },
 		limiter: createRateLimiter({
 			limit: config.rateLimit.maxRequests,
 			windowMs: config.rateLimit.windowSeconds * 1000,
 			clock,
 		}),
 		toolRuntime: { clock, toolTimeoutMs: config.agent.toolTimeoutMs },
+		knowledgeRoots: options.knowledgeRoots ?? defaultKnowledgeRoots(),
 	};
 }
 
@@ -417,4 +463,82 @@ export function setPlatformForTesting(platform: Platform | undefined): void {
 	const holder = globalThis as PlatformHolder;
 	if (platform) holder[INSTANCE_KEY] = Promise.resolve(platform);
 	else delete holder[INSTANCE_KEY];
+}
+
+// --- Knowledge base (plan C13) ---
+
+export interface KnowledgeBaseFactories {
+	readonly pglite: typeof createPgliteDatabase;
+	readonly postgres: typeof createPostgresDatabase;
+}
+
+const DEFAULT_KNOWLEDGE_BASE_FACTORIES: KnowledgeBaseFactories = {
+	pglite: createPgliteDatabase,
+	postgres: createPostgresDatabase,
+};
+
+/**
+ * `mock` uses in-memory PGlite (gone with the process; ingesting again rebuilds it), `local` and
+ * `live` use the Compose Postgres. An unreachable Postgres is `provider-unavailable`.
+ */
+export function createKnowledgeBase(
+	platform: Pick<Platform, "mode" | "config">,
+	factories: KnowledgeBaseFactories = DEFAULT_KNOWLEDGE_BASE_FACTORIES,
+): Promise<RagDatabaseHandle> {
+	return platform.mode === "mock"
+		? factories.pglite()
+		: factories.postgres(platform.config.database);
+}
+
+const KNOWLEDGE_BASE_KEY = Symbol.for("from-genai-to-agentic-ai.knowledge-base");
+
+type KnowledgeBaseHolder = { [KNOWLEDGE_BASE_KEY]?: Promise<RagDatabaseHandle> };
+
+/**
+ * The shared database handle, created on first use (concurrent callers share one creation) and
+ * kept on `globalThis` for the same dev-reload reason as the platform. A failed creation is not
+ * cached, so starting Postgres and retrying works without restarting the server.
+ */
+export function getKnowledgeBase(
+	factories: KnowledgeBaseFactories = DEFAULT_KNOWLEDGE_BASE_FACTORIES,
+): Promise<RagDatabaseHandle> {
+	const holder = globalThis as KnowledgeBaseHolder;
+	const existing = holder[KNOWLEDGE_BASE_KEY];
+	if (existing) return existing;
+	const created = getPlatform().then((platform) => createKnowledgeBase(platform, factories));
+	holder[KNOWLEDGE_BASE_KEY] = created;
+	created.catch(() => {
+		if (holder[KNOWLEDGE_BASE_KEY] === created) delete holder[KNOWLEDGE_BASE_KEY];
+	});
+	return created;
+}
+
+/** Test seam: installs `handle` as the shared database, or clears it with `undefined`. */
+export function setKnowledgeBaseForTesting(handle: RagDatabaseHandle | undefined): void {
+	const holder = globalThis as KnowledgeBaseHolder;
+	if (handle) holder[KNOWLEDGE_BASE_KEY] = Promise.resolve(handle);
+	else delete holder[KNOWLEDGE_BASE_KEY];
+}
+
+// --- Embedding model (plan C13) ---
+
+/**
+ * The embedding model every RAG route embeds with. A provider without a default (the `live`
+ * Anthropic one) fails with the setting to change; the gateway's own message does not name it.
+ */
+export async function resolveKnowledgeEmbedding(
+	platform: Pick<Platform, "gateway">,
+): Promise<ResolvedEmbeddingModel> {
+	try {
+		return await platform.gateway.resolveEmbedding();
+	} catch (error) {
+		if (error instanceof ModelSelectionError && error.reason === "no-default") {
+			throw new PlatformError(
+				"invalid-request",
+				"埋め込みモデルが設定されていません。環境変数 AI_MODEL_EMBEDDING に埋め込みモデルを指定し、対応するプロバイダの API キーも設定してください。",
+				{ ...error.details },
+			);
+		}
+		throw error;
+	}
 }

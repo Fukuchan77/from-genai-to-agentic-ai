@@ -37,6 +37,7 @@ export const envSchema = z.object({
 	AZURE_RESOURCE_NAME: optionalString,
 	GOOGLE_GENERATIVE_AI_API_KEY: optionalString,
 	TAVILY_API_KEY: optionalString,
+	COHERE_API_KEY: optionalString,
 	AGENT_MAX_STEPS: positiveInteger(DEFAULT_AGENT_LIMITS.maxSteps),
 	AGENT_MAX_TOTAL_TOKENS: positiveInteger(DEFAULT_AGENT_LIMITS.maxTotalTokens),
 	AGENT_MAX_DURATION_MS: positiveInteger(DEFAULT_AGENT_LIMITS.maxDurationMs),

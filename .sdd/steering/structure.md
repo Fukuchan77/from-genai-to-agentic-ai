@@ -3,8 +3,8 @@
 コードの配置パターンを記す永続知識。ファイルツリーの列挙ではなく、パターンと例を書く。
 全ファイルの計画は `specs/001-agentic-ai-platform/plan.md` の File Structure Plan にある。
 
-> **状態（2026-09-27）**: 実装前。現在のリポジトリにあるのは `specs/` と設定ファイルだけで、
-> 以下の `apps/`・`packages/` 等は承認済みの plan.md の計画で、まだ作られていない。
+> **状態（2026-10-12）**: M1 の `apps/web`・`packages/ai-core`・`packages/eval-suite`・`tooling/`・
+> `scripts/`・`docs/` は実装済み。M2 以降の領域（`workflows/`、`harness/` など）は未作成。
 
 ## Organization Pattern
 
@@ -31,7 +31,7 @@ packages/ai-core/src/agents/
 | `packages/ai-core/` | `@platform/ai-core`。`src/<area>/`（`config`、`models`、`mock`、`agents`、`aci`、`ports`、`chat`、`summarize`、`testing` …）と `fixtures/`（シナリオ・カセット・外部サービスの fixture） |
 | `packages/eval-suite/` | `@platform/eval-suite`。`tests/capability/` と `tests/regression/`（本体は M4） |
 | `tooling/vitest/` | テスト基盤（ネットワーク遮断、`local` 判定、件数を検査するレポーター） |
-| `scripts/` | リポジトリ規約の検査（`check-*.mjs`）と gate の補助（`scripts/gate/`） |
+| `scripts/` | リポジトリ規約の検査（`check-*.mjs`、各々に隣の `.test.mjs`）、gate の補助（`scripts/gate/`）、E2E 用 SSE fixture 生成（`scripts/e2e/`）、共有ヘルパ（`scripts/lib/`） |
 | `docs/` | 日本語の解説。`modules/<id>-<slug>.md`、`phases/phase-N.md`、`modules/_template.md` |
 | `infra/`、`compose.yaml` | ローカル依存サービス（Compose のプロファイル `db` / `trace`） |
 | `specs/` | milestone 単位の spec（`00N-<name>/`）と、カリキュラムの確定版（`curriculum/`） |
@@ -85,6 +85,9 @@ packages/ai-core/src/agents/
   `createGuardedAgent` の `observers` に渡す（`guarded-agent.ts` を直接改変しない）
 - 新しいモデル → `packages/ai-core/src/models/catalog.ts` だけ
 - `mock` の応答 → `packages/ai-core/fixtures/`（`scenarios/`、`cassettes/`、`http/`、`transcripts/`、`web-search/`）
+- 新しい画面 → `apps/web/app/<name>/page.tsx` と `apps/web/components/<name>/`（色はテーマトークン経由。
+  コントラストはルートのテストが検査する）。E2E は `apps/web/e2e/<name>.spec.ts`、API 応答の差し替えは
+  `e2e/support/mock-api.ts`
 - 評価 → `packages/eval-suite/tests/{capability,regression}/`
 - リポジトリ規約の機械検査 → `scripts/check-repo-rules.mjs` に規則を追加（走査件数 0 なら失敗）
 - 解説 → `docs/modules/`（`_template.md` の必須節に従い、チェックリストはテストを参照する）

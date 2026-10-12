@@ -23,6 +23,11 @@ describe("FEATURE_REQUIREMENTS", () => {
 		}
 	});
 
+	it("requires COHERE_API_KEY for the rerank feature", () => {
+		expect(FEATURE_REQUIREMENTS.rerank).toEqual(["COHERE_API_KEY"]);
+		expect(FEATURE_IDS).toContain("rerank");
+	});
+
 	it("keeps feature and required-variable types closed", () => {
 		expect(FEATURE_IDS).toContain("web-search");
 		expectTypeOf<FeatureId>().toEqualTypeOf<(typeof FEATURE_IDS)[number]>();

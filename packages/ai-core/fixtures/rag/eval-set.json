@@ -1,0 +1,196 @@
+{
+	"questions": [
+		{
+			"id": "q01-rag-definition",
+			"question": "RAG とは何ですか。",
+			"goldChunkIds": ["3e40e887390d058b"],
+			"referenceAnswer": "質問する前に外部の文書から関連する部分を検索し、その内容を根拠として回答を生成する方式（検索拡張生成）。モデルが学習時に覚えた知識だけに頼らず、手元の文書を根拠にできる。"
+		},
+		{
+			"id": "q02-latest-info",
+			"question": "モデルを再学習しないで、社内の最新の規程に基づいて答えさせるにはどうすればよいですか。",
+			"goldChunkIds": ["661d1fe1edd58f34"],
+			"referenceAnswer": "検索した文書を質問と一緒にモデルへ渡す。モデルの知識は学習時点で固定されているため、再学習せずに最新の情報を扱う最も手軽な方法である。根拠の文書を示せるので出典も確かめられる。"
+		},
+		{
+			"id": "q03-update-index",
+			"question": "文書が更新されたとき、インデックスはどう扱いますか。",
+			"goldChunkIds": ["dbaafe033fb1fd9d"],
+			"referenceAnswer": "取り込みは文書が更新されたときにだけ実行すればよい。同じ文書を取り込み直すときは、その文書のチャンクをまとめて入れ替える。"
+		},
+		{
+			"id": "q04-show-evidence",
+			"question": "回答の根拠にしたチャンクを利用者に示すにはどうしますか。",
+			"goldChunkIds": ["3a3f4a014c4a3aab"],
+			"referenceAnswer": "取り出したチャンクを質問と一緒にモデルへ渡して根拠だけで回答させ、回答にどのチャンクを根拠にしたかを示す脚注を付ける。"
+		},
+		{
+			"id": "q05-rag-limit",
+			"question": "検索が外れるとどんな問題が起きますか。",
+			"goldChunkIds": ["50ea1c301bfe227e"],
+			"referenceAnswer": "根拠のない文書を元にモデルが回答してしまう。検索の質が回答の質の上限を決めるため、分割・検索手法・再順位付けの工夫が要る。根拠が無ければ該当なしと返す設計も重要。"
+		},
+		{
+			"id": "q06-heading-boundary",
+			"question": "チャンクが複数の見出しにまたがってはいけないのはなぜですか。",
+			"goldChunkIds": ["7ab2a68d33276545"],
+			"referenceAnswer": "別の話題が一つのチャンクに混ざり、埋め込みが曖昧になるため。見出しの境界でセクションに分けてから分割する。"
+		},
+		{
+			"id": "q07-chunk-size",
+			"question": "チャンクが大きすぎる場合と小さすぎる場合に、それぞれ何が困りますか。",
+			"goldChunkIds": ["5443e9dbe935b856"],
+			"referenceAnswer": "大きすぎると複数の話題が混ざって埋め込みの意味が薄まり、検索で上位に来にくく、回答の費用と時間も増える。小さすぎると文の前後関係が失われ、単独では意味が通らなくなる。"
+		},
+		{
+			"id": "q08-tune-chunk-size",
+			"question": "最適なチャンクサイズはどのように決めればよいですか。",
+			"goldChunkIds": ["67c7b6a6166596c6"],
+			"referenceAnswer": "文書の種類と質問の傾向で変わるので決め打ちせず、正解のわかっている質問の集まりで recall を測り、サイズを変えながら比べる。"
+		},
+		{
+			"id": "q09-chunk-id",
+			"question": "チャンクの ID はどのように決まり、なぜ連番ではないのですか。",
+			"goldChunkIds": ["f85f62df56098996"],
+			"referenceAnswer": "文書 ID、見出しの階層、本文から計算した内容ハッシュ。分割の規則を変えたり途中に文章を足したりしても、無関係なチャンクの ID が変わらないようにするため。"
+		},
+		{
+			"id": "q10-embedding",
+			"question": "埋め込みとは何ですか。",
+			"goldChunkIds": ["671c31517fca1214"],
+			"referenceAnswer": "文章を数百から数千次元の数値ベクトルに変換する技術。意味が近い文章が近いベクトルになるため、ベクトルの近さで意味の近さを測れる。"
+		},
+		{
+			"id": "q11-threshold",
+			"question": "類似度の下限（閾値）を設けると、検索結果はどうなりますか。",
+			"goldChunkIds": ["ae4d8687856c50bd"],
+			"referenceAnswer": "類似度の高い順に上位 k 件を取り出したうえで、下限を下回る候補が捨てられる。"
+		},
+		{
+			"id": "q12-japanese-fts",
+			"question": "日本語の文章を全文検索で探せるようにするには、どんな工夫が必要ですか。",
+			"goldChunkIds": ["bfa284eff9468c31"],
+			"referenceAnswer": "PostgreSQL の全文検索は空白区切りが前提なので、取り込み時に本文を分かち書きして語を空白で連結した検索用テキストを別の列に保存する。"
+		},
+		{
+			"id": "q13-query-transform",
+			"question": "質問の言葉と文書の言葉が離れているとき、検索を当てやすくするにはどうしますか。",
+			"goldChunkIds": ["20588fe98d519610", "56a76f13fdbef5f9"],
+			"referenceAnswer": "質問を検索に適した形に変換する。HyDE は仮想の回答を書かせて、それを埋め込んで検索する。Multi-Query は言い方の異なる複数のサブクエリで検索する。"
+		},
+		{
+			"id": "q14-hyde",
+			"question": "仮想の回答を先に作ってから検索する手法は何ですか。その注意点は。",
+			"goldChunkIds": ["56a76f13fdbef5f9"],
+			"referenceAnswer": "HyDE。仮想回答は文書の文体や語彙に近いので類似する文書を見つけやすい。仮想回答は事実とは限らないため、検索のキーにだけ使い、回答の根拠にはしない。"
+		},
+		{
+			"id": "q15-multi-query",
+			"question": "一つの質問から複数の検索を行って取りこぼしを減らす方法を説明してください。",
+			"goldChunkIds": ["89c24f97732a86fc"],
+			"referenceAnswer": "Multi-Query。言い方の異なる三つ程度のサブクエリを作り、並列に検索して統合する。同じ文書が複数のサブクエリで見つかっても統合時に一件にまとめる。"
+		},
+		{
+			"id": "q16-index",
+			"question": "チャンクが増えて総当たりの検索が遅くなったら、どうしますか。",
+			"goldChunkIds": ["62ab4ddca13b637c"],
+			"referenceAnswer": "pgvector の HNSW インデックスを使う。わずかな精度の低下と引き換えに検索を大幅に速くできる。"
+		},
+		{
+			"id": "q17-vector-weakness",
+			"question": "ベクトル検索が苦手なのはどのような探し方ですか。",
+			"goldChunkIds": ["bfa284eff9468c31", "7ef9869d64e6d07a"],
+			"referenceAnswer": "固有名詞や型番のような特定の語を正確に探すこと。語の一致を見る全文検索を併用するハイブリッド検索で補える。"
+		},
+		{
+			"id": "q18-score-scales",
+			"question": "ベクトル検索と全文検索の点数を単純に足してはいけないのはなぜですか。",
+			"goldChunkIds": ["18dc5cf5934c0ebe"],
+			"referenceAnswer": "尺度が違うため（コサイン類似度は -1〜1、全文検索は ts_rank）。足したり重みを付けたりしても尺度の違いが結果に影響し、重みの調整も難しい。"
+		},
+		{
+			"id": "q19-rrf",
+			"question": "Reciprocal Rank Fusion はどのように点数を計算しますか。",
+			"goldChunkIds": ["0290a91fb68981fc"],
+			"referenceAnswer": "点数ではなく順位だけを使う。各検索結果の順位を 1 から数え、候補ごとに 1 ÷（k + 順位）を全検索結果にわたって合計し、合計が大きいほど上位にする。k には 60 がよく使われる。"
+		},
+		{
+			"id": "q20-hybrid-threshold",
+			"question": "ハイブリッド検索でも、全文検索のヒットだけでは該当なしにするのはなぜですか。",
+			"goldChunkIds": ["6f63ca21b4f3c168"],
+			"referenceAnswer": "該当なしの判定はベクトル検索の閾値だけで行う。語が偶然一致しただけの無関係な文書を根拠にして誤った回答を作るのを防ぐため。閾値を通った後は全文検索の候補も統合に加えてよい。"
+		},
+		{
+			"id": "q21-rerank-cost",
+			"question": "再順位付けを検索結果の全件に使わないのはなぜですか。",
+			"goldChunkIds": ["67d90a33a5b92022"],
+			"referenceAnswer": "質問と文書を一緒に入力して精密に判断する分、精度は高いが候補の数だけ推論が必要になる。検索で絞り込んだ上位の候補にだけ使うのが定石。"
+		},
+		{
+			"id": "q22-recall",
+			"question": "recall@k とは何ですか。",
+			"goldChunkIds": ["98474519ba3e5bad"],
+			"referenceAnswer": "正解のチャンクのうち、上位 k 件に含まれていた割合。正解が複数なら見つかった数を正解の総数で割る。"
+		},
+		{
+			"id": "q23-hit-vs-recall",
+			"question": "hit rate@k と recall@k はどう違いますか。",
+			"goldChunkIds": ["dd9b9c6353b08e36", "98474519ba3e5bad"],
+			"referenceAnswer": "hit rate は上位 k 件に正解が一つでも含まれた質問の割合で、質問ごとに当たり外れだけを見る。recall は正解のうち見つかった割合を見る。"
+		},
+		{
+			"id": "q24-faithfulness",
+			"question": "回答が取り出した根拠で裏付けられているかを見る評価軸は何ですか。",
+			"goldChunkIds": ["05947460e2577af4"],
+			"referenceAnswer": "忠実性（faithfulness）。根拠にない内容を付け足していれば低くなる。"
+		},
+		{
+			"id": "q25-relevance",
+			"question": "根拠に忠実でも質問に答えていない回答は、どの評価軸で低くなりますか。",
+			"goldChunkIds": ["8b55b2be5c7ac9b0"],
+			"referenceAnswer": "関連性（relevance）。回答が質問に答えているかを見る軸で、評価の軸ごとに別々のプロンプトで採点し、判断できないときは不明を選べるようにする。"
+		},
+		{
+			"id": "q26-agentic-difference",
+			"question": "Agentic RAG は固定の RAG と何が違いますか。",
+			"goldChunkIds": ["536b42390304b0a3", "18639a88eb46c707"],
+			"referenceAnswer": "固定の RAG は質問のたびに必ず一回検索するのに対し、Agentic RAG は検索の要否・検索語・回数をエージェントが決める。検索はツールとして渡される選択肢の一つになる。"
+		},
+		{
+			"id": "q27-no-search",
+			"question": "挨拶や雑談のような質問で無関係な根拠を渡してしまうのを避けるには、どの方式が向いていますか。",
+			"goldChunkIds": ["18639a88eb46c707"],
+			"referenceAnswer": "Agentic RAG。エージェントが検索不要と判断すれば検索せずに答える。複雑な質問では観点を変えた複数回の検索もできる。"
+		},
+		{
+			"id": "q28-registry",
+			"question": "同じチャンクが二回の検索で見つかったとき、脚注の番号はどうなりますか。",
+			"goldChunkIds": ["80d4b0e4d206b373"],
+			"referenceAnswer": "同じ番号を使い、別のチャンクには別の番号を割り当てる。この対応表が引用レジストリで、実行ごとに作る。"
+		},
+		{
+			"id": "q29-stop-conditions",
+			"question": "エージェントが検索を際限なく繰り返さないようにするにはどうしますか。",
+			"goldChunkIds": ["395abc2db3fce109"],
+			"referenceAnswer": "ステップ数、トークンの合計、実行時間の三つの上限を必ず設け、達したら止めて止まった理由を結果に含める。"
+		},
+		{
+			"id": "q30-out-of-range",
+			"question": "エージェントが書いた脚注の番号が、検索で見つかった範囲を外れていたらどうしますか。",
+			"goldChunkIds": ["af15f36b18e93f22"],
+			"referenceAnswer": "範囲外の番号はモデルの勘違いなので回答から取り除き、除いた番号を記録する。見つかったチャンクは、引用されたかの印を付けてすべて利用者に返す。"
+		},
+		{
+			"id": "q31-hybrid-overview",
+			"question": "ハイブリッド検索の考え方と、点数を統合する難しさ、閾値との関係をまとめてください。",
+			"goldChunkIds": ["7ef9869d64e6d07a", "18dc5cf5934c0ebe", "6f63ca21b4f3c168"],
+			"referenceAnswer": "ベクトル検索の意味の近さと全文検索の語の一致を組み合わせる。尺度が違うため点数は足さず、順位を使う RRF で統合する。該当なしの判定はベクトル検索の閾値だけで行い、全文検索のヒットは寄与させない。"
+		},
+		{
+			"id": "q32-improve-quality",
+			"question": "RAG の検索の質を上げる工夫を、分割・検索の手法・再順位付けの観点で挙げてください。",
+			"goldChunkIds": ["50ea1c301bfe227e", "5443e9dbe935b856", "67d90a33a5b92022"],
+			"referenceAnswer": "検索の質が回答の質の上限を決める。チャンクのサイズを話題のまとまりに合わせて調整し、ハイブリッド検索や HyDE などの検索手法を使い、上位の候補に Rerank をかけて精密に並べ直す。"
+		}
+	]
+}

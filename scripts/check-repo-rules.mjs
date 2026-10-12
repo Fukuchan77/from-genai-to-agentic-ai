@@ -18,6 +18,8 @@ export const RULE_NAMES = [
 	"frozen-lockfile",
 	"allow-builds-reasoned",
 	"no-sensitive-logging",
+	"workflow-no-agent-loop",
+	"no-sql-raw",
 ];
 
 export class RepoRuleError extends Error {
@@ -618,6 +620,79 @@ function miseSetupCommands(source) {
 	return { line: start + 1, commands };
 }
 
+const WORKFLOW_DIRECTORIES = ["packages/ai-core/src/workflows", "packages/ai-core/src/patterns"];
+const AGENT_LOOP_ALLOWED_FILES = new Set([
+	"packages/ai-core/src/patterns/role-based-cooperation.ts",
+]);
+/** Every name `ai` exports for the agent loop class (`Experimental_Agent` is an alias). */
+const AGENT_CLASS_NAMES = new Set(["ToolLoopAgent", "Experimental_Agent"]);
+const AGENTS_PACKAGE_SUBPATH = "@platform/ai-core/agents";
+const SQL_RAW_ALLOWED_FILES = new Set(["packages/ai-core/src/rag/db/migrate.ts"]);
+
+/** True for an import of the agents area: `../agents`, `../../agents/x`, `@platform/ai-core/agents`. */
+function importsAgentsArea(source) {
+	if (source === AGENTS_PACKAGE_SUBPATH || source.startsWith(`${AGENTS_PACKAGE_SUBPATH}/`)) {
+		return true;
+	}
+	return source.startsWith(".") && source.split("/").includes("agents");
+}
+
+/** Members of a `sql` template tag that splice text into a query without parameters. */
+const UNSAFE_SQL_MEMBERS = new Set(["raw", "unsafe"]);
+
+/** Names that stand for drizzle's `sql` (or a postgres.js client): `sql`, imports, and aliases. */
+function sqlNamesIn(tokens) {
+	const names = new Set(["sql"]);
+	for (const imported of moduleImports(tokens)) {
+		if (imported.source !== "drizzle-orm" && !imported.source.startsWith("drizzle-orm/")) continue;
+		for (const { imported: name, local } of imported.bindings?.named ?? []) {
+			if (name === "sql") names.add(local);
+		}
+	}
+	// `const builder = sql;` and `const s = d.sql;` make another name for the same tag.
+	for (let pass = 0; pass < 2; pass += 1) {
+		for (let index = 3; index < tokens.length; index += 1) {
+			const isDeclaration = ["const", "let", "var"].includes(tokens[index - 3]?.value);
+			if (!isDeclaration || tokens[index - 1].value !== "=") continue;
+			const alias = tokens[index - 2].value;
+			const viaNamespace = tokens[index + 1]?.value === "." && tokens[index + 2]?.value === "sql";
+			if (names.has(tokens[index].value) || viaNamespace) names.add(alias);
+		}
+	}
+	return names;
+}
+
+/** Finds `<sql>.raw`, `<sql>?.["raw"]`, `(<sql>).raw`, `const { raw } = <sql>`, and `.unsafe`. */
+function rawSqlUses(tokens) {
+	const names = sqlNamesIn(tokens);
+	const uses = [];
+	const report = (token) => uses.push({ line: token.line, member: token.value });
+	for (let index = 2; index < tokens.length; index += 1) {
+		const token = tokens[index];
+		if (!UNSAFE_SQL_MEMBERS.has(token.value)) continue;
+		const previous = tokens[index - 1].value;
+		const isMemberName = token.type === "identifier" && (previous === "." || previous === "?.");
+		const isIndexedName = token.type === "string" && previous === "[";
+		if (isMemberName || isIndexedName) {
+			// Skip the `?.` of `sql?.["raw"]` and the `)` of `(sql).raw` to find the object.
+			let objectIndex = index - 2;
+			if (isIndexedName && tokens[objectIndex].value === "?.") objectIndex -= 1;
+			if (tokens[objectIndex].value === ")" && tokens[objectIndex - 2]?.value === "(") {
+				objectIndex -= 1;
+			}
+			if (names.has(tokens[objectIndex].value)) report(token);
+			continue;
+		}
+		// Destructuring: `{ raw }`, `{ raw: alias, other }` closed by `} = <sql>`.
+		if (token.type === "identifier" && (previous === "{" || previous === ",")) {
+			let close = index + 1;
+			while (close < tokens.length && tokens[close].value !== "}") close += 1;
+			if (tokens[close + 1]?.value === "=" && names.has(tokens[close + 2]?.value)) report(token);
+		}
+	}
+	return uses;
+}
+
 const runners = {
 	async "no-deprecated-object-api"(root) {
 		const { files, code } = await codeFiles(root, ["apps", "packages"]);
@@ -661,9 +736,9 @@ const runners = {
 			const { tokens } = file;
 			const ai = aiImports(tokens);
 			const constructors = new Set([
-				"ToolLoopAgent",
+				...AGENT_CLASS_NAMES,
 				...ai.named
-					.filter(({ imported }) => imported === "ToolLoopAgent")
+					.filter(({ imported }) => AGENT_CLASS_NAMES.has(imported))
 					.map(({ local }) => local),
 			]);
 			for (let index = 0; index < tokens.length - 1; index += 1) {
@@ -672,7 +747,7 @@ const runners = {
 				const direct = target.type === "identifier" && constructors.has(target.value);
 				const viaNamespace =
 					isMemberAccess(tokens, index + 1, ai.namespaces) &&
-					tokens[index + 3]?.value === "ToolLoopAgent";
+					AGENT_CLASS_NAMES.has(tokens[index + 3]?.value);
 				if (direct || viaNamespace) {
 					violations.push(
 						violation(file.relativePath, tokens[index].line, "ToolLoopAgent must be guarded"),
@@ -1008,6 +1083,52 @@ const runners = {
 						break;
 					}
 				}
+			}
+		}
+		return { fileCount: files.length, violations };
+	},
+
+	async "workflow-no-agent-loop"(root) {
+		const files = (await collectFiles(root, WORKFLOW_DIRECTORIES, new Set([".ts"]))).filter(
+			(file) => WORKFLOW_DIRECTORIES.some((directory) => file.startsWith(`${directory}/`)),
+		);
+		const violations = [];
+		const detail = "workflows and patterns must not use the agent loop";
+		for (const file of await readCodeFiles(root, files)) {
+			if (AGENT_LOOP_ALLOWED_FILES.has(file.relativePath)) continue;
+			const lines = new Set();
+			for (const imported of moduleImports(file.tokens)) {
+				if (importsAgentsArea(imported.source)) lines.add(file.tokens[imported.start].line);
+			}
+			for (const [index, token] of file.tokens.entries()) {
+				if (token.type === "identifier" && AGENT_CLASS_NAMES.has(token.value)) {
+					lines.add(token.line);
+				}
+				// `ai["ToolLoopAgent"]` reaches the class without the identifier.
+				if (
+					token.type === "string" &&
+					AGENT_CLASS_NAMES.has(token.value) &&
+					file.tokens[index - 1]?.value === "["
+				) {
+					lines.add(token.line);
+				}
+			}
+			for (const line of [...lines].sort((left, right) => left - right)) {
+				violations.push(violation(file.relativePath, line, detail));
+			}
+		}
+		return { fileCount: files.length, violations };
+	},
+
+	async "no-sql-raw"(root) {
+		const files = (await collectFiles(root, ["packages/ai-core/src"], new Set([".ts"]))).filter(
+			(file) => file.startsWith("packages/ai-core/src/"),
+		);
+		const violations = [];
+		for (const file of await readCodeFiles(root, files)) {
+			if (SQL_RAW_ALLOWED_FILES.has(file.relativePath)) continue;
+			for (const { line, member } of rawSqlUses(file.tokens)) {
+				violations.push(violation(file.relativePath, line, `sql.${member} is forbidden`));
 			}
 		}
 		return { fileCount: files.length, violations };

@@ -1,5 +1,11 @@
 export { M1_2_SCENARIOS } from "../../fixtures/scenarios/m1-2";
 export { M1_3_SCENARIOS } from "../../fixtures/scenarios/m1-3";
+export {
+	M2_1_SAMPLE_QUESTIONS,
+	M2_1_SCENARIOS,
+	M2_CORPUS_TEXT,
+} from "../../fixtures/scenarios/m2-1";
+export { M2_2_SCENARIOS } from "../../fixtures/scenarios/m2-2";
 export { type Cassette, type CassetteStore, createCassetteStore } from "./cassette-store";
 export { createDeterministicEmbeddingModel } from "./deterministic-embedding";
 export {

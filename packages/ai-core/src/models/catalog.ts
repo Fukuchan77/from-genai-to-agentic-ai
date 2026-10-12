@@ -234,6 +234,23 @@ export const MODEL_CATALOG = {
 		pricing: null,
 		displayName: "Deterministic Mock Embedding",
 	},
+	"mock:judge-v1": {
+		id: "mock:judge-v1",
+		provider: "mock",
+		modes: ["mock"],
+		capabilities: {
+			tools: true,
+			structuredOutput: true,
+			reasoning: true,
+			imageInput: true,
+			embedding: false,
+			promptCache: "none",
+		},
+		contextWindow: 131_072,
+		maxOutputTokens: 16_384,
+		pricing: null,
+		displayName: "Deterministic Mock Judge Model",
+	},
 } as const satisfies ModelCatalog;
 
 export type CatalogModelId = keyof typeof MODEL_CATALOG;
@@ -244,7 +261,7 @@ export const MODEL_DEFAULTS = {
 			chat: "mock:general-v1",
 			structured: "mock:general-v1",
 			embedding: "mock:embedding-v1",
-			judge: "mock:general-v1",
+			judge: "mock:judge-v1",
 		},
 	},
 	local: {
@@ -280,6 +297,52 @@ export const MODEL_DEFAULTS = {
 		},
 	},
 } as const satisfies ModeDefaults<CatalogModelId>;
+
+export interface ModelTier {
+	readonly light: CatalogModelId;
+	readonly capable: CatalogModelId;
+}
+
+/**
+ * Light and capable chat models per run mode and provider, for routing by difficulty (CL-10).
+ * The live catalog has one chat model per provider, so both tiers are the same model there.
+ */
+export const MODEL_TIERS = {
+	mock: {
+		mock: { light: "mock:general-v1", capable: "mock:general-v1" },
+	},
+	local: {
+		ollama: { light: "llama3.2:latest", capable: "granite4.2:latest" },
+	},
+	live: {
+		anthropic: { light: "claude-sonnet-4-6", capable: "claude-sonnet-4-6" },
+		openai: { light: "gpt-5.1", capable: "gpt-5.1" },
+		azure: { light: "gpt-5.2", capable: "gpt-5.2" },
+		google: { light: "gemini-2.5-flash", capable: "gemini-2.5-flash" },
+	},
+} as const satisfies Readonly<Record<RunMode, Partial<Record<ProviderId, ModelTier>>>>;
+
+export interface RerankModelEntry {
+	readonly id: string;
+	readonly provider: "cohere";
+	readonly displayName: string;
+}
+
+// Rerank models are not chat models, so they stay out of `MODEL_CATALOG` (and the model pickers).
+// Cohere: https://docs.cohere.com/docs/rerank (multilingual, 100+ languages), checked 2026-10-12.
+export const RERANK_MODELS = {
+	"rerank-v4.0-pro": {
+		id: "rerank-v4.0-pro",
+		provider: "cohere",
+		displayName: "Cohere Rerank 4.0 Pro",
+	},
+} as const satisfies Readonly<Record<string, RerankModelEntry>>;
+
+export type RerankModelId = keyof typeof RERANK_MODELS;
+
+export function defaultRerankModel(): RerankModelEntry {
+	return RERANK_MODELS["rerank-v4.0-pro"];
+}
 
 export function getModelEntry(id: CatalogModelId): ModelEntry<CatalogModelId> {
 	const entry = MODEL_CATALOG[id];

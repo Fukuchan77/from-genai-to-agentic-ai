@@ -5,11 +5,14 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 import {
 	type CatalogModelId,
 	defaultModelFor,
+	defaultRerankModel,
 	estimateCost,
 	getModelEntry,
 	listModels,
 	MODEL_CATALOG,
 	MODEL_DEFAULTS,
+	MODEL_TIERS,
+	RERANK_MODELS,
 } from "./catalog";
 import type {
 	Capability,
@@ -163,6 +166,76 @@ describe("MODEL_CATALOG", () => {
 		} finally {
 			rmSync(temporaryDirectory, { recursive: true, force: true });
 		}
+	});
+
+	it("adds a separate mock judge model and makes it the mock judge default (CL-5)", () => {
+		const judgeId = defaultModelFor("mock", "mock", "judge");
+		const chatId = defaultModelFor("mock", "mock", "chat");
+
+		expect(judgeId).toBe("mock:judge-v1");
+		expect(judgeId).not.toBe(chatId);
+		expect(MODEL_CATALOG["mock:judge-v1"]).toMatchObject({
+			provider: "mock",
+			modes: ["mock"],
+			pricing: null,
+			capabilities: { structuredOutput: true, embedding: false },
+		});
+		expect(listModels({ mode: "mock" }).map((entry) => entry.id)).toContain(judgeId);
+	});
+
+	it("keeps the other mock purposes on their existing defaults", () => {
+		expect(defaultModelFor("mock", "mock", "structured")).toBe("mock:general-v1");
+		expect(defaultModelFor("mock", "mock", "embedding")).toBe("mock:embedding-v1");
+	});
+
+	it("declares a structured-output-capable light and capable tier for every default provider (CL-10)", () => {
+		for (const [mode, providers] of Object.entries(MODEL_DEFAULTS)) {
+			for (const provider of Object.keys(providers)) {
+				const tiers = (
+					MODEL_TIERS as Record<string, Record<string, { light: string; capable: string }>>
+				)[mode]?.[provider];
+				expect(tiers, `${mode}/${provider}`).toBeDefined();
+				if (!tiers) continue;
+				for (const id of [tiers.light, tiers.capable]) {
+					const entry = getModelEntry(id as CatalogModelId);
+					expect(entry.modes).toContain(mode);
+					expect(entry.provider).toBe(provider);
+					expect(entry.capabilities.structuredOutput).toBe(true);
+				}
+			}
+		}
+	});
+
+	it("uses one model for both tiers where a provider has a single chat model", () => {
+		expect(MODEL_TIERS.mock.mock).toEqual({
+			light: defaultModelFor("mock", "mock", "chat"),
+			capable: defaultModelFor("mock", "mock", "chat"),
+		});
+		for (const provider of ["anthropic", "openai", "azure", "google"] as const) {
+			const chat = defaultModelFor("live", provider, "chat");
+			expect(MODEL_TIERS.live[provider], provider).toEqual({ light: chat, capable: chat });
+		}
+	});
+
+	it("uses a distinct lighter local model for the light tier", () => {
+		expect(MODEL_TIERS.local.ollama.capable).toBe(defaultModelFor("local", "ollama", "chat"));
+		expect(MODEL_TIERS.local.ollama.light).not.toBe(MODEL_TIERS.local.ollama.capable);
+		// ADR-11 keeps the judge's model and the embedding model out of the chat tiers.
+		expect(MODEL_TIERS.local.ollama.light).not.toBe(MODEL_DEFAULTS.local.ollama.judge);
+		expect(MODEL_TIERS.local.ollama.light).not.toBe(MODEL_DEFAULTS.local.ollama.embedding);
+		expect(getModelEntry(MODEL_TIERS.local.ollama.light).capabilities.embedding).toBe(false);
+	});
+
+	it("keeps rerank models outside the chat catalog and exposes a default", () => {
+		const ids = Object.keys(RERANK_MODELS);
+		const entry = defaultRerankModel();
+
+		expect(ids.length).toBeGreaterThan(0);
+		expect(RERANK_MODELS).toHaveProperty(entry.id);
+		expect(entry).toMatchObject({ provider: "cohere" });
+		expect(entry.displayName.length).toBeGreaterThan(0);
+		for (const id of ids) expect(MODEL_CATALOG).not.toHaveProperty(id);
+		expect(listModels({ mode: "live" }).map((model) => model.id)).not.toContain(entry.id);
 	});
 
 	it("exposes Zod-independent client-safe catalog types", () => {

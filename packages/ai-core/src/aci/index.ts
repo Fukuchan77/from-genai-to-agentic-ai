@@ -25,6 +25,17 @@ export {
 	createCurrentTimeTool,
 } from "./tools/current-time";
 export {
+	type CitationRegistry,
+	createSearchKnowledgeBaseTool,
+	type KnowledgeSearcher,
+	type KnowledgeSearchHit,
+	NO_RESULT_NOTICE,
+	SEARCH_KNOWLEDGE_BASE_TOOL_NAME,
+	type SearchKnowledgeBaseResult,
+	type SearchResultItem,
+	type SearchResultLocator,
+} from "./tools/search-knowledge-base";
+export {
 	createWeatherTool,
 	openMeteoUrl,
 	WEATHER_TOOL_NAME,

@@ -164,6 +164,32 @@ describe("checkModuleDoc", () => {
 		expect(checkModuleDoc({ id: "1-2", text })).toEqual([`missing topic heading: ${topic}`]);
 	});
 
+	it.each(["2-1", "2-2"])(
+		"requires module %s to explain what a green mock run cannot show",
+		(id) => {
+			const topics = REQUIRED_TOPICS[id];
+
+			expect(topics.length).toBeGreaterThan(0);
+			expect(topics.some((topic) => topic.includes("mock"))).toBe(true);
+			expect(topics.some((topic) => topic.includes("日本語の埋め込みでの閾値の限界"))).toBe(true);
+			expect(checkModuleDoc({ id, text: validDoc({ id }) })).toEqual([]);
+		},
+	);
+
+	it.each(["2-1", "2-2"])("reports each missing required topic heading of module %s", (id) => {
+		for (const topic of REQUIRED_TOPICS[id]) {
+			const text = validDoc({ id }).replace(`## ${topic}`, "## 別の話題");
+
+			expect(checkModuleDoc({ id, text }), topic).toEqual([`missing topic heading: ${topic}`]);
+		}
+	});
+
+	it("keeps the Phase 2 topics defined for all four modules", () => {
+		for (const id of ["2-1", "2-2", "2-3", "2-4"]) {
+			expect(Object.keys(REQUIRED_TOPICS), id).toContain(id);
+		}
+	});
+
 	it("requires the Python / Streamlit column only in Phase 1 modules", () => {
 		const without = validDoc({ id: "2-3" }).replace(
 			"## Python / Streamlit 経験者向けコラム",
