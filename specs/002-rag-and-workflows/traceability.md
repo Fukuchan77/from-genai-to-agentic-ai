@@ -20,15 +20,15 @@ ID 規約は `tasks.md` の「ID 対応表」を参照する（この spec の p
 | 1.1 | C4, C5, C6, C13 | T-1.2, T-5.1, T-5.2, T-5.3, T-6.2, T-6.4, T-6.5, T-6.6, T-7.1, T-7.2, T-8.1, T-8.2, T-8.3, T-8.4, T-8.5, T-8.6, T-9.1, T-9.2 | W2: migrate.db / schema.db / ingest.db / store.db / loader / pdf / platform / ingest route tests; real-server.spec.ts | W1: b5f32ab, f5f9490, f4b73f1; W2: 5cd0a52 (ai-core), b904eff (web), 4f01313 (stryker) |
 | 1.2 | C5 | T-6.1, T-6.2, T-9.1, T-9.3 | W2: markdown.test.ts; chunk.test.ts; ingest.db.test.ts (corpus) | W2: 5cd0a52 (ai-core), b904eff (web), 4f01313 (stryker) |
 | 1.3 | C5, C6 | T-5.1, T-7.2, T-7.4, T-8.1, T-8.6 | W2: migrate.db / store.db / ingest.db (replace, no duplicates, on-disk name ID) / ingest route tests | W2: 5cd0a52 (ai-core), b904eff (web), 4f01313 (stryker) |
-| 1.4 | C6, C7, C8, C13 | T-2.1, T-7.3, T-10.5, T-11.2, T-11.3, T-11.4, T-15.2, T-15.3, T-23.1, T-23.2, T-23.3 | W1: 2.1 config/*.test.ts; W2: store.db.test.ts (vector search) | W1: b5f32ab, f5f9490, f4b73f1; W2: 5cd0a52 (ai-core), b904eff (web), 4f01313 (stryker) |
-| 1.5 | C8, C13, C14 | T-11.1, T-11.2, T-11.4, T-15.2, T-15.3, T-20.1, T-20.3, T-20.4, T-22.1, T-23.1, T-23.2, T-24.3 |||
-| 1.6 | C6, C7, C13 | T-7.3, T-7.4, T-10.5, T-11.3 | W2: store.db.test.ts (threshold, filters) | W2: 5cd0a52 (ai-core), b904eff (web), 4f01313 (stryker) |
-| 1.7 | C6, C7, C8 | T-2.1, T-7.3, T-10.5, T-10.6, T-11.2, T-11.4, T-15.3, T-25.1 | W1: 2.1 config/*.test.ts; W2: store.db.test.ts (full-text, filters) | W1: b5f32ab, f5f9490, f4b73f1; W2: 5cd0a52 (ai-core), b904eff (web), 4f01313 (stryker) |
+| 1.4 | C6, C7, C8, C13 | T-2.1, T-7.3, T-10.5, T-11.2, T-11.3, T-11.4, T-15.2, T-15.3, T-23.1, T-23.2, T-23.3 | W1: 2.1 config/*.test.ts; W2: store.db.test.ts (vector search); W3: pipeline.db.test.ts, prompt.test.ts, request-schema.test.ts, query.db.test.ts, rag-stream.test.ts, rag/query/route.test.ts | W1: b5f32ab, f5f9490, f4b73f1; W2: 5cd0a52 (ai-core), b904eff (web), 4f01313 (stryker); W3: 634d0f9 (ai-core), 0fe5024 (web), 8bb3229 (stryker) |
+| 1.5 | C8, C13, C14 | T-11.1, T-11.2, T-11.4, T-15.2, T-15.3, T-20.1, T-20.3, T-20.4, T-22.1, T-23.1, T-23.2, T-24.3 | W3: citations.test.ts, prompt.test.ts, query.db.test.ts, rag-stream.test.ts, rag/query/route.test.ts | W3: 634d0f9 (ai-core), 0fe5024 (web), 8bb3229 (stryker) |
+| 1.6 | C6, C7, C13 | T-7.3, T-7.4, T-10.5, T-11.3 | W2: store.db.test.ts (threshold, filters); W3: pipeline.db.test.ts, request-schema.test.ts | W2: 5cd0a52 (ai-core), b904eff (web), 4f01313 (stryker); W3: 634d0f9 (ai-core), 0fe5024 (web), 8bb3229 (stryker) |
+| 1.7 | C6, C7, C8 | T-2.1, T-7.3, T-10.5, T-10.6, T-11.2, T-11.4, T-15.3, T-25.1 | W1: 2.1 config/*.test.ts; W2: store.db.test.ts (full-text, filters); W3: pipeline.db.test.ts, prompt.test.ts, query.db.test.ts, rag/query/route.test.ts | W1: b5f32ab, f5f9490, f4b73f1; W2: 5cd0a52 (ai-core), b904eff (web), 4f01313 (stryker); W3: 634d0f9 (ai-core), 0fe5024 (web), 8bb3229 (stryker) |
 | 1.8 | C5, C13 | T-6.4, T-6.5, T-6.6, T-8.1, T-8.2, T-8.6 | W2: pdf / loader / ingest.db / ingest route tests (5 skip reasons, unreadable files) | W2: 5cd0a52 (ai-core), b904eff (web), 4f01313 (stryker) |
-| 1.9 | C9, C13 | T-12.1, T-12.2, T-15.4, T-23.2 |||
-| 1.10 | C9, C13, C14 | T-12.2, T-15.4, T-20.1, T-20.4, T-23.2 |||
-| 1.11 | C8, C9 | T-11.1, T-11.4, T-12.2, T-15.4, T-15.5 |||
-| 1.12 | C4, C6 | T-1.1, T-4.1, T-4.3, T-4.4, T-5.1, T-5.2, T-5.3, T-7.4, T-9.2, T-14.2, T-26.1, T-27.1, T-28.1, T-28.2 | W1: 4.1 check-repo-rules.test.mjs; 4.3 check-docs.test.mjs; 4.4 mise run gate; W2: schema.db.test.ts; client.pg / store.pg tests written, NOT run (no Docker; human step) | W1: b5f32ab, f5f9490, f4b73f1; W2: 5cd0a52 (ai-core), b904eff (web), 4f01313 (stryker) |
+| 1.9 | C9, C13 | T-12.1, T-12.2, T-15.4, T-23.2 | W3: search-knowledge-base.test.ts, agentic.db.test.ts, rag/agent/route.test.ts | W3: 634d0f9 (ai-core), 0fe5024 (web), 8bb3229 (stryker) |
+| 1.10 | C9, C13, C14 | T-12.2, T-15.4, T-20.1, T-20.4, T-23.2 | W3: agentic.db.test.ts, rag/agent/route.test.ts | W3: 634d0f9 (ai-core), 0fe5024 (web), 8bb3229 (stryker) |
+| 1.11 | C8, C9 | T-11.1, T-11.4, T-12.2, T-15.4, T-15.5 | W3: citations.test.ts, query.db.test.ts, agentic.db.test.ts, rag/agent/route.test.ts, test:mutation (score 86.46) | W3: 634d0f9 (ai-core), 0fe5024 (web), 8bb3229 (stryker) |
+| 1.12 | C4, C6 | T-1.1, T-4.1, T-4.3, T-4.4, T-5.1, T-5.2, T-5.3, T-7.4, T-9.2, T-14.2, T-26.1, T-27.1, T-28.1, T-28.2 | W1: 4.1 check-repo-rules.test.mjs; 4.3 check-docs.test.mjs; 4.4 mise run gate; W2: schema.db.test.ts; client.pg / store.pg tests written, NOT run (no Docker; human step); W3: m2-scenarios.test.ts | W1: b5f32ab, f5f9490, f4b73f1; W2: 5cd0a52 (ai-core), b904eff (web), 4f01313 (stryker); W3: 634d0f9 (ai-core), 0fe5024 (web), 8bb3229 (stryker) |
 
 検証の計画（plan「Requirements Traceability」の検証の列）:
 
@@ -49,18 +49,18 @@ ID 規約は `tasks.md` の「ID 対応表」を参照する（この spec の p
 
 | Requirement | Design | Task | Test | Commit |
 |---|---|---|---|---|
-| 2.1 | C7 | T-10.4, T-10.7 |||
-| 2.2 | C3, C7 | T-3.2, T-10.4, T-10.7, T-24.2, T-25.1, T-27.3 |W1: 3.2 structured/generate-validated.test.ts | W1: b5f32ab, f5f9490, f4b73f1 |
-| 2.3 | C6, C7 | T-6.3, T-7.3, T-10.1, T-10.6 | W2: search-text.test.ts; store.db.test.ts | W2: 5cd0a52 (ai-core), b904eff (web), 4f01313 (stryker) |
-| 2.4 | C7 | T-10.1, T-10.6, T-15.5 |||
-| 2.5 | C2, C7 | T-1.1, T-2.1, T-2.2, T-2.3, T-3.1, T-4.2, T-10.2, T-10.8, T-15.1 |W1: 2.1 config/*.test.ts; 2.2 models/catalog.test.ts, gateway.test.ts; 2.3 models/gateway.test.ts; 3.1 ports/rerank.test.ts; 4.2 check-model-ids.test.mjs | W1: b5f32ab, f5f9490, f4b73f1 |
-| 2.6 | C2, C7, C13 | T-2.1, T-2.3, T-3.1, T-10.8, T-15.1, T-15.3 |W1: 2.1 config/*.test.ts; 2.3 models/gateway.test.ts; 3.1 ports/rerank.test.ts | W1: b5f32ab, f5f9490, f4b73f1 |
-| 2.7 | C7, C13, C14 | T-10.7, T-10.8, T-11.3, T-20.3, T-20.4, T-22.1, T-23.3 |||
-| 2.8 | C7, C13 | T-10.3, T-10.5, T-10.6, T-10.7, T-10.8, T-15.2, T-15.3, T-20.2, T-20.4, T-23.1, T-23.2 |||
-| 2.9 | C10, C16 | T-13.1, T-13.4, T-15.5, T-24.1, T-24.2, T-24.4, T-25.1, T-26.2 |||
-| 2.10 | C10, C16 | T-13.3, T-13.4, T-14.2, T-24.3, T-24.4, T-25.1, T-26.2 |||
-| 2.11 | C7, C8, C13, C14 | T-10.3, T-10.5, T-10.8, T-11.4, T-15.2, T-15.3, T-20.2, T-20.4, T-23.1, T-23.2, T-23.4 |||
-| 2.12 | C10, C15, C16, C13 | T-8.5, T-8.6, T-9.1, T-13.2, T-14.1, T-24.1 | W2: knowledge route / ingest route tests; real-server.spec.ts | W2: 5cd0a52 (ai-core), b904eff (web), 4f01313 (stryker) |
+| 2.1 | C7 | T-10.4, T-10.7 | W3: hyde.test.ts, multi-query.test.ts, pipeline.db.test.ts | W3: 634d0f9 (ai-core), 0fe5024 (web), 8bb3229 (stryker) |
+| 2.2 | C3, C7 | T-3.2, T-10.4, T-10.7, T-24.2, T-25.1, T-27.3 |W1: 3.2 structured/generate-validated.test.ts; W3: hyde.test.ts, multi-query.test.ts, pipeline.db.test.ts | W1: b5f32ab, f5f9490, f4b73f1; W3: 634d0f9 (ai-core), 0fe5024 (web), 8bb3229 (stryker) |
+| 2.3 | C6, C7 | T-6.3, T-7.3, T-10.1, T-10.6 | W2: search-text.test.ts; store.db.test.ts; W3: rrf.test.ts, pipeline.db.test.ts | W2: 5cd0a52 (ai-core), b904eff (web), 4f01313 (stryker); W3: 634d0f9 (ai-core), 0fe5024 (web), 8bb3229 (stryker) |
+| 2.4 | C7 | T-10.1, T-10.6, T-15.5 | W3: rrf.test.ts, pipeline.db.test.ts, test:mutation (score 86.46) | W3: 634d0f9 (ai-core), 0fe5024 (web), 8bb3229 (stryker) |
+| 2.5 | C2, C7 | T-1.1, T-2.1, T-2.2, T-2.3, T-3.1, T-4.2, T-10.2, T-10.8, T-15.1 |W1: 2.1 config/*.test.ts; 2.2 models/catalog.test.ts, gateway.test.ts; 2.3 models/gateway.test.ts; 3.1 ports/rerank.test.ts; 4.2 check-model-ids.test.mjs; W3: lexical-rerank.test.ts, pipeline.db.test.ts, platform.test.ts | W1: b5f32ab, f5f9490, f4b73f1; W3: 634d0f9 (ai-core), 0fe5024 (web), 8bb3229 (stryker) |
+| 2.6 | C2, C7, C13 | T-2.1, T-2.3, T-3.1, T-10.8, T-15.1, T-15.3 |W1: 2.1 config/*.test.ts; 2.3 models/gateway.test.ts; 3.1 ports/rerank.test.ts; W3: pipeline.db.test.ts, platform.test.ts, rag/query/route.test.ts | W1: b5f32ab, f5f9490, f4b73f1; W3: 634d0f9 (ai-core), 0fe5024 (web), 8bb3229 (stryker) |
+| 2.7 | C7, C13, C14 | T-10.7, T-10.8, T-11.3, T-20.3, T-20.4, T-22.1, T-23.3 | W3: pipeline.db.test.ts, request-schema.test.ts | W3: 634d0f9 (ai-core), 0fe5024 (web), 8bb3229 (stryker) |
+| 2.8 | C7, C13 | T-10.3, T-10.5, T-10.6, T-10.7, T-10.8, T-15.2, T-15.3, T-20.2, T-20.4, T-23.1, T-23.2 | W3: trace.test.ts, pipeline.db.test.ts, rag-stream.test.ts, rag/query/route.test.ts | W3: 634d0f9 (ai-core), 0fe5024 (web), 8bb3229 (stryker) |
+| 2.9 | C10, C16 | T-13.1, T-13.4, T-15.5, T-24.1, T-24.2, T-24.4, T-25.1, T-26.2 | W3: recall.test.ts, rag/index.test.ts, test:mutation (score 86.46) | W3: 634d0f9 (ai-core), 0fe5024 (web), 8bb3229 (stryker) |
+| 2.10 | C10, C16 | T-13.3, T-13.4, T-14.2, T-24.3, T-24.4, T-25.1, T-26.2 | W3: judge.test.ts, rag/index.test.ts, m2-scenarios.test.ts | W3: 634d0f9 (ai-core), 0fe5024 (web), 8bb3229 (stryker) |
+| 2.11 | C7, C8, C13, C14 | T-10.3, T-10.5, T-10.8, T-11.4, T-15.2, T-15.3, T-20.2, T-20.4, T-23.1, T-23.2, T-23.4 | W3: trace.test.ts, pipeline.db.test.ts, query.db.test.ts, rag-stream.test.ts, rag/query/route.test.ts | W3: 634d0f9 (ai-core), 0fe5024 (web), 8bb3229 (stryker) |
+| 2.12 | C10, C15, C16, C13 | T-8.5, T-8.6, T-9.1, T-13.2, T-14.1, T-24.1 | W2: knowledge route / ingest route tests; real-server.spec.ts; W3: dataset.test.ts, dataset.test.ts (eval-set) | W2: 5cd0a52 (ai-core), b904eff (web), 4f01313 (stryker); W3: 634d0f9 (ai-core), 0fe5024 (web), 8bb3229 (stryker) |
 
 検証の計画（plan「Requirements Traceability」の検証の列）:
 
@@ -141,4 +141,4 @@ ID 規約は `tasks.md` の「ID 対応表」を参照する（この spec の p
 - 受け入れ基準を持たないタスク: なし（全サブタスクが `_Requirements:_` を持つ）。
 - `_Boundary:_` が plan の File Structure Plan に無いパス（意図した例外。`tasks.md`「表記規約」に列挙）: 生成物 `pnpm-lock.yaml`（1.1）、`specs/002-rag-and-workflows/` 配下の spec 文書（5.3、7.4、25、27、28）、`mock:judge-v1` の追加で影響を受ける `apps/web` の既存テストと E2E（2.2。plan C1「既知の影響」）、git タグのみのタスク（28.3）。
 - 「gate が保証しないもの」（検索手法の効果の差、Judge の判定、`local` モデルの脚注の遵守率、実 Postgres での挙動、Cohere の実呼び出し）の一覧は、27.1 が本ファイルに節として追加する。
-- W1（1.1〜4.4）の Test / Commit 列は W1 のタスクが担う分だけ記入した（`W1:` 接頭辞）。後続の波が同じ行に追記する。W2（5.1〜9.3）は `W2:` 接頭辞で追記した。W2 の `*.pg.test.ts` は未実行（Docker なし。人が `mise run test:db` で確かめる）。1.1・1.2 はマニフェストと設定のみでテストを持たない（証拠は `pnpm audit` と gate）。
+- W1（1.1〜4.4）の Test / Commit 列は W1 のタスクが担う分だけ記入した（`W1:` 接頭辞）。後続の波が同じ行に追記する。W2（5.1〜9.3）は `W2:` 接頭辞で、W3（10.1〜15.5）は `W3:` 接頭辞で追記した。W2 の `*.pg.test.ts` は未実行（Docker なし。人が `mise run test:db` で確かめる）。1.1・1.2 はマニフェストと設定のみでテストを持たない（証拠は `pnpm audit` と gate）。

@@ -5,7 +5,7 @@
 5 つのワークフロー、6 つのパターン、共有予算、デモの合成、`/api/workflows`、`m2-3`・`m2-4` のシナリオを作る。制御フローは素の TypeScript の
 関数合成で、`ToolLoopAgent` を使わない（Req 3.13）。唯一の例外は Role-Based Cooperation（17.6）で、`createGuardedAgent` を役割ごとに 1 回ずつ生成する。
 
-**並行の注意**: 16、17 の関数のタスクは W2・W3 と並行してよい。シナリオとデモ（18）は、`gateway.ts`・`mock/index.ts`・`m2.test.ts` を W3 の 14.2 と
+**並行の注意**: 16、17 の関数のタスクは W2・W3 と並行してよい。シナリオとデモ（18）は、`gateway.ts`・`mock/index.ts`・`src/mock/m2-scenarios.test.ts` を W3 の 14.2 と
 共有するため、14.2 の後に行う。16.8・17.7 以外の `index.ts` の編集は 18.3・18.4 だけが行う。
 
 16.1 の後、16.2・16.3・16.5・16.6・17.1・17.2・17.6 は並列に進められる。16.4 と 16.7 はそれぞれ 16.3 と 16.5 の後。
@@ -128,18 +128,18 @@ _Traces:_ REQ-004, C12
 `mock` のシナリオと、HTTP・画面から呼ぶ名前ごとの固定の合成を作る。各デモ合成の LLM 呼び出しの最大回数を算出してテストで固定し、
 `live` でのレート制限（429）に加えて費用を抑える（plan C13「ワークフロー API の呼び出し回数」）。
 
-_Boundary:_ `packages/ai-core/fixtures/scenarios/m2-3.ts`, `packages/ai-core/fixtures/scenarios/m2.test.ts`, `packages/ai-core/src/mock/index.ts`, `packages/ai-core/src/models/gateway.ts`, `packages/ai-core/src/models/gateway.test.ts`, `packages/ai-core/fixtures/scenarios/m2-4.ts`, `packages/ai-core/src/workflows/demos.ts`, `packages/ai-core/src/workflows/demos.test.ts`, `packages/ai-core/src/workflows/index.ts`, `packages/ai-core/src/patterns/demos.ts`, `packages/ai-core/src/patterns/demos.test.ts`, `packages/ai-core/src/patterns/index.ts`
+_Boundary:_ `packages/ai-core/fixtures/scenarios/m2-3.ts`, `packages/ai-core/src/mock/m2-scenarios.test.ts`, `packages/ai-core/src/mock/index.ts`, `packages/ai-core/src/models/gateway.ts`, `packages/ai-core/src/models/gateway.test.ts`, `packages/ai-core/fixtures/scenarios/m2-4.ts`, `packages/ai-core/src/workflows/demos.ts`, `packages/ai-core/src/workflows/demos.test.ts`, `packages/ai-core/src/workflows/index.ts`, `packages/ai-core/src/patterns/demos.ts`, `packages/ai-core/src/patterns/demos.test.ts`, `packages/ai-core/src/patterns/index.ts`
 _Depends:_ 14.2, 16.8, 17.7
 _Requirements:_ 3.1, 3.2, 3.3, 3.5, 3.6, 3.7, 3.8, 3.12, 3.13, 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 4.7
 _Traces:_ REQ-003, REQ-004, C11, C12, C15
 
-- [ ] 18.1 `fixtures/scenarios/m2-3.ts`: 5 ワークフローのシナリオ（`prompt-chaining`（アウトライン → 本文。本文の検証に失敗するケースを含む）、`routing`、`model-routing`、`parallel-sectioning`、`parallel-voting`（多数決と同数の 2 通り）、`orchestrator-workers`、`evaluator-optimizer`（不合格 → 改善 → 合格、未合格のまま最大反復の 2 通り））を `fixture:` マーカーで照合する形で作る。シナリオ ID は `m2-3/...`。`models/gateway.ts` の `mock` 既定シナリオに足し、`mock/index.ts` から `M2_3_SCENARIOS` を再エクスポートする + `m2.test.ts` に、曖昧な一致の検出と全 `fixture:` マーカーの網羅に M2-3 を足し、`gateway.test.ts` に M2-3 が一致することを先に足す
-  _Boundary:_ `packages/ai-core/fixtures/scenarios/m2-3.ts`, `packages/ai-core/fixtures/scenarios/m2.test.ts`, `packages/ai-core/src/mock/index.ts`, `packages/ai-core/src/models/gateway.ts`, `packages/ai-core/src/models/gateway.test.ts`
+- [ ] 18.1 `fixtures/scenarios/m2-3.ts`: 5 ワークフローのシナリオ（`prompt-chaining`（アウトライン → 本文。本文の検証に失敗するケースを含む）、`routing`、`model-routing`、`parallel-sectioning`、`parallel-voting`（多数決と同数の 2 通り）、`orchestrator-workers`、`evaluator-optimizer`（不合格 → 改善 → 合格、未合格のまま最大反復の 2 通り））を `fixture:` マーカーで照合する形で作る。シナリオ ID は `m2-3/...`。`models/gateway.ts` の `mock` 既定シナリオに足し、`mock/index.ts` から `M2_3_SCENARIOS` を再エクスポートする + `src/mock/m2-scenarios.test.ts` に、曖昧な一致の検出と全 `fixture:` マーカーの網羅に M2-3 を足し、`gateway.test.ts` に M2-3 が一致することを先に足す
+  _Boundary:_ `packages/ai-core/fixtures/scenarios/m2-3.ts`, `packages/ai-core/src/mock/m2-scenarios.test.ts`, `packages/ai-core/src/mock/index.ts`, `packages/ai-core/src/models/gateway.ts`, `packages/ai-core/src/models/gateway.test.ts`
   _Depends:_ 14.2, 16.8
   _Requirements:_ 3.2, 3.3, 3.5, 3.6, 3.7, 3.8, 3.12
   _Traces:_ REQ-003, C15
-- [ ] 18.2 `fixtures/scenarios/m2-4.ts`: 6 パターンのシナリオ（`passive-goal-creator`（十分な指示と曖昧な指示）、`prompt-response-optimizer`、`single-path-plan`、`multi-path-plan`、`self-reflection`、`cross-reflection`（`mock:judge-v1` が批評）、`role-based-cooperation`（ツール呼び出しを含む役割ごとの流れ））を作る。シナリオ ID は `m2-4/...`。`gateway.ts` と `mock/index.ts` に足し、`M2_4_SCENARIOS` を再エクスポートする + `m2.test.ts` に M2-4 の曖昧な一致の検出と `fixture:` マーカーの網羅を、`gateway.test.ts` に M2-4 の一致を先に足す
-  _Boundary:_ `packages/ai-core/fixtures/scenarios/m2-4.ts`, `packages/ai-core/fixtures/scenarios/m2.test.ts`, `packages/ai-core/src/mock/index.ts`, `packages/ai-core/src/models/gateway.ts`, `packages/ai-core/src/models/gateway.test.ts`
+- [ ] 18.2 `fixtures/scenarios/m2-4.ts`: 6 パターンのシナリオ（`passive-goal-creator`（十分な指示と曖昧な指示）、`prompt-response-optimizer`、`single-path-plan`、`multi-path-plan`、`self-reflection`、`cross-reflection`（`mock:judge-v1` が批評）、`role-based-cooperation`（ツール呼び出しを含む役割ごとの流れ））を作る。シナリオ ID は `m2-4/...`。`gateway.ts` と `mock/index.ts` に足し、`M2_4_SCENARIOS` を再エクスポートする + `src/mock/m2-scenarios.test.ts` に M2-4 の曖昧な一致の検出と `fixture:` マーカーの網羅を、`gateway.test.ts` に M2-4 の一致を先に足す
+  _Boundary:_ `packages/ai-core/fixtures/scenarios/m2-4.ts`, `packages/ai-core/src/mock/m2-scenarios.test.ts`, `packages/ai-core/src/mock/index.ts`, `packages/ai-core/src/models/gateway.ts`, `packages/ai-core/src/models/gateway.test.ts`
   _Depends:_ 17.7, 18.1
   _Requirements:_ 4.2, 4.3, 4.4, 4.5, 4.6, 4.7
   _Traces:_ REQ-004, C15

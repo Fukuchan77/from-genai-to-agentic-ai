@@ -459,7 +459,7 @@ erDiagram
 
 | パート | `id` | 内容 | 用途 |
 |---|---|---|---|
-| `data-rag-stage` | `stage-<stage>`（同じ `id` で上書き） | `{ stage: "hyde" \| "multi-query" \| "vector-search" \| "full-text-search" \| "fuse" \| "rerank" \| "generate"; status: "running" \| "done" \| "skipped"; detail? }` | 進行状況（Req 2.11） |
+| `data-rag-stage` | `stage-<stage>`（同じ `id` で上書き） | `{ stage: "hyde" \| "multi-query" \| "vector-search" \| "full-text-search" \| "fusion" \| "rerank" \| "generate"; status: "running" \| "done" \| "skipped"; detail? }` | 進行状況（Req 2.11） |
 | `data-rag-trace` | `trace`（上書き） | `RetrievalTrace`（段ごとの候補、サブクエリ、仮想回答、統合後、Rerank 後） | 中間結果（Req 2.8、2.11） |
 | `text-start` / `text-delta` / `text-end` | 回答の本文 | 回答の差分。該当なしのときは固定文 | 回答（Req 1.4） |
 | `data-rag-result` | `result` | `RagResult`（`answer` は脚注の照合後） | 引用の対応付けと確定した本文（Req 1.5、1.11） |
@@ -654,7 +654,7 @@ erDiagram
 | `packages/ai-core/fixtures/scenarios/m2-2.ts` | Create | Judge（忠実性・回答関連性）のシナリオ | C15 |
 | `packages/ai-core/fixtures/scenarios/m2-3.ts` | Create | 5 ワークフローのシナリオ（`fixture:` マーカーで照合） | C15 |
 | `packages/ai-core/fixtures/scenarios/m2-4.ts` | Create | 6 パターンのシナリオ | C15 |
-| `packages/ai-core/fixtures/scenarios/m2.test.ts` | Create | シナリオの照合規則（曖昧な一致がない）と、全 `fixture:` マーカーの網羅 | C15 |
+| `packages/ai-core/src/mock/m2-scenarios.test.ts` | Create | シナリオの照合規則（曖昧な一致がない）と、全 `fixture:` マーカーの網羅 | C15 |
 
 ### packages/eval-suite
 
@@ -748,7 +748,7 @@ erDiagram
 - **DB の分離**: テストファイルごとに PGlite を 1 つ作り（起動は約 1 秒）、マイグレーションは `beforeAll` で 1 回、各テストの前に `TRUNCATE` する。ファイルをまたぐ共有はしない（並列実行の独立性のため）。
 - **決定論**: チャンク ID は内容ハッシュ、同点の順序は ID の辞書順、時刻は `Clock` から、乱数は使わない。ミリ秒の所要時間（トレースの `durationMs`）は `FakeClock` で固定し、表示用の値をアサートしない。
 - **非空虚**: 次の制御ロジックを壊すと必ず落ちるテストを置く（原則 3）: RRF の重複排除、閾値の分岐（境界値 = 閾値ちょうど。ハイブリッド有効で全文検索だけがヒットし、ベクトル検索が閾値未満のとき、該当なしになり LLM を呼ばないこと）、引用の範囲外の除去、再取り込みの置換、同数のときに結論を選ばないこと、統合スコアが最小値であること、合格判定がコードでスコアと基準を比べていること、最高スコアの同点で最初の反復を返すこと、Cross-Reflection が同一モデルを拒否すること、Rerank 無効・キー無しで段をスキップして記録すること、`workflow-no-agent-loop` の違反例。ミューテーションテストの対象（`stryker.config.mjs`）に、これらの純関数のファイルを加える。
-- **シナリオ**: `mock` の LLM 応答は `fixtures/scenarios/m2-*.ts`（`purpose` と、`lastUserTextIncludes` の固有の語で照合）で与える。画面の入力例は、シナリオに対応する質問文を提示する。曖昧な一致（同じ入力に複数のシナリオが一致）を `m2.test.ts` が検出する。
+- **シナリオ**: `mock` の LLM 応答は `fixtures/scenarios/m2-*.ts`（`purpose` と、`lastUserTextIncludes` の固有の語で照合）で与える。画面の入力例は、シナリオに対応する質問文を提示する。曖昧な一致（同じ入力に複数のシナリオが一致）を `src/mock/m2-scenarios.test.ts` が検出する（Vitest の `include` が `src/**` のため、`fixtures/` 配下のテストは実行されない）。
 - **ネットワーク**: テスト中の `fetch` / `node:net` / `node:dns` の遮断は変えない。`*.pg.test.ts` だけが `127.0.0.1:POSTGRES_PORT` への接続を許される（M1 の `AI_TEST_SUITE=pg`）。Rerank・Ollama・Cohere へは gate から接続しない（`RerankProvider` はフェイクで検証する）。
 - **ストリーミング**: `streamRagQuery` は `mock` で `RagEvent` の順序（`stage` → `trace` → `text-delta`* → `result`）を検証する。中断（`AbortSignal`）で後続の LLM 呼び出しが始まらないことも検証する。
 

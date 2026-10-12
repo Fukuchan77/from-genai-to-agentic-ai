@@ -172,3 +172,29 @@
 - Gate (`TURBO_FORCE=true mise run gate`, 0 cached): exit 0. `//:test executed=351`, `@platform/ai-core executed=1066 passed=1066 skipped=4`, `web executed=354 passed=354`, `eval-suite executed=3 skipped=1`, `Biome: 292 files`, `no-sql-raw: scanned 143 FILES`, `Docs: 4 module documents, 51 test references verified`.
 - Not run: `*.pg.test.ts` (no Docker); LOW findings F-6..F-17, F-19 deferred.
 - Commits: 5cd0a52 (ai-core), b904eff (web), 4f01313 (stryker); docs commit follows.
+
+## W3 (tasks 10–15)
+
+- Preflight: gate lane is `mock` and needs no env or service → skipped (no `mise preflight`). `*.pg.test.ts` still not runnable (no Docker).
+- Delegation: 10.1–10.4, 13.1–13.3, and 11.1/11.3/12.1 went to three fresh-context subagents in parallel (disjoint boundaries, no gate/tasks.md/do.md edits); their evidence was re-run in the main session (e.g. `vitest run src/rag/eval` → 77 passed). 10.5–10.8, 11.2, 11.4, 12.2, 13.4, 14.x, 15.x were done in the main session.
+
+### Evidence summary (RED → GREEN → PROVE)
+
+- 10.5–10.8 (`pipeline.db.test.ts`, 49 tests incl. 16 method combinations): RED `Cannot find module` / 6+7+21 failing; PROVE stubs: no topK slice (`expected [... 'c-low'] to deeply equal [...]`), filter dropped, threshold −1, empty-KB guard removed (`expected 1 to be +0` embed calls), compat check removed, full-text rescues no-evidence (CL-1: `expected [ {…} ] to deeply equal []`), no dedupe, sequential searches, pool ignored, hybrid-off still searching, hyde ignored, usage dropped (×2), swallow abort, wrong reason, topN, rerank not skipped on disabled. Survivors found and fixed: RRF `k` (score pinned to 2/61), zero-word full-text, Rerank score kept, unknown-ID fallback, no-evidence Rerank stage.
+- 11.2/11.4: prompt PROVE (label from 0, no escaping, instruction text, no throw on empty, signal dropped, question dropped) – one vacuous instruction assertion strengthened. `query.db.test.ts` PROVE: resolve skipped, noEvidence calls LLM, usage dropped, text not forwarded, raw error forwarded; **real bug found**: consumer abort right after the `trace` event still started generation → `throwIfAborted()` after the trace yield; abort tests now assert the abort reason (stub "abort converted" is caught).
+- 12.2: registry/summarize/searcher PROVE (same label, shared registry, 0-based label, live chunks, any-tool count, filter dropped, signal dropped, instructions) – signal propagation test added after a survivor.
+- 14.2: scenario ambiguity/pin tests PROVE: shortened HyDE question → ambiguity failure; corpus text edit → pin failure; judge marker drift → 2 failures. Discovered that `fixtures/**` tests are outside the Vitest `include` → test moved to `src/mock/m2-scenarios.test.ts` (recorded in tasks.md and plan.md).
+- 15.1–15.4 PROVE: platform (mock→key, always lexical, always cohere), rag-stream (ids, text-end, detail, swallow errors, raw error text), query route (signal, structured needed, require, rerank wiring, limiter, raw errors, embedding message, modelId), agent route (shared registry, rag metadata, extra tool, require tools, raw errors). Equivalent/unprovable survivors: agent route `stepText` reset (single-step answer in the fixture) and per-request registry (same fixed chunk → same label); both covered at unit level.
+
+### 15.5 (W3 close)
+
+- `mise run test:mutation`: `Final mutation score of 86.46` (rrf 82.98, citations 82.87, recall 93.42; threshold 70).
+- First `TURBO_FORCE=true mise run gate`: exit 1 — two PGlite-start tests (`schema.db.test.ts` "independent in-memory database", `platform.test.ts` "real in-memory PGlite") hit the 5 s default timeout when all workspaces run at once (not a logic failure). Fixed by an explicit 30 s timeout on those two tests, then gate re-run: exit 0.
+- Gate (`TURBO_FORCE=true mise run gate`): `//:test executed=351`, `@platform/ai-core executed=1430 passed=1430 skipped=4`, `web executed=415 passed=415`, `eval-suite executed=3 passed=3 skipped=1`, `Biome: 333 files`, `Docs: 4 module documents, 51 test references verified`.
+- Coverage (`ai-core`): all files lines 98.1 %, `src/rag` lines 100 % (threshold 80 %).
+
+### W3 adversarial review (round 1)
+
+- `sdd-reviewer` → REQUEST_CHANGES (0 CRITICAL/HIGH, 5 MEDIUM F-1..F-5, LOW F-6..F-19). Fixed test-first: F-1 grouped/range footnotes, F-2 rag/index re-exports, F-3 Rerank outcome on early returns, F-4 incremental traces (`onTrace`), F-5 retrieval failures → fixed `provider-unavailable`. Responses table appended to the review file.
+- Final `TURBO_FORCE=true mise run gate`: exit 0 in 27 s. `//:test executed=351`, `@platform/ai-core executed=1461 passed=1461 skipped=4`, `web executed=415 passed=415`, `eval-suite executed=3 skipped=1`, `Biome: 334 files`, `Docs: 4 module documents, 51 test references verified`.
+- Learning: a first RED pass on happy paths missed "one footnote may hold several numbers", "Rerank on but nothing to rerank" and "failures after the stream starts"; list the grouped/empty/mid-stream cases when writing the first tests.
