@@ -97,6 +97,63 @@ describe("loadPlatformConfig", () => {
 		);
 	});
 
+	it("builds the database settings from the Compose defaults", () => {
+		expect(loadPlatformConfig({}).database).toEqual({
+			host: "127.0.0.1",
+			port: 5432,
+			user: "postgres",
+			password: "postgres",
+			database: "agentic_ai",
+		});
+	});
+
+	it("overrides the database settings from POSTGRES_* and keeps the host fixed", () => {
+		const config = loadPlatformConfig({
+			POSTGRES_USER: "learner",
+			POSTGRES_PASSWORD: "changeme",
+			POSTGRES_DB: "kb",
+			POSTGRES_PORT: "55432",
+		});
+
+		expect(config.database).toEqual({
+			host: "127.0.0.1",
+			port: 55432,
+			user: "learner",
+			password: "changeme",
+			database: "kb",
+		});
+	});
+
+	it.each(["abc", "0", "70000", "5432.5", "0x1538", "1e3", " 5432 ", "-1"])(
+		"rejects POSTGRES_PORT=%s as ConfigError",
+		(port) => {
+			expect(() => loadPlatformConfig({ POSTGRES_PORT: port })).toThrow(ConfigError);
+		},
+	);
+
+	it("exposes the Cohere key only when it is set", () => {
+		expect(loadPlatformConfig({}).credentials).not.toHaveProperty("cohere");
+		expect(loadPlatformConfig({ COHERE_API_KEY: "changeme" }).credentials.cohere).toBe("changeme");
+	});
+
+	it("requires COHERE_API_KEY when the rerank feature is requested", () => {
+		let thrown: unknown;
+		try {
+			loadPlatformConfig({}, { features: ["rerank"] });
+		} catch (error) {
+			thrown = error;
+		}
+
+		expect(thrown).toBeInstanceOf(ConfigError);
+		expect(thrown).toMatchObject({
+			missing: [{ variable: "COHERE_API_KEY", feature: "rerank" }],
+		});
+		expect(
+			loadPlatformConfig({ COHERE_API_KEY: "changeme" }, { features: ["rerank"] }).credentials
+				.cohere,
+		).toBe("changeme");
+	});
+
 	it("keeps the sample environment variable names identical to the schema", () => {
 		expect(envNamesFromExample().sort()).toEqual([...ENV_KEYS].sort());
 	});

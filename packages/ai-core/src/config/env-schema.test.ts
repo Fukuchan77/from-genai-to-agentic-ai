@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_AGENT_LIMITS, DEFAULT_CHAT_RATE_LIMIT, DEFAULT_INPUT_LIMITS } from "./defaults";
+import {
+	DEFAULT_AGENT_LIMITS,
+	DEFAULT_CHAT_RATE_LIMIT,
+	DEFAULT_INPUT_LIMITS,
+	DEFAULT_RAG,
+	DEFAULT_WORKFLOW_LIMITS,
+} from "./defaults";
 import { ENV_KEYS, envSchema } from "./env-schema";
 
 describe("envSchema", () => {
@@ -61,6 +67,41 @@ describe("envSchema", () => {
 		["AGENT_MAX_TOTAL_TOKENS", "1.5"],
 	])("rejects an invalid %s value", (key, value) => {
 		expect(() => envSchema.parse({ [key]: value })).toThrow();
+	});
+
+	it("accepts COHERE_API_KEY as an optional secret and treats empty as absent", () => {
+		expect(envSchema.parse({}).COHERE_API_KEY).toBeUndefined();
+		expect(envSchema.parse({ COHERE_API_KEY: "" }).COHERE_API_KEY).toBeUndefined();
+		expect(envSchema.parse({ COHERE_API_KEY: "changeme" }).COHERE_API_KEY).toBe("changeme");
+	});
+
+	it("freezes the M2 retrieval and workflow defaults at the plan values", () => {
+		expect(DEFAULT_RAG).toEqual({
+			topK: 5,
+			minSimilarity: 0.5,
+			candidatePool: 20,
+			rrfK: 60,
+			subQueryCount: 3,
+			chunkMaxCharacters: 800,
+			maxQuestionCharacters: 2_000,
+			maxIngestFiles: 50,
+			maxIngestFileBytes: 5 * 1024 * 1024,
+		});
+		expect(DEFAULT_WORKFLOW_LIMITS).toEqual({
+			maxSections: 8,
+			defaultVotes: 3,
+			maxVotes: 9,
+			maxSubtasks: 6,
+			maxPlanSteps: 8,
+			defaultCandidates: 3,
+			maxCandidates: 5,
+			passScore: 85,
+			defaultMaxIterations: 3,
+			maxIterationsCap: 8,
+			maxRoles: 5,
+		});
+		expect(Object.isFrozen(DEFAULT_RAG)).toBe(true);
+		expect(Object.isFrozen(DEFAULT_WORKFLOW_LIMITS)).toBe(true);
 	});
 
 	it("publishes a unique list matching the schema shape", () => {

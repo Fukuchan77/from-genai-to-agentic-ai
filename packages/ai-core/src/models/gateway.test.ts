@@ -75,6 +75,17 @@ describe("createModelGateway resolve (mock)", () => {
 		expect(result.text).toContain("モックモード");
 	});
 
+	it("resolves the judge purpose to a catalog model different from the chat model (CL-5)", async () => {
+		const gateway = createModelGateway({ config: configFor({}) });
+
+		const judge = await gateway.resolve({ purpose: "judge" });
+		const chat = await gateway.resolve({ purpose: "chat" });
+
+		expect(judge.entry.id).toBe(defaultModelFor("mock", "mock", "judge"));
+		expect(judge.entry.id).not.toBe(chat.entry.id);
+		expect(gateway.availableModels().map((option) => option.id)).toContain(judge.entry.id);
+	});
+
 	it("binds a separate mock model per purpose and uses injected scenarios", async () => {
 		const gateway = createModelGateway({
 			config: configFor({}),
@@ -539,6 +550,37 @@ describe("createModelGateway recording", () => {
 			request: { purpose: "judge" },
 		});
 		expect(JSON.stringify(cassette)).not.toContain(FAKE_ANTHROPIC_KEY);
+	});
+
+	it("redacts the Cohere key from recorded cassettes like the other credentials", async () => {
+		const store = recordingStore();
+		const cohereKey = "test-cohere-key";
+		const providers = {
+			...spyProviders(),
+			anthropic: () => ({
+				languageModel: () => createTextStreamModel(`echo ${cohereKey}`),
+				embeddingModel: (): never => {
+					throw new Error("unused");
+				},
+			}),
+		};
+		const gateway = createModelGateway({
+			config: configFor({
+				AI_TEST_RUN_MODE: "live",
+				ANTHROPIC_API_KEY: FAKE_ANTHROPIC_KEY,
+				COHERE_API_KEY: cohereKey,
+				AI_RECORD: "1",
+			}),
+			providers,
+			clock: createFakeClock(Date.UTC(2026, 9, 7)),
+			recording: { store },
+		});
+
+		const { model } = await gateway.resolve({ purpose: "chat" });
+		await generateText({ model, prompt: "hi" });
+
+		expect(store.put).toHaveBeenCalledTimes(1);
+		expect(JSON.stringify(store.put.mock.calls[0]?.[1])).not.toContain(cohereKey);
 	});
 
 	it("records local calls with recordedWith local", async () => {

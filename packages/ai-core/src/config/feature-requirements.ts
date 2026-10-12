@@ -6,6 +6,7 @@ export const FEATURE_REQUIREMENTS = {
 	"live-azure": ["AZURE_API_KEY", "AZURE_RESOURCE_NAME"],
 	"live-google": ["GOOGLE_GENERATIVE_AI_API_KEY"],
 	"web-search": ["TAVILY_API_KEY"],
+	rerank: ["COHERE_API_KEY"],
 } as const satisfies Readonly<Record<string, readonly (typeof ENV_KEYS)[number][]>>;
 
 export const FEATURE_IDS = Object.freeze(Object.keys(FEATURE_REQUIREMENTS)) as readonly FeatureId[];

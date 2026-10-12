@@ -5,11 +5,17 @@
 export {
 	type CatalogModelId,
 	defaultModelFor,
+	defaultRerankModel,
 	estimateCost,
 	getModelEntry,
 	listModels,
 	MODEL_CATALOG,
 	MODEL_DEFAULTS,
+	MODEL_TIERS,
+	type ModelTier,
+	RERANK_MODELS,
+	type RerankModelEntry,
+	type RerankModelId,
 } from "./catalog";
 export {
 	CapabilityUnsupportedError,

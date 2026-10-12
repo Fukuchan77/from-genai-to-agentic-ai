@@ -132,6 +132,7 @@ function credentialSecrets(credentials: PlatformConfig["credentials"]) {
 		AZURE_API_KEY: credentials.azure?.apiKey,
 		GOOGLE_GENERATIVE_AI_API_KEY: credentials.google,
 		TAVILY_API_KEY: credentials.tavily,
+		COHERE_API_KEY: credentials.cohere,
 	};
 }
 

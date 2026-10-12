@@ -1,7 +1,7 @@
 import { PlatformError } from "../errors";
 import { type CatalogModelId, defaultModelFor, MODEL_CATALOG } from "../models/catalog";
 import type { ModelPurpose, ProviderId, RunMode } from "../models/types";
-import { DEFAULT_INPUT_LIMITS } from "./defaults";
+import { DEFAULT_DATABASE, DEFAULT_INPUT_LIMITS } from "./defaults";
 import { type EnvSource, envSchema, type ParsedEnv } from "./env-schema";
 import {
 	FEATURE_REQUIREMENTS,
@@ -36,6 +36,7 @@ export interface PlatformConfig {
 		azure?: Readonly<{ apiKey: string; resourceName: string }>;
 		google?: string;
 		tavily?: string;
+		cohere?: string;
 	}>;
 	readonly agent: Readonly<{
 		maxSteps: number;
@@ -44,6 +45,13 @@ export interface PlatformConfig {
 		toolTimeoutMs: number;
 	}>;
 	readonly rateLimit: Readonly<{ maxRequests: number; windowSeconds: number }>;
+	readonly database: Readonly<{
+		host: string;
+		port: number;
+		user: string;
+		password: string;
+		database: string;
+	}>;
 	readonly input: typeof DEFAULT_INPUT_LIMITS;
 }
 
@@ -119,6 +127,23 @@ function resolveModels(
 	return models;
 }
 
+function resolveDatabase(env: ParsedEnv): PlatformConfig["database"] {
+	// Plain decimal digits only: `Number()` would also accept "0x1538", "1e3", and padded input.
+	const raw = env.POSTGRES_PORT;
+	const port =
+		raw === undefined ? DEFAULT_DATABASE.port : /^\d{1,5}$/u.test(raw) ? Number(raw) : -1;
+	if (port < 1 || port > 65_535) {
+		throw new ConfigError("POSTGRES_PORT は 1〜65535 の整数で指定してください。");
+	}
+	return {
+		host: DEFAULT_DATABASE.host,
+		port,
+		user: env.POSTGRES_USER ?? DEFAULT_DATABASE.user,
+		password: env.POSTGRES_PASSWORD ?? DEFAULT_DATABASE.password,
+		database: env.POSTGRES_DB ?? DEFAULT_DATABASE.database,
+	};
+}
+
 function resolveProvider(mode: RunMode, liveProvider: ParsedEnv["AI_LIVE_PROVIDER"]): ProviderId {
 	if (mode === "mock") return "mock";
 	if (mode === "local") return "ollama";
@@ -169,6 +194,7 @@ export function loadPlatformConfig(
 				? { google: parsed.data.GOOGLE_GENERATIVE_AI_API_KEY }
 				: {}),
 			...(parsed.data.TAVILY_API_KEY ? { tavily: parsed.data.TAVILY_API_KEY } : {}),
+			...(parsed.data.COHERE_API_KEY ? { cohere: parsed.data.COHERE_API_KEY } : {}),
 		},
 		agent: {
 			maxSteps: parsed.data.AGENT_MAX_STEPS,
@@ -180,6 +206,7 @@ export function loadPlatformConfig(
 			maxRequests: parsed.data.CHAT_RATE_LIMIT_MAX,
 			windowSeconds: parsed.data.CHAT_RATE_LIMIT_WINDOW_SECONDS,
 		},
+		database: resolveDatabase(parsed.data),
 		input: DEFAULT_INPUT_LIMITS,
 	};
 }
