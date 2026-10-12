@@ -3710,3 +3710,11 @@ GREEN 後、7件すべての新規テストについて独立した deliberate b
 ### 2026-10-12 29.2 Ollama 実測
 
 - 停止時: `test:local` は理由付きでスキップ（ai-core 2、eval-suite 1）。起動時: 交互呼び出しで毎回再読み込み（2.6〜5.6 秒、10 GB ⇄ 6 GB）、`num_ctx` をそろえると再読み込みなし。詳細は `tasks.md` 29 の Implementation Notes。plan C11・C8 の改訂は承認待ち。
+
+### 2026-10-12 /sdd-impl 29（29.2 の残り、29.5）
+
+- 29.2: `sandbox-exec` で外向き通信を遮断した状態で `TURBO_FORCE=true mise run gate` → exit 0（13秒、`0 cached`）。遮断は `fetch` が `EPERM` になることで確認。29.2 を完了にした。
+- 29.5: `ollamaRuntimeOptions(entry)` を `models/` に移し、要約・チャット・エージェントの3経路が同じ `num_ctx` を渡すようにした。TDD: RED（モジュール未作成、`providerOptions` が `undefined`）→ GREEN → PROVE（`{}` を返すスタブで新規と既存の要約テスト・両 Route が失敗、エージェントへの受け渡しを消すとエージェントのテストが失敗）。
+- 試行錯誤: (1) `it.each` の書式が Biome と違い `lint` が失敗 → `mise run lint:fix`。(2) Route のテストに `"granite4.2:latest"` を書いたら `check:model-ids` が失敗（モデル ID リテラルはカタログだけ）→ `defaultModelFor` と `getModelEntry` で引くように直した。学び: apps/web のテストでもモデル ID を書かない。
+- `mise run gate` → exit 0: Biome 251 files、Model ID check 234 files、typecheck（root 10、ai-core 110、eval-suite 3、web 94 files）、root 297、ai-core 702 skipped 4、eval-suite 3 skipped 1、web 305、`Docs: 4 module documents, 51 test references verified`。
+- 未完了: 29.5 の実 Ollama での `load_duration` 確認、29.3（PR 上の CI）、29.4（タグ。`module/1-1` は `f671813` に作り直す予定のまま未作成）。
