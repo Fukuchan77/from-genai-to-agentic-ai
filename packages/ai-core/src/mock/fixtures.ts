@@ -122,7 +122,14 @@ export interface FixtureSet {
 	readonly webSearch: readonly WebSearchFixture[];
 }
 
-export const DEFAULT_FIXTURE_DIRECTORY = fileURLToPath(new URL("../../fixtures", import.meta.url));
+// Not `new URL("../../fixtures", import.meta.url)`: Turbopack treats that form as a file asset
+// reference and fails the build because the target is a directory.
+export const DEFAULT_FIXTURE_DIRECTORY = path.resolve(
+	path.dirname(fileURLToPath(import.meta.url)),
+	"..",
+	"..",
+	"fixtures",
+);
 export const CASSETTE_FIXTURE_DIRECTORY = path.join(DEFAULT_FIXTURE_DIRECTORY, "cassettes");
 
 const SENSITIVE_HEADER = /^(?:authorization|cookie|proxy-authorization|set-cookie|x-api-key)$/iu;
