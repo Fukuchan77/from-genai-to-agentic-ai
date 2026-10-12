@@ -1,5 +1,6 @@
 @import "tailwindcss";
-@import "tw-animate-css";
+/* The package only exports a `style` condition, which Turbopack does not resolve. */
+@import "../node_modules/tw-animate-css/dist/tw-animate.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -77,6 +78,12 @@
 @layer base {
 	* {
 		@apply border-border outline-ring;
+	}
+
+	/* Firefox resets the outline colour to currentcolor while an element has focus, which hides the
+	   indicator on elements whose text colour matches the page (the skip link). */
+	:focus-visible {
+		@apply outline-ring;
 	}
 
 	body {

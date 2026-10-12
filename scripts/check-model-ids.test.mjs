@@ -30,7 +30,7 @@ describe("checkModelIds", () => {
 		writeFixture(root, "packages/ai-core/view.tsx", "const model = 'claude-sonnet';\n");
 		writeFixture(root, "scripts/helper.mjs", "const model = `gemini-2.5-pro`;\n");
 		writeFixture(root, "tooling/check.ts", 'const model = "llama3.2";\n');
-		writeFixture(root, "docs/guide.md", "Use qwen3 for this example.\n");
+		writeFixture(root, "docs/guide.md", "Use gemma4 for this example.\n");
 		writeFixture(root, "README.md", "Do not hard-code mistral-small.\n");
 
 		const result = checkModelIds(root);
@@ -39,7 +39,7 @@ describe("checkModelIds", () => {
 		expect(result.violations).toEqual([
 			{ file: "README.md", line: 1, modelId: "mistral-small" },
 			{ file: "apps/web/chat.ts", line: 1, modelId: "gpt-5" },
-			{ file: "docs/guide.md", line: 1, modelId: "qwen3" },
+			{ file: "docs/guide.md", line: 1, modelId: "gemma4" },
 			{ file: "packages/ai-core/view.tsx", line: 1, modelId: "claude-sonnet" },
 			{ file: "scripts/helper.mjs", line: 1, modelId: "gemini-2.5-pro" },
 			{ file: "tooling/check.ts", line: 1, modelId: "llama3.2" },
@@ -57,7 +57,7 @@ describe("checkModelIds", () => {
 		);
 		writeFixture(root, "scripts/check-model-ids.mjs", 'const sample = "gemini-2.5-pro";\n');
 		writeFixture(root, "scripts/check-model-ids.test.mjs", 'const sample = "llama3.2";\n');
-		writeFixture(root, "packages/ai-core/fixtures/cassette.json", '{"modelId":"qwen3"}\n');
+		writeFixture(root, "packages/ai-core/fixtures/cassette.json", '{"modelId":"gemma4"}\n');
 
 		expect(checkModelIds(root)).toEqual({ scannedFiles: 2, violations: [] });
 	});
@@ -134,7 +134,7 @@ describe("checkModelIds", () => {
 			"apps/web/lib/env-schema.ts",
 			'const schema = z.string().default("gemini-2.5-pro");\n',
 		);
-		writeFixture(root, "tooling/check-model-ids.mjs", 'const sample = "qwen3";\n');
+		writeFixture(root, "tooling/check-model-ids.mjs", 'const sample = "gemma4";\n');
 
 		expect(checkModelIds(root)).toEqual({
 			scannedFiles: 4,
@@ -142,7 +142,7 @@ describe("checkModelIds", () => {
 				{ file: "apps/web/lib/catalog.ts", line: 1, modelId: "gpt-5" },
 				{ file: "apps/web/lib/env-schema.ts", line: 1, modelId: "gemini-2.5-pro" },
 				{ file: "packages/other/src/models/catalog.ts", line: 1, modelId: "claude-sonnet" },
-				{ file: "tooling/check-model-ids.mjs", line: 1, modelId: "qwen3" },
+				{ file: "tooling/check-model-ids.mjs", line: 1, modelId: "gemma4" },
 			],
 		});
 	});
@@ -260,7 +260,7 @@ describe("checkModelIds", () => {
 		writeFixture(root, "apps/web/page.ts", 'const purpose = "chat";\n');
 		writeFixture(root, "apps/web/.next/server/chunk.mjs", 'const id = "gpt-5";\n');
 		writeFixture(root, "packages/ai-core/dist/index.mjs", 'const id = "claude-sonnet";\n');
-		writeFixture(root, "packages/ai-core/coverage/report.ts", 'const id = "qwen3";\n');
+		writeFixture(root, "packages/ai-core/coverage/report.ts", 'const id = "gemma4";\n');
 		writeFixture(root, "packages/ai-core/node_modules/x/index.ts", 'const id = "llama3.2";\n');
 		writeFixture(root, "docs/node_modules/readme.md", "gemini-2.5-pro\n");
 

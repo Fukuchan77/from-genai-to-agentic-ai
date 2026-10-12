@@ -184,7 +184,7 @@ New feature（greenfield、full discovery）。リポジトリにはソースコ
 | next | 16.4.0-canary.40 | Web アプリ（App Router、Turbopack、`reactCompiler`、`typedRoutes`） | yes（参照リポジトリ） |
 | react / react-dom | 19.3.0 | UI | yes |
 | babel-plugin-react-compiler | 1.0.x | React Compiler | yes（`vaz-agentic-ai-next`） |
-| ai | 7.0.113 | AI SDK Core | yes（d.ts を直接確認） |
+| ai | 7.0.113 | AI SDK Core（`packages/ai-core` に加え、`apps/web` も Route Handler の `streamText`・`validateUIMessages`・`convertToModelMessages` とクライアントの `DefaultChatTransport`・`UIMessage` 型のために直接依存する。2026-10-12 に W4 の 22 着手前に判明した宣言漏れを訂正。版は ai-core と完全一致の 7.0.137） | yes（d.ts を直接確認） |
 | @ai-sdk/react | 4.0.116 | `useChat` | yes |
 | @ai-sdk/anthropic | 4.0.65 | Anthropic | yes（レジストリ） |
 | @ai-sdk/openai | 4.0.74 以上 | OpenAI | partial（`ai` の devDependency から推定） |
@@ -206,6 +206,7 @@ New feature（greenfield、full discovery）。リポジトリにはソースコ
 | gitleaks | 8.30.1 | シークレットスキャン（mise で導入） | yes |
 | shadcn（CLI）/ Tailwind CSS | 4.21.0 / 4.x | UI の基本部品 | partial（Next 16.4 canary との組み合わせは未検証） |
 | radix-ui / class-variance-authority / clsx / tailwind-merge / lucide-react | 実装時に確定 | shadcn/ui が生成する基本部品の実行時依存（アクセシブルな基本要素、バリアント、クラス結合、アイコン） | partial（shadcn 4.21.0 の生成コードと手動インストール手順で確認。版はレジストリで確定する） |
+| @tailwindcss/postcss | 4.3.3（`tailwindcss` と同一版） | Tailwind v4 を Next.js の CSS パイプラインで処理する PostCSS プラグイン。これがないと `@theme`・`@custom-variant`・`@apply` が処理されずページが無スタイルになる（2026-10-12 に実サーバー確認で判明し、人間の承認を得て追加） | yes（`next dev` で3ページの描画を確認） |
 | tw-animate-css | 実装時に確定 | shadcn/ui の Tailwind v4 用アニメーション（`tailwindcss-animate` の後継） | partial（同上） |
 | server-only | 実装時に確定 | `apps/web/lib/server/` をクライアントから import できないようにする（Req 1.10） | partial（Next.js 公式ドキュメント） |
 | @testing-library/react / @testing-library/dom | 16.3.3 / 10.4.2 | `apps/web` のコンポーネントテスト（jsdom） | yes（2026-09-28、registry と peerDependencies を実測） |

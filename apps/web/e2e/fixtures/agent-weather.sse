@@ -1,0 +1,24 @@
+data: {"type":"start","messageMetadata":{"modelId":"mock:general-v1","modelName":"Deterministic Mock Model","provider":"mock","personaId":"general-assistant","personaVersion":"1.0.0","disabledTools":[{"name":"webSearch","reason":"必要な設定が未設定のため、このツールは無効です。","requiredEnv":["TAVILY_API_KEY"]}]}}
+
+data: {"type":"start-step"}
+
+data: {"type":"tool-input-available","toolCallId":"m1-2/weather-tool-0-tool-0","toolName":"weather","input":{"city":"Tokyo"}}
+
+data: {"type":"tool-output-available","toolCallId":"m1-2/weather-tool-0-tool-0","output":{"ok":true,"data":{"city":"Tokyo","cityLabel":"東京","latitude":35.6762,"longitude":139.6503,"temperatureC":22,"weatherCode":0,"condition":"晴れ"}}}
+
+data: {"type":"finish-step"}
+
+data: {"type":"start-step"}
+
+data: {"type":"text-start","id":"m1-2/weather-tool-1-text"}
+
+data: {"type":"text-delta","id":"m1-2/weather-tool-1-text","delta":"東京は晴れ、気温は22°Cです。"}
+
+data: {"type":"text-end","id":"m1-2/weather-tool-1-text"}
+
+data: {"type":"finish-step"}
+
+data: {"type":"finish","finishReason":"stop","messageMetadata":{"modelId":"mock:general-v1","modelName":"Deterministic Mock Model","provider":"mock","personaId":"general-assistant","personaVersion":"1.0.0","usage":{"inputTokens":0,"outputTokens":0,"cacheReadTokens":0,"reasoningTokens":0},"run":{"stopReason":"completed","steps":2,"totalTokens":{"input":0,"output":0,"cacheRead":0,"reasoning":0},"elapsedMs":0,"toolsCalled":["weather"]},"toolsCalled":["weather"],"disabledTools":[{"name":"webSearch","reason":"必要な設定が未設定のため、このツールは無効です。","requiredEnv":["TAVILY_API_KEY"]}]}}
+
+data: [DONE]
+

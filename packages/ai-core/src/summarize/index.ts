@@ -41,3 +41,4 @@ export {
 	type SourceSegment,
 } from "./source";
 export { estimateTokens, TOKEN_SAFETY_FACTOR } from "./tokens";
+export { isBlockedHostname } from "./url-guard";

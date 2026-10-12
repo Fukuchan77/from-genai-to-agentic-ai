@@ -58,9 +58,21 @@ depends = ["services:up:db"]
 env = { AI_TEST_RUN_MODE = "mock", AI_TEST_SUITE = "pg" }
 run = "pnpm exec turbo run test"
 
+[tasks."e2e:fixtures"]
+description = "Regenerate the E2E SSE fixtures from the Route Handlers in mock mode"
+env = { SSE_FIXTURES = "write", AI_TEST_RUN_MODE = "mock", AI_TEST_SUITE = "gate" }
+run = "pnpm --filter web exec vitest run app/api -t 'generated SSE fixture'"
+
 [tasks."test:e2e"]
 description = "Run Playwright tests in Chromium, Firefox, and WebKit"
-run = "pnpm --filter web exec playwright test"
+# CI runs one engine per matrix job through E2E_PROJECTS (comma-separated); the default is all three.
+run = """
+projects="${E2E_PROJECTS:-chromium,firefox,webkit}"
+flags=""
+for project in $(echo "$projects" | tr ',' ' '); do flags="$flags --project=$project"; done
+pnpm --filter web exec playwright test $flags
+node scripts/gate/assert-playwright-nonempty.mjs --projects "$projects" < apps/web/test-results/results.json
+"""
 
 [tasks."test:mutation"]
 description = "Run mutation tests"
@@ -79,6 +91,7 @@ run = [
   "mise run check:repo-rules",
   "mise run typecheck",
   "mise run test",
+  "mise run docs:check",
 ]
 
 [tasks."gate:repeat"]
@@ -149,6 +162,14 @@ run = "node scripts/check-docs.mjs"
 [tasks."check:model-ids"]
 description = "Validate model ID centralization rules"
 run = "node scripts/check-model-ids.mjs"
+
+[tasks."check:client-bundle"]
+description = "Build the web app with sentinel secrets and check the client bundle for them"
+env = { AI_RUN_MODE = "mock", NODE_ENV = "production", ANTHROPIC_API_KEY = "changeme-bundle-sentinel-anthropic", TAVILY_API_KEY = "changeme-bundle-sentinel-tavily" }
+run = """
+pnpm --filter web exec next build
+node scripts/check-client-bundle.mjs --dir apps/web/.next/static --sentinel changeme-bundle-sentinel-anthropic --sentinel changeme-bundle-sentinel-tavily
+"""
 
 [tasks."check:repo-rules"]
 description = "Validate repository governance rules"

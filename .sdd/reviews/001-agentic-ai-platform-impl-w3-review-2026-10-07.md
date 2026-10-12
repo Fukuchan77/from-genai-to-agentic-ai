@@ -38,7 +38,7 @@
 
 ### [MEDIUM] `local` で Ollama の実行時コンテキスト長（`num_ctx`）を設定しておらず、カタログの `contextWindow` に基づく全文／分割の判断が成り立たない
 **Location**: packages/ai-core/src/models/providers.ts:78-84; packages/ai-core/src/summarize/plan.ts:87-89,150-166
-**Issue**: `qwen3:8b` のカタログ値 40,960 から予算 28,672 トークンで「全文」と判断しても、Ollama はリクエストに `num_ctx` がなければサーバー既定（数千トークン）で動き、超過分のプロンプトを黙って切り詰めるため、Req 4.6・4.12 の判断と実際の投入内容が一致しない。
+**Issue**: 当時の既定のローカルモデル（Ollama）のカタログ値 40,960 から予算 28,672 トークンで「全文」と判断しても、Ollama はリクエストに `num_ctx` がなければサーバー既定（数千トークン）で動き、超過分のプロンプトを黙って切り詰めるため、Req 4.6・4.12 の判断と実際の投入内容が一致しない。
 **Evidence**: リポジトリ全体に `num_ctx`・`OLLAMA_CONTEXT_LENGTH` の指定がない（grep で0件）。`ollama-ai-provider-v2` は `providerOptions.ollama.options.num_ctx` を受け付ける（`dist/index.d.ts` に `num_ctx` がある）。14.5・19.2 の local テストは実 Ollama で一度も実行されていないため、この差は検出されていない。
 **Confidence**: medium
 **Fix**: Ollama のモデルを生成するとき（または要約・エージェントの呼び出し時）に、カタログの `contextWindow` を `num_ctx` として渡すか、カタログの `local` の `contextWindow` を既定の実行時値に合わせる。どちらかを research.md に実測で記録し（constitution 原則 8）、長文の要約を `*.local.test.ts` で確認する。

@@ -691,3 +691,40 @@ describe("createGuardedAgent: validation", () => {
 		expectTypeOf(guardedTools(clock)).toExtend<GuardedToolSet>();
 	});
 });
+
+describe("createGuardedAgent: provider options", () => {
+	function recordingChatModel(): MockLanguageModelV4 {
+		return createScenarioModel({
+			purpose: "chat",
+			scenarios: [...M1_2_SCENARIOS, CALCULATION_SCENARIO],
+		});
+	}
+
+	it("passes providerOptions to the LLM call of every step (plan C8)", async () => {
+		const clock = createFakeClock();
+		const model = recordingChatModel();
+		const providerOptions = { ollama: { options: { num_ctx: 32_768 } } };
+		const guarded = createGuardedAgent(options({ clock, model, providerOptions }));
+
+		await runToEnd(guarded, "計算してください");
+
+		expect((await guarded.done).steps).toBe(3);
+		expect(model.doStreamCalls).toHaveLength(3);
+		for (const call of model.doStreamCalls) {
+			expect(call.providerOptions).toEqual(providerOptions);
+		}
+	});
+
+	it("sends no providerOptions when none are given", async () => {
+		const clock = createFakeClock();
+		const model = recordingChatModel();
+		const guarded = createGuardedAgent(options({ clock, model }));
+
+		await runToEnd(guarded, "計算してください");
+
+		expect(model.doStreamCalls).toHaveLength(3);
+		for (const call of model.doStreamCalls) {
+			expect(call.providerOptions).toBeUndefined();
+		}
+	});
+});

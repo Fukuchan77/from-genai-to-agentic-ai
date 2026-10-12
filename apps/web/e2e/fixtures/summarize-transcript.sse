@@ -1,0 +1,8 @@
+data: {"type":"data-summary","id":"summary-1","data":{"title":"Agentic AI 入門","keyPoints":["目的を明確にする","ツールを安全に使う","評価で品質を確認する"],"tags":["AI","agents","evaluation"],"actionItems":["モックでテストする"]}}
+
+data: {"type":"data-summary","id":"summary-1","data":{"title":"Agentic AI 入門","keyPoints":["目的を明確にする","ツールを安全に使う","評価で品質を確認する"],"tags":["AI","agents","evaluation"],"actionItems":["モックでテストする"]}}
+
+data: {"type":"data-summary-meta","id":"summary-meta","data":{"strategy":"whole","estimatedInputTokens":10,"actualInputTokens":120,"chunks":1,"attempts":1}}
+
+data: [DONE]
+

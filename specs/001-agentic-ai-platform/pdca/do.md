@@ -2360,7 +2360,7 @@ Alias break の failure は `This module cannot be imported from a Client Compon
   2. `mock` / `local` は単価なし、`live` は入出力単価ありで、watsonx.ai を含めない。
   3. 検索・既定値解決・コスト見積もりが決定論的で、未知の組み合わせを拒否する。
   4. 型は Zod 非依存で、モデル ID リテラルの一元管理 gate を通過する。
-- Official documentation checked: Anthropic models overview, OpenAI models/pricing, Microsoft Azure Foundry model catalog/pricing guidance, Google Gemini models/pricing, Ollama qwen3 and embeddinggemma library pages（2026-09-28 閲覧）。
+- Official documentation checked: Anthropic models overview, OpenAI models/pricing, Microsoft Azure Foundry model catalog/pricing guidance, Google Gemini models/pricing, Ollama library pages（2026-09-28 閲覧）。
 
 ### 2026-09-28 21:18 Task 9 RED Evidence
 
@@ -3435,7 +3435,7 @@ GREEN 後、7件すべての新規テストについて独立した deliberate b
 - GREEN: `URL.hostname` のリテラル検査（IPv4 の非公開帯域、IPv6 の ::・::1・IPv4 互換/マップ/NAT64・fc00::/7・fe80::/10・fec0::/10・ff00::/8、localhost・*.local・*.internal・単一ラベル）。`redirect: "manual"` で最大5回、行き先ごとに検査。`SourceDeps.clock` の 15 秒タイムアウト（fetch と競争させ、signal を無視する fetcher も打ち切る）。5 MiB の UTF-8 バイト上限。新しい reason `disallowed-url`・`timeout`・`too-large`。テストは `url-guard.test.ts` 56件、`source.test.ts` 14件、`pipeline.test.ts` 1件。
 - PROVE（それぞれ失敗を確認）: マップ/NAT64 分岐 → 3件、protocol 検査 → ftp・gopher を受理、169.254/16 → 2件、fetch 前の検査 → 7件、`redirect: "manual"` → `expected false to be true`、上限 `>=`→`>`、タイムアウトの対応 → reason が `network`、サイズ `>`→`>=` と文字数化 → 境界テスト、競争を外す → `Test timed out in 5000ms`。
 - PROVE 中の発見: 事前に abort した signal で放棄した要求が unhandled rejection を出したため、`request.catch(() => undefined)` で修正した。
-- `7e867fc`: `hardSplit` を補間探索（`fittingEnd`）に変えた。2 MB の `"word "` 行で qwen3:8b 2.5 s → 0.66 s、日本語 2 MB 6.2 s → 0.77 s。PROVE 二分探索に戻す → `expected 4934318 to be less than 1600000`、`low - 1` と `start + 1` の除去 → 各6件。
+- `7e867fc`: `hardSplit` を補間探索（`fittingEnd`）に変えた。2 MB の `"word "` 行で 当時の既定のローカルモデルで 2.5 s → 0.66 s、日本語 2 MB 6.2 s → 0.77 s。PROVE 二分探索に戻す → `expected 4934318 to be less than 1600000`、`low - 1` と `start + 1` の除去 → 各6件。
 
 **L9**（`68adf47`）: RED 7件。GREEN `/<(\s*\/?\s*source\b[^>]*)>/giu` で題名と本文の全変種を `&lt;…&gt;` に。PROVE 題名を素通し → 7件、`i` フラグを外す → 大文字の2件。
 
@@ -3509,3 +3509,213 @@ GREEN 後、7件すべての新規テストについて独立した deliberate b
 - 新規は LOW 3件。R3-1（plan C13・tasks-w4 20.1 の接続時検査の2つの誤り）と R3-2（統合前の SHA の引用）は文書を修正した。R3-3（公開経路のない特殊用途アドレス）は traceability の Gaps に受け入れた制約として記録した。
 - PR #25 の CI（`gate`・`secret-scan`・`audit`・`mutation`・`ci-status`）は `41e5285` で成功。W3 の移行条件（全サブタスク `[x]`、Implementation Notes、19.3 の結線、gate と `ci-status` の成功、敵対的レビューの記録）を満たしたので、W3 を保管し W4 へ移る。
 
+
+### 2026-10-12 Task 21.1 RequestGuard errors (apps/web/lib/server/errors.ts)
+
+- 準備: `packages/ai-core/package.json` の `exports` に `"./errors": "./src/errors.ts"`、`apps/web/package.json` に `test`・`test:coverage` を追加（ロックファイルは変更なし）。新しい依存は追加していない。
+- RED: `errors.test.ts` を先に書いて `vitest run`（`AI_TEST_RUN_MODE=mock AI_TEST_SUITE=gate`）→ `Error: Cannot find module './errors' imported from .../errors.test.ts`、`Gate reporter error: no tests executed in the gate suite.`（`@platform/ai-core/errors` と `/summarize` の解決は成功し、`./errors` が無いことだけで失敗）。
+- SCAN: 変更した記号（`exports` に足した `./errors`、`test` スクリプト）に触れる既存テストはなし。ベースラインの ai-core / root / eval-suite は変更前後で同じ件数。
+- GREEN: `errors.ts`（`HTTP_STATUS_BY_CODE`、`GuardError`、`toPublicError`、`toErrorResponse`、`toStreamErrorText`、`parseStreamErrorText`）。47 件合格（後から `GuardError("invalid-request")` の 400 を 1 件追加）。
+- PROVE（スタブ → 観測した失敗）: `source-unavailable` を 422→400 → `expected 400 to be 422`（2件）／`details` を無条件に通す → 全 `code` の応答本文の比較が失敗（秘密値が混入）／`retry-after` ヘッダー名を変更 → `expected null to be '17'`／`unexpected` に `Error.message` を入れる → 固定文言の比較 3件失敗／ストリームの読み戻しで任意の `code` を許可 → `expected { code: 'weird', … } to deeply equal { code: 'unexpected', … }`／status の範囲検査を外す → 1件／reason の形式検査を外す → 2件／`GuardError` の分岐を外す → 3件／`Retry-After` の整数検査を外す → 2件。すべて復元して再合格。
+- エラー: `sed -i`（macOS の BSD sed は `-i ''` が必要）でスタブを当てようとして `extra characters at the end of l command` となり、最初の PROVE が空振りした（スタブ未適用のまま 46 件合格と出た）。原因を特定してから Python でスタブを当てる補助スクリプトに切り替え、全スタブを再実行した。
+- 決定: (1) plan の HTTP API 表が `source-unavailable` に `reason`・`status` を求めるため、`details` は許可リスト（`reason`・`status`）だけ通す（作業指示の「`code` と `message` のみ」との差。それ以外は送らない）。(2) plan の閉じた語彙に無い 500 `unexpected` を、`PlatformError` 以外の例外用に追加（`AgentRunErrorCode` と同じ語）。(3) `GuardError` は `PlatformError` を継承しない（`PlatformErrorCode` は ai-core の閉じた語彙のため）。
+
+### 2026-10-12 Task 21.2 guard (apps/web/lib/server/guard.ts)
+
+- RED: `guard.test.ts` を先に書いて実行 → `Error: Cannot find module './guard' imported from .../guard.test.ts`、`no tests executed in the gate suite.`。
+- GREEN: `guardRequest`、`createConversationPolicy` / `inspectConversation`、`createRateLimiter`、`GuardSchema` / `GuardPolicy` / `GuardResult` / `RateLimiter` の型。初回は 45/46 合格（テストの誤り: 「バイト数であって文字数ではない」のテストで `あ` を 682 文字×3＋2 = ちょうど 2048 バイトにしていた。`+ 1` で 683 文字に修正）。`tsc` で 2 件の型エラー（`GuardError` の `code` に `invalid-request` がない、テストの `bigImages[0]` が `undefined` を含む）を直して、`errors.ts` に `GuardRejectionCode = GuardErrorCode | "invalid-request"` を加えた。
+- PROVE（スタブ → 観測した失敗）: `Content-Length` 事前検査を外す → `expected true to be false`（本文を読まずに拒否するテスト）／ストリーム読み取りの `>` を `>=` → 上限ちょうどのテスト／`cancel` を外す → 「上限を超えたら読み取りを止める」テスト／バイト数を 1/3 にして数える → 4件／不正 JSON を `null` として通す → 3件／スキーマ失敗を無視 → 4件／検査を呼ばずスキーマ後を素通し → 4件／`mode !== "mock"` でレート制限 → `local` のテスト／レート制限を内容検査の前に置く → 3件（枠を消費してはいけないテスト）／件数 `>=` → 1件／assistant にもテキスト上限 → 1件／UTF-16 長で数える → 1件（絵文字）／画像枚数をリクエスト全体で数えない → 2件／画像サイズ `>=` → 2件／パディングを無視 → 1件／`data:` 以外の URL を許可 → 1件／画像以外のファイルを画像に数える → 1件／窓の境界 `count > limit` → 4件／窓の判定 `>` → 4件／`ceil` を `floor` → 1件／窓の開始を作成時にする → 1件（テストを「作成から 5 秒後の最初の `check()`」に直してから失敗を確認。直前は検出できなかった）／上限の検証を外す → 3件／`Retry-After` を渡さない → 2件／非 `data:` URL の拒否コードを変更 → 1件。復元後に全件合格。
+- 生き残ったスタブ: 「拒否した `check()` も数える」（`count += 1` を拒否側に足す）は等価変異（`count >= limit` は一度成立すると窓が閉じるまで成立し続ける）。
+- 決定: (1) テキスト長（既定 8,000 文字）は user メッセージごとの text パートの合計（コードポイント数）。assistant の返信は長くなりやすく、サーバーが書いたものなので対象外（本文サイズ 512 KiB が上限）。(2) 画像枚数はリクエスト全体の合計（履歴ごと毎回送られ、毎回コストがかかるため）。(3) `data:` 以外の画像 URL はサイズを測れず、サーバーから外部 URL を取りに行かせないため 400 `invalid-request`。(4) レート制限器はキーなしの共有 1 窓（`x-forwarded-for` は偽装できる）。(5) `GuardSchema<T>` は構造型で `zod` の依存を `apps/web` に足さない。
+
+### 2026-10-12 Task 21 Verification
+
+- `cd apps/web && AI_TEST_RUN_MODE=mock AI_TEST_SUITE=gate pnpm exec vitest run` → web 93 件合格（errors 47、guard 46）。`pnpm run test:coverage`（html、閾値 0）も成功。`pnpm exec biome check apps/web/lib`、`tsc --noEmit` はクリーン。
+- `mise run gate` → exit 0: lint（Biome 163 files）、`check:model-ids`（138 files）、`check:repo-rules` の 9 規則すべて走査件数 > 0（`no-sensitive-logging` 117、`guarded-agent-only` 117、`ai-core-no-ui-deps` 105）、typecheck（`apps/web/tsconfig.json` 12 files、ai-core 108 files）、test: root `executed=257 passed=257`、ai-core `executed=687 passed=687 skipped=4`（lines 97.85%）、eval-suite `executed=3 passed=3 skipped=1`、web `executed=93 passed=93 failed=0 skipped=0`。既存の失敗なし。
+
+### 2026-10-12 Task 20 AppShell and platform.ts (20.1-20.4)
+
+**20.1 `lib/server/platform.ts`**
+
+- RED: `platform.test.ts`（25件）を先に書いて実行 → `Error: Cannot find module './platform' imported from .../platform.test.ts`、`no tests executed in the gate suite.`。
+- SCAN: 公開する `isBlockedHostname` は `summarize/url-guard.ts` の既存の関数を `summarize/index.ts` から再公開するだけ。触れる既存テストなし（ベースライン root 257、ai-core 687、web 93 が変更前後で同じ）。
+- GREEN: `getPlatform` / `createPlatform` / `setPlatformForTesting` / `createGuardedFetch`。25/25 合格。`tsc` の型エラー2件（テストの resolver の戻り値が `undefined` を含む、`Transform` を `Readable` へ型変換）を直した。
+- 実装の決定: `undici` が宣言済みでないため `node:http(s).request` の `lookup` で組んだ。fake の `request` は本物の `lookup` の契約（`all` あり・なしの2形式、IP リテラルでは `lookup` を呼ばない、`lookup` の例外はそのまま `error` イベント）に合わせた。ネットワークのテストはフェイクだけ（hermetic ガードの下で実 DNS・実接続なし）。
+- PROVE（スタブ → 観測した失敗）: 正規化なし（生の IP を `isBlockedHostname` へ）→ 3件（`::ffff:10.0.0.1`・公開 IPv6・`all` 形式）／`some` を `every` → 1件／`cause` の展開なし → 1件／上限 `>` を `>=` → 上限ちょうどの1件／`Content-Length` 検査なし → 1件（本文を読んだ）／上限検査なし → 3件／バイトでなく文字数 → 1件／展開なし → 1件／リテラル IP の検査なし → 1件／録画ラッパなし → 1件・常に包む → 1件／`toolTimeoutMs` を別の設定値 → 1件／リミッターに `systemClock` → 1件／キーなしの検索が失敗しない → 1件／`getPlatform` のキャッシュなし → 1件／rebinding（最初の解決結果を使い回す）→ 9件。プロトコル検査を外すスタブは最初 25 件合格のまま生き残った（`file:///` の hostname が空で単一ラベル扱いになり別経路で拒否されていた）ため、テストの URL を `ftp://news.example.com/a` に直してから 1 件の失敗を確認した。すべて復元して 25/25。
+- エラー: (1) PROVE の補助スクリプトが Python の `UnicodeDecodeError`（vitest の出力に不正なバイト）で途中終了し、`platform.ts` にスタブが残った（`if (false)` と `Content-Length` 無効化）。原因を確認して手で復元してから、`errors="replace"` と `try/finally` で必ず復元するスクリプトに直して再実行した。(2) 最初の `mise run gate` が lint で失敗: PROVE の「録画ラッパを常に包む」スタブの実行中に、キーなしの検索のテストが実際の `fixtures/cassettes/web-search/` へフィクスチャを書き出していた。ファイルを削除し、ローカルモードのテストは必ず書き込みを捨てる `recording.store` を渡すようにした。
+
+**20.2 `instrumentation.ts`**
+
+- RED: `Cannot find module './instrumentation'`（`no tests executed`）。
+- GREEN: `register`（Node.js のランタイムだけ。`ConfigError` を整形して `console.error` に出して再スロー）、`formatConfigError`。初回は 6/7 合格: 「予期しない例外」のテストが `AI_TEST_RUN_MODE=bogus` で起こそうとしたが、`envSchema` の形式エラーが先に `ConfigError` になるため。`loadPlatformConfig` を部分モックして `RangeError` を投げる形に直した。
+- PROVE: 機能名を出さない／変数名を出さない／最初の1件だけ出す → 各1件、エラーの握りつぶし → 3件、`ConfigError` 以外も整形 → 1件、ランタイム確認なし → 1件、出力なし → 2件、検証しない → 3件。復元して 7/7。
+
+**20.3 `app/layout.tsx`・`app/page.tsx`・20.4 `components/ui/*.tsx`**
+
+- どちらも `_Verify:_` が後続のタスク（27.1・27.3、22〜24）にあるため、このタスクでは `tsc`・Biome・既存の root のコントラストテストで確認した。20.4 は使い捨てのスモークテスト（Button の `className` マージと `asChild`、Alert の `role`、Dialog のキーボード（クリック → `dialog`、Escape で閉じる）、Select の `ArrowDown` で `listbox` が開く）を `components/ui/` に一度書いて 3/3 合格を確認し、境界外のため削除した。
+- 実サーバーの起動（`next dev` と curl）は権限で拒否され、実行していない。表示の確認は 27.1 に残る。
+- 追加の依存はない。shadcn CLI は使わず、宣言済みの `radix-ui` の統合パッケージで手書きした。
+
+**Task 20 Verification**
+
+- `mise run gate` → exit 0: lint（Biome 178 files）、`check:model-ids`（153 files）、`check:repo-rules` の9規則すべて走査件数 > 0（`no-sensitive-logging` 132、`guarded-agent-only` 132、`ai-core-no-ui-deps` 105）、typecheck（`apps/web/tsconfig.json` 27 files）、test: root `executed=257 passed=257`、ai-core `executed=687 passed=687 skipped=4`（lines 97.85%）、eval-suite `executed=3 passed=3 skipped=1`、web `executed=125 passed=125 failed=0 skipped=0`（errors 47、guard 46、platform 25、instrumentation 7）。既存の失敗なし。
+
+### 2026-10-12 Task 22 ChatFeature (22.1-22.4)
+
+**前提**: `apps/web` に `ai` が未宣言（pnpm の厳格な解決で import 不可）だったため、一度停止して報告した。人間の承認後、`ai@7.0.137`（ai-core と同じ版）を `apps/web/package.json` に追加し、plan.md・research.md を改訂した（これらはこのタスクでは触れていない）。
+
+**22.1 `app/api/chat/route.ts`**
+
+- RED: `route.test.ts`（8件）を先に書いて実行 → `Cannot find module './route'`。
+- GREEN: 8/8 合格。テストは mock の実プラットフォーム（`createPlatform` + テスト用シナリオ + 書き込みを捨てる recording store）と、`gateway.resolve` を差し替えた `createTextStreamModel`（`doStreamCalls` でプロンプトと `abortSignal` を観測）の2通り。SSE は `data: {json}` を読む小さな `readChunks` で検査する（23・24 の route テストも同じ形を使える）。
+- PROVE（スタブ → 観測した失敗）: `sendReasoning: false` → ストリーム内容の1件／`abortSignal` を外す → 中断の1件／`adaptHistoryForModel` を外す → 推論除外の1件／`usage` を落とす → メタデータの1件／エラーを包まず送る → エラー変換の1件／`require: ["imageInput"]` を外す → 画像の1件／`instructions` を別名に → ペルソナの1件。復元済み。
+- エラー: gate の `check:model-ids` が、テスト内の `"claude-sonnet-4-6"` リテラルを拒否した。カタログから anthropic のエントリを引く形に直した。
+
+**22.2 `app/chat/page.tsx`・`ChatPanel.tsx`・`MessageList.tsx`・`ReasoningDisclosure.tsx`**
+
+- RED: `Failed to resolve import "./MessageList"`（`ChatPanel.test.tsx` は `"./ChatPanel"`）。GREEN: MessageList 5件、ChatPanel 3件。`next typegen && tsc --noEmit` クリーン。
+- PROVE: 推論を `<details open>` → 折りたたみの1件／推論パートを描画しない → 1件／著者ラベルなし → 1件／生成中表示なし → 1件／画像の `alt` を空に → 1件／停止ボタンを出さない → 1件／`body` を空に → 1件／`stop()` を呼ばない → 1件／空メッセージの送信を許す → 1件。
+- 設計: 推論は `<details>`/`<summary>`（キーボード操作と開閉の読み上げがネイティブ）。会話は `role="log"`、生成中は `role="status"`。停止ボタンは生成中（`submitted`/`streaming`）だけ表示。
+
+**22.3 `ModelSelector.tsx`・`PersonaSelector.tsx`・`ImageAttachButton.tsx`**
+
+- RED: `Failed to resolve import "./ModelSelector"`。GREEN: 7/7（Radix Select は jsdom 用に pointer-capture と `scrollIntoView` を補う。キーボードの ArrowDown で開き Enter で選択）。
+- PROVE: 表示名・ラベル・`onValueChange`・`disabled` の欠落、画像非対応の無効化と理由（`aria-describedby`）、非画像ファイルの拒否（`role="alert"`）、`data:` URL 変換、削除ボタン、`accept` を外す → 各1件ずつ失敗。
+- 画像非対応モデルへ切り替えると添付を捨て、ボタンを無効にする（`ChatPanel` 側）。
+
+**22.4 `MessageMeta.tsx`・`ErrorBanner.tsx`**
+
+- RED: `Failed to resolve import "./ErrorBanner"` / `"./MessageMeta"`。GREEN: MessageMeta 5件、ErrorBanner 7件。Biome の `useSemanticElements` が `div role="group"` を指摘したため、`ul aria-label` に変えた。
+- PROVE: モデル名／出力トークン／キャッシュ（値なしで表示）／usage 欠落時の表示／メタデータなしの描画、HTTP 本文の読み取り、ストリームのエラー文の読み取り、再送・閉じる・`role="alert"` → 各1件以上失敗。
+- 注意: `ChatPanel` との統合テスト（7件のうち4件）は、実装後に追加した。RED は観測していないが、`ChatPanel`/`MessageList` のスタブ（添付を捨てない、`regenerate` に `body` なし、選択の無効化なし、画像対応の固定、エラー非表示、メタ表示の反転）で各1件の失敗を確認した。
+
+**Task 22 Verification**
+
+- `mise run gate` → exit 0: lint、`check:model-ids`、`check:repo-rules`、typecheck（`apps/web/tsconfig.json` 43 files）、test: root `executed=257 passed=257`、ai-core `executed=687 passed=687 skipped=4`、eval-suite `executed=3 passed=3 skipped=1`、web `executed=165 passed=165`。
+- 実サーバー（`next dev`）での表示確認は行っていない。27.1・27.3 に残る。
+
+## 2026-10-12 タスク 23 ToolAgentFeature（23.1〜23.4。23.5 のタグは未実施）
+
+**23.1 `app/api/agent/tools/route.ts`**
+
+- RED: `route.test.ts`（12件）を先に書いて実行 → `Failed to resolve import "./route"`。GREEN: 初回 10/12。残り2件はテスト側の誤り（`new Request` は渡した `signal` の従属シグナルを持つので `request.signal` と比較する。モデルが引数をストリームしないため `tool-input-start` は出ない）を直して 12/12。`createGuardedAgent` は `vi.mock` + `importOriginal` で包み、生成されたインスタンスと options を記録する。
+- ツールの時間切れは fake Clock を `Platform` に注入し、`fetch` が決して戻らない HttpFetcher でサンプルの天気ツールを止め、`toolTimeoutMs` だけ `advanceBy` する → `tool-output-available` が `{ ok: false, failure: { kind: "timeout" } }`、続く step でテキストが出て `stopReason: "completed"`、`steps: 2`。
+- PROVE（変異 → 観測した失敗）: `finish` の `run` を落とす → 3件／可用性を `web-search: true` に固定 → 無効ツール通知の1件／`createGuardedAgent` をキャッシュして共有 → 6件（別インスタンスの1件を含む）／`signal` を新しい `AbortController` に → 2件（シグナルと中断）／`toolRuntime` のタイムアウトを延長 → 時間切れの1件／生の `error.message` を送る → 漏えいの1件／`require` を空に → 1件／合成済み `abortSignal` を渡さない → 中断の1件／履歴検証の `catch` を外す → 固定文言の1件。復元済み。
+
+**23.3 `renderers.tsx`・`cards/*.tsx`・`RawJsonView.tsx`**（23.2 の前に実施。`ToolPartView` が使うため）
+
+- RED: `Failed to resolve import "./RawJsonView"`。GREEN: 11件（その後、数値型の検査を1件追加）。カードは `data: unknown` を検査し、形が違えば `RawJsonView`。`rendererFor` は `Object.hasOwn` で引く（`constructor` 等を拾わない）。検索結果のリンクは http(s) のみ。
+- PROVE: 対応表の入れ替え → 2件／`in` 演算子での検索 → 2件／URL スキームの検査を外す → 1件／プレースホルダー削除 → 1件。カード側の検査を1節だけ外した変異は、他の節が受けるため生き残ったので、型違いの値のテストを足した。
+
+**23.4 `DisabledToolsNotice.tsx`・`RunSummaryBadge.tsx`**
+
+- RED: `Failed to resolve import "./RunSummaryBadge"`（DisabledToolsNotice は先に実装を置いたため RED を観測していない。PROVE で補った）。GREEN: 3件 + 12件。
+- PROVE: タイトルに環境変数名を書く → 「環境変数名を書かない」検査の1件／理由を隠す → 1件／`outcome` の反転 → 4件／呼び出したツールを落とす → 1件／ステップ数を改変 → 1件。
+
+**23.2 `app/agent/page.tsx`・`ToolAgentPanel.tsx`・`ToolPartView.tsx`**
+
+- RED: `Failed to resolve import "./ToolPartView"`。GREEN: ToolPartView 9件（初回1件はテストの `pre` の選び方の誤りで修正）、ToolAgentPanel 5件（境界外のテスト専用ファイル）。`next typegen && tsc --noEmit` クリーン。
+- PROVE: `output-error` の生テキスト表示 → 1件／状態ラベルの入れ替え → 1件／動的ツール名 → 1件／失敗表示を外す → 1件／API パスを `/api/chat` → 1件／生成中の回答にサマリを出す → 1件／ツールパートを描画しない → 1件。
+- 設計: 無効ツールの通知は最初の応答の `start` で届くため、最初の送信前には出ない。会話は `role="log"` + `aria-live="polite"` で、ツールの状態変化もこの領域で読み上げられる。
+
+**Task 23 Verification**
+
+- `mise run gate` → exit 0: Biome 214 files、typecheck（`apps/web/tsconfig.json` 63 files）、test: root `executed=257 passed=257`、ai-core `executed=687 passed=687 skipped=4`、eval-suite `executed=3 passed=3 skipped=1`、web `executed=217 passed=217`。
+- 実サーバー（`next dev`）での表示確認は行っていない。27.1・27.3 に残る。23.5（タグ）は未実施。
+
+## 2026-10-12 タスク 24 SummaryFeature（24.1〜24.3。24.4 のタグは未実施）
+
+**24.1 `app/api/summarize/route.ts`**
+
+- RED: `route.test.ts`（15件）を先に書いて実行 → `Failed to resolve import "./route"`。GREEN: 初回で15/15。`SUMMARIZE_INPUT_LIMITS` を `export` すると Next.js のルートモジュールの export 規則に反するため非公開にした。
+- 検証内容: 記事／YouTube／字幕テキストの各入力で `data-summary`（同じ `id` が段階的に伸びる）→ 最終 → `data-summary-meta` の順、チャプター、検証失敗の再生成（`data-summary-restart` の attempt が 2・3、`id` が `summary-1..3`、最後に `output-invalid` のエラー）、取得失敗（404・字幕なし・非公開・取得エラー・内部アドレス）で 422 と `reason`/`status`、モデルの `doStream`/`doGenerate` が0回、不正本文・未知フィールド・不明モデルで `resolve` 前に 400、長すぎる字幕・URL の `limit-exceeded`、413、`live` のみレート制限、プロバイダ失敗の固定文言（秘密値が出ない）、`request.signal` の伝播。
+- PROVE（変異 → 観測した失敗）: `attempt` の更新を外す → 再開始の1件／生の `error.message` を送る → 漏えいの1件／`inspect` を外す → 上限超過の1件／`abortSignal` を渡さない → 1件／メタを送らない → 2件／ガードの mode を固定 → レート制限の1件／スキーマを通す → 400 の1件／`loadSource` を迂回 → 3件。復元済み。
+
+**24.3 / 24.2 コンポーネント**（24.2 の `SummaryCard` が `ChapterList` を使うため 24.3 の部品を先に実施）
+
+- RED: ChapterList・SummaryMetaPanel・SourceErrorView・SummaryCard のテスト（計40件）を先に書き、`Failed to resolve import` を確認。SummaryPanel（17件）・SummaryForm（5件）も同様。GREEN: 初回は SummaryPanel の1件のみ失敗（テストの期待値の誤り: 同じ `id` のパートは後勝ち）。型検査で `SummaryDataParts` の index signature がデータパート型を `unknown` にするのを `type` エイリアスに直した。
+- PROVE: 時間の区切り・小数の丸め、`attempts - 1`、キャッシュ「記録なし」、ステータスの表示条件、理由コードの非表示、スケルトン数、`aria-busy`、再開始後の試行の選択、`setMessages([])`、`aria-live`、リクエスト本文の組み替え、送信ボタンの無効化の13変異がすべてテストで検出された。復元済み。
+- 設計: 試行ごとに別の part `id` を使い、クライアントは最大の restart の attempt の `id` のパートだけを表示する。進捗は1文の `role="status"`（polite）で伝え、カード全体は読み上げ領域にしない。
+
+**Task 24 Verification**
+
+- `next typegen && tsc --noEmit` クリーン、Biome クリーン。
+- `mise run gate` → exit 0: root `executed=257 passed=257`、ai-core `executed=687 passed=687 skipped=4`、eval-suite `executed=3 passed=3 skipped=1`、web `executed=294 passed=294`（task 24 の分は route 15 + components 62）。
+- 実サーバー（`next dev`）での表示確認は行っていない。27.1・27.3 に残る。24.4（タグ）は未実施。
+
+### 2026-10-12 /sdd-ship（タスク 20〜24、23.5・24.4 を除く）
+
+- 検証: GO。`mise run gate` → exit 0。root `executed=257 passed=257`、ai-core `executed=687 passed=687 skipped=4`、eval-suite `executed=3 passed=3 skipped=1`、web `executed=294 passed=294`（23ファイル）。PROVE 証跡は各タスクの記録にある。
+- エラー: 1回目のコミットで pre-commit の gitleaks が `errors.test.ts` のダミー秘密値（`sk-live-…`、`generic-api-key`）を検出して全コミットが止まった。人間の承認を得て `changeme-not-a-real-secret` に差し替え、`gitleaks dir apps/web` が 0件、gate が exit 0 であることを確認してからコミットした。
+- 自動修正: `AGENTS.md` の Project Status（「no web tests yet」「W4 is current」）を実装済みの内容に更新。
+- コミット: `d8fe775`（20・21）、`64e3a96`（22）、`27112ee`（23.1〜23.4）、`a2b70ce`（24.1〜24.3）。
+- 未実施: 実サーバー（`next dev`）での表示確認（27.1・27.3）、完成タグ 23.5・24.4。
+
+### 2026-10-12 タスク 23.1 補強（レビュー修正の回帰テスト）
+
+- 背景: `/sdd-ship` の検証で、`/api/agent/tools` の「検証だけを個別の try に入れる」「検証 → 変換の順序」を守るテストがないことを確認した（変異が生き残った）。`route.test.ts` に2件を追加し、既存の検証失敗テストのリクエスト生成を `invalidToolPartRequest()` に抽出した。履歴アダプタは `vi.mock` で包み、呼び出し回数と失敗を注入できるようにした。
+- 追加テスト: `does not adapt a history that failed validation`（400、アダプタ0回）／`reports a failure after validation as unexpected, not as invalid-request`（500、`unexpected`、`invalid-request` と秘密値を含まない）。
+- PROVE（変異 → 観測した失敗）: `createAgentUIStreamResponse` 呼び出しを広い try で包み 400 に変換 → 後者の1件が失敗／検証の前に `adaptHistoryForModel` を呼ぶ → 前者の1件が失敗。復元済み（`cmp` で一致を確認）。
+- ガード側の2件（bare `image`、データ URL 以外）の PROVE: `isImageMediaType` を `startsWith("image/")` のみに戻す → `counts a bare image media type as an image` が失敗／データ URL の検査を外す → `rejects a non-image file whose URL is not a data URL` が失敗。復元済み。
+- `mise run gate` → exit 0: Biome 229 files、typecheck（`apps/web/tsconfig.json` 78 files）、root `executed=257 passed=257`、ai-core `executed=687 passed=687 skipped=4`、eval-suite `executed=3 passed=3 skipped=1`、web `executed=298 passed=298`（+2、`app/api/agent/tools/route.test.ts` 14件）。
+
+### 2026-10-12 /sdd-ship 再実行（W4 レビュー修正）
+
+- 検証: GO。1回目は `/api/agent/tools` の挙動変更に回帰テストがなく NO-GO（`/sdd-impl 23.1` で補強）。再実行の `mise run gate` → exit 0: Biome 229 files、typecheck（`apps/web/tsconfig.json` 78 files）、root `executed=257 passed=257`、ai-core `executed=687 passed=687 skipped=4`、eval-suite `executed=3 passed=3 skipped=1`、web `executed=298 passed=298`。PROVE は直前の節にある。
+- 自動修正: `traceability.md` の Gaps にレビュー対応と spec drift（データ URL 限定）を追記。レビュー記録に Resolution を追記。
+
+### 2026-10-12 実サーバー確認で見つかった不具合（`next dev`、`AI_RUN_MODE=mock`）
+
+- 発見: gate（Vitest）は通っていたが、`next dev` では `/chat`・`/agent`・`/summarize` がすべて 500 だった。原因は2つ。(1) `packages/ai-core/src/mock/fixtures.ts` の `new URL("../../fixtures", import.meta.url)` を Turbopack がファイルアセットとして解決しようとし、対象がディレクトリのため失敗。(2) `globals.css` の `@import "tw-animate-css"`。このパッケージの `exports` は `style` 条件だけで、Turbopack が解決しない。
+- 修正: (1) `path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "fixtures")` に変更。(2) `../node_modules/tw-animate-css/dist/tw-animate.css` を指す相対 `@import` に変更。
+- 確認: 3ページとも 200、axe（wcag2a/2aa/21aa/22aa）の違反 0（light/dark）、コンソールエラー 0。`POST /api/chat`・`/api/agent/tools` は mock で 200（agent は `tool-output-available` を含む）。`mise run gate` → exit 0（web `executed=298 passed=298`、ai-core 687、root 257、eval-suite 3）。
+- 未解決（スクリーンショットで判明）: Tailwind が処理されていない。`apps/web` に `@tailwindcss/postcss` も `postcss.config` もなく、`@theme`・`@custom-variant`・`@apply` が「Unknown at rule」になり、ページは CSS なしで描画される。axe の違反 0 はスタイルなしの状態の結果で、コントラストの確認にならない。`@tailwindcss/postcss` は plan に宣言がないため、追加は人間の承認が要る。
+- 回帰テスト: Turbopack のビルド失敗は Vitest では再現できない。27.1 の `real-server.spec.ts`（実サーバーで3ページが 200）で守る。
+
+### 2026-10-12 Tailwind の処理を有効化（人間の承認済みの依存追加）
+
+- `apps/web` に開発依存 `@tailwindcss/postcss@4.3.3`（`tailwindcss` と同一版、exact pin）を追加し、`apps/web/postcss.config.mjs` を作成した。pnpm のサプライチェーン検査は通過。plan（`apps/web/package.json` の行）と research.md の External dependencies に記録した。
+- 確認（`next dev`、mock）: ビルド警告（Unknown at rule / Module not found）0。`/chat`・`/agent` のスクリーンショットでヘッダー、フォーム、色、枠が描画されることを目視した。3ページとも 200、axe（wcag2a/2aa/21aa/22aa）の違反 0、コンソールエラー 0。これでスタイルありの状態の axe 結果になった。
+- 観察: `prefers-color-scheme: dark` では見た目が変わらない（`@custom-variant dark` はクラス `.dark` 方式）。ダークテーマの切り替え手段は M1 のスコープ外で、27.3 の axe 検査は `.dark` クラスを付けた状態でも行う必要がある。
+
+### 2026-10-12 26.1・26.3（axe のみ）・27.1・27.3 の先行実施
+
+- 内容と PROVE は `tasks-w5.md` の 26・27 の Implementation Notes に記録した。chromium と firefox で 54 件通過、webkit は未実行（ブラウザ未導入）。
+- 発見: Firefox のフォーカス時の outline が `currentcolor` になり、スキップリンクの指示子が見えなかった。`globals.css` の `:focus-visible` で `outline-ring` を明示して解消した。
+- `mise run gate` → exit 0: Biome 235 files、typecheck（`apps/web/tsconfig.json` 88 files）、root 257、ai-core 687、eval-suite 3、web 298（E2E は gate の外。`mise run test:e2e`）。
+
+### 2026-10-12 完成タグ 23.5・24.4
+
+- ローカルの注釈付きタグ `module/1-2`・`module/1-3` を `7cc27cc` に付けた（push は 29.4 で人間の承認後）。元の機能コミット（`64e3a96`、`27112ee`、`a2b70ce`）は Turbopack でビルドできず、学習者が戻る状態として使えないため、実サーバー修正後のコミットを選んだ。plan C22 の「モジュールごとに別のコミット」からは外れる（両方が同じコミット）。別の動くコミットを作るなら、タグを付け替える。
+- `module/1-1`（14.6）のタグは存在しない。
+
+### 2026-10-12 タスク 25.1〜25.3・26.1
+
+- 内容、PROVE、RED の観測、`_Boundary:_` 外の追加は `tasks-w5.md` の 25 の Implementation Notes にある。WebKit を導入し（`playwright install webkit`）3エンジンで 81 件通過。WebKit は Tab でリンクとボタンに止まらないため、`keyboard.spec.ts` は Option+Tab を使う。
+- `mise run gate` → exit 0: Biome 241 files、typecheck 88 files、root `executed=275`、ai-core 687、eval-suite 3、web 301。
+
+### 2026-10-12 /sdd-impl W5（26.2、26.3、27.2、27.4、28.1〜28.7、29.1。29.2・29.3 は一部）
+
+- 実施方法: E2E（26.2・26.3・27.2・27.4）と解説（28.4〜28.7）は、1タスク1サブエージェントで並行実施した。メインは 28.1〜28.3 と 29 を直接実施し、各サブエージェントの成果を `docs:check`・`test:e2e`・`gate` で検証した。
+- RED/PROVE の証跡は `tasks.md` の 26・27・28 の Implementation Notes に記録した（28.1: 11変異を検出、E2E: アプリ側13件・ヘルパー側4種の変異と 150 ms 停止の検出）。
+- 検証: `mise run gate` → exit 0: root `executed=297`、ai-core `executed=687 skipped=4`、eval-suite `executed=3 skipped=1`、web `executed=301`、`Docs: 4 module documents, 51 test references verified`。`mise run test:e2e` → `executed=123 skipped=0 (chromium=41 firefox=41 webkit=41)`。`gate:repeat` 10回成功（1分59秒）。`test:mutation` 91.60。secret-scan・audit クリーン。
+- 未完了: 29.2（Ollama 停止時のスキップ確認、`num_ctx` の再読み込みの実測。モデル未取得で `test:local` が失敗）、29.3（CI の PR 上の確認）、29.4（タグの検証と push。`module/1-1` が存在しない）。
+
+### 2026-10-12 /sdd-ship W5（26.2、26.3、27.2、27.4、28.1〜28.7、29.1）
+
+- 検証: GO。`mise run gate` → exit 0（root 297、ai-core 687 skipped 4、eval-suite 3 skipped 1、web 301、docs 51 参照）。`mise run test:e2e` → `executed=123 skipped=0`。
+- コミット: `7403cc7`（e2e）、`c20ce17`（docs）、`03a285a`（ci）、`6a41888`（ローカルモデル既定。`_Boundary:_` 外だが人間の指示）。
+- 残り: 29.2・29.3・29.4（チェックなし）。
+
+### 2026-10-12 29.2 Ollama 実測
+
+- 停止時: `test:local` は理由付きでスキップ（ai-core 2、eval-suite 1）。起動時: 交互呼び出しで毎回再読み込み（2.6〜5.6 秒、10 GB ⇄ 6 GB）、`num_ctx` をそろえると再読み込みなし。詳細は `tasks.md` 29 の Implementation Notes。plan C11・C8 の改訂は承認待ち。
+
+### 2026-10-12 /sdd-impl 29（29.2 の残り、29.5）
+
+- 29.2: `sandbox-exec` で外向き通信を遮断した状態で `TURBO_FORCE=true mise run gate` → exit 0（13秒、`0 cached`）。遮断は `fetch` が `EPERM` になることで確認。29.2 を完了にした。
+- 29.5: `ollamaRuntimeOptions(entry)` を `models/` に移し、要約・チャット・エージェントの3経路が同じ `num_ctx` を渡すようにした。TDD: RED（モジュール未作成、`providerOptions` が `undefined`）→ GREEN → PROVE（`{}` を返すスタブで新規と既存の要約テスト・両 Route が失敗、エージェントへの受け渡しを消すとエージェントのテストが失敗）。
+- 試行錯誤: (1) `it.each` の書式が Biome と違い `lint` が失敗 → `mise run lint:fix`。(2) Route のテストに `"granite4.2:latest"` を書いたら `check:model-ids` が失敗（モデル ID リテラルはカタログだけ）→ `defaultModelFor` と `getModelEntry` で引くように直した。学び: apps/web のテストでもモデル ID を書かない。
+- `mise run gate` → exit 0: Biome 251 files、Model ID check 234 files、typecheck（root 10、ai-core 110、eval-suite 3、web 94 files）、root 297、ai-core 702 skipped 4、eval-suite 3 skipped 1、web 305、`Docs: 4 module documents, 51 test references verified`。
+- 未完了: 29.5 の実 Ollama での `load_duration` 確認、29.3（PR 上の CI）、29.4（タグ。`module/1-1` は `f671813` に作り直す予定のまま未作成）。
+- 続き（同日）: PR #35 を作成し、CI の9チェックすべて成功 → 29.3 を完了にした。29.4 は `module/1-1` を `f671813` にローカルで作り直し、2つのタグのコミットで gate が exit 0 であることを worktree で確認した（`/tmp` のシンボリックリンクでは `count-tsc` が0件になるため実パスで実行）。タグの push は PR のマージ後。29.5 の実 Ollama の確認は、ユーザーの承認後も権限設定で Ollama への接続が拒否されたため未実施。

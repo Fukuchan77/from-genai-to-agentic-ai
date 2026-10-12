@@ -1,0 +1,22 @@
+data: {"type":"start","messageMetadata":{"modelId":"mock:general-v1","modelName":"Deterministic Mock Model","provider":"mock","personaId":"general-assistant","personaVersion":"1.0.0","disabledTools":[]}}
+
+data: {"type":"start-step"}
+
+data: {"type":"text-start","id":"m1-2/chat-0-text"}
+
+data: {"type":"text-delta","id":"m1-2/chat-0-text","delta":"こんにちは。モッ"}
+
+data: {"type":"text-delta","id":"m1-2/chat-0-text","delta":"クモードから決定"}
+
+data: {"type":"text-delta","id":"m1-2/chat-0-text","delta":"論的に応答してい"}
+
+data: {"type":"text-delta","id":"m1-2/chat-0-text","delta":"ます。"}
+
+data: {"type":"text-end","id":"m1-2/chat-0-text"}
+
+data: {"type":"finish-step"}
+
+data: {"type":"finish","finishReason":"stop","messageMetadata":{"modelId":"mock:general-v1","modelName":"Deterministic Mock Model","provider":"mock","personaId":"general-assistant","personaVersion":"1.0.0","usage":{"inputTokens":0,"outputTokens":0,"cacheReadTokens":0,"reasoningTokens":0},"disabledTools":[]}}
+
+data: [DONE]
+
