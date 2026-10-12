@@ -3718,3 +3718,4 @@ GREEN 後、7件すべての新規テストについて独立した deliberate b
 - 試行錯誤: (1) `it.each` の書式が Biome と違い `lint` が失敗 → `mise run lint:fix`。(2) Route のテストに `"granite4.2:latest"` を書いたら `check:model-ids` が失敗（モデル ID リテラルはカタログだけ）→ `defaultModelFor` と `getModelEntry` で引くように直した。学び: apps/web のテストでもモデル ID を書かない。
 - `mise run gate` → exit 0: Biome 251 files、Model ID check 234 files、typecheck（root 10、ai-core 110、eval-suite 3、web 94 files）、root 297、ai-core 702 skipped 4、eval-suite 3 skipped 1、web 305、`Docs: 4 module documents, 51 test references verified`。
 - 未完了: 29.5 の実 Ollama での `load_duration` 確認、29.3（PR 上の CI）、29.4（タグ。`module/1-1` は `f671813` に作り直す予定のまま未作成）。
+- 続き（同日）: PR #35 を作成し、CI の9チェックすべて成功 → 29.3 を完了にした。29.4 は `module/1-1` を `f671813` にローカルで作り直し、2つのタグのコミットで gate が exit 0 であることを worktree で確認した（`/tmp` のシンボリックリンクでは `count-tsc` が0件になるため実パスで実行）。タグの push は PR のマージ後。29.5 の実 Ollama の確認は、ユーザーの承認後も権限設定で Ollama への接続が拒否されたため未実施。
