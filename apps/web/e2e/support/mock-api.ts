@@ -14,7 +14,12 @@ import type { Page, Route } from "@playwright/test";
 
 const FIXTURE_DIRECTORY = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../fixtures");
 
-export const FIXTURE_NAMES = ["chat-greeting", "agent-weather", "summarize-transcript"] as const;
+export const FIXTURE_NAMES = [
+	"chat-greeting",
+	"agent-weather",
+	"summarize-transcript",
+	"summarize-article",
+] as const;
 export type FixtureName = (typeof FIXTURE_NAMES)[number];
 
 export type ApiPath = "/api/chat" | "/api/agent/tools" | "/api/summarize";

@@ -376,4 +376,16 @@ describe("POST /api/summarize", () => {
 
 		verifyOrWriteFixture("summarize-transcript.sse", await response.text());
 	});
+
+	it("matches the generated SSE fixture of a streamed article summary used by the E2E specs (Req 1.17)", async () => {
+		// The article scenario streams the summary in small chunks, so the fixture holds the growing
+		// partial objects the summary card renders (Req 4.5).
+		setPlatformForTesting(await mockPlatform());
+
+		const response = await POST(
+			summarizeRequest({ kind: "article", url: "https://example.test/articles/agentic-ai" }),
+		);
+
+		verifyOrWriteFixture("summarize-article.sse", await response.text());
+	});
 });
