@@ -2,7 +2,12 @@ import { embed, generateText } from "ai";
 import { describe, expect, it, vi } from "vitest";
 import { type EnvSource, loadPlatformConfig } from "../config";
 import { PlatformError } from "../errors";
-import { M2_1_SAMPLE_QUESTIONS, M2_CORPUS_TEXT } from "../mock";
+import {
+	M2_1_SAMPLE_QUESTIONS,
+	M2_3_SAMPLE_TASKS,
+	M2_4_SAMPLE_TASKS,
+	M2_CORPUS_TEXT,
+} from "../mock";
 import type { RecordingStore } from "../mock/recording";
 import { createFakeClock } from "../ports/clock";
 import { createTextStreamModel } from "../testing/mock-models";
@@ -102,6 +107,49 @@ describe("createModelGateway resolve (mock)", () => {
 			prompt: M2_1_SAMPLE_QUESTIONS.hyde,
 		});
 		expect(m2.text).toBe(M2_CORPUS_TEXT.whyRag);
+	});
+
+	it("answers the M2-3 workflow scenarios, each by its purpose", async () => {
+		const gateway = createModelGateway({ config: configFor({}) });
+
+		const structured = await gateway.resolve({ purpose: "structured" });
+		const chat = await gateway.resolve({ purpose: "chat" });
+
+		const classified = await generateText({
+			model: structured.model,
+			prompt: `<input>\n${M2_3_SAMPLE_TASKS.routing.technical}\n</input>`,
+		});
+		const voted = await generateText({
+			model: chat.model,
+			prompt: "[段: 投票 1/3]\n<task>\nx\n</task>",
+		});
+		expect(JSON.parse(classified.text)).toMatchObject({ category: "technical" });
+		expect(voted.text).toBe("賛成");
+	});
+
+	it("answers the M2-4 pattern scenarios, with the Cross-Reflection critic on the judge purpose", async () => {
+		const gateway = createModelGateway({ config: configFor({}) });
+
+		const judge = await gateway.resolve({ purpose: "judge" });
+		const chat = await gateway.resolve({ purpose: "chat" });
+
+		const critique = await generateText({
+			model: judge.model,
+			prompt: `[段: 批評 1]\n<task>\n${M2_4_SAMPLE_TASKS.crossReflection}\n</task>`,
+		});
+		const draft = await generateText({
+			model: chat.model,
+			prompt: `[段: 初稿]\n<task>\n${M2_4_SAMPLE_TASKS.crossReflection}\n</task>`,
+		});
+		expect(JSON.parse(critique.text)).toMatchObject({ needsRevision: true });
+		expect(draft.text).toContain("新機能");
+		// The same label on the other purpose has no scenario: the purposes are kept apart.
+		await expect(
+			generateText({
+				model: chat.model,
+				prompt: `[段: 批評 1]\n<task>\n${M2_4_SAMPLE_TASKS.crossReflection}\n</task>`,
+			}),
+		).rejects.toThrow();
 	});
 
 	it("binds a separate mock model per purpose and uses injected scenarios", async () => {

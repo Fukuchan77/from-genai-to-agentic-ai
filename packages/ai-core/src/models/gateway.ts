@@ -3,6 +3,8 @@ import { M1_2_SCENARIOS } from "../../fixtures/scenarios/m1-2";
 import { M1_3_SCENARIOS } from "../../fixtures/scenarios/m1-3";
 import { M2_1_SCENARIOS } from "../../fixtures/scenarios/m2-1";
 import { M2_2_SCENARIOS } from "../../fixtures/scenarios/m2-2";
+import { M2_3_SCENARIOS } from "../../fixtures/scenarios/m2-3";
+import { M2_4_SCENARIOS } from "../../fixtures/scenarios/m2-4";
 import type { PlatformConfig } from "../config";
 import { type CassetteStore, createCassetteStore } from "../mock/cassette-store";
 import { createDeterministicEmbeddingModel } from "../mock/deterministic-embedding";
@@ -156,6 +158,8 @@ export function createModelGateway(deps: GatewayDeps): ModelGateway {
 		...M1_3_SCENARIOS,
 		...M2_1_SCENARIOS,
 		...M2_2_SCENARIOS,
+		...M2_3_SCENARIOS,
+		...M2_4_SCENARIOS,
 	];
 	const cassettes = deps.mock?.cassettes ?? createCassetteStore(CASSETTE_FIXTURE_DIRECTORY);
 	const embeddingDimensions = deps.mock?.embeddingDimensions ?? MOCK_EMBEDDING_DIMENSIONS;
