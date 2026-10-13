@@ -81,19 +81,19 @@ ID 規約は `tasks.md` の「ID 対応表」を参照する（この spec の p
 
 | Requirement | Design | Task | Test | Commit |
 |---|---|---|---|---|
-| 3.1 | C11 | T-16.2, T-16.3, T-16.5, T-16.6, T-16.7, T-16.8, T-18.3, T-19.1, T-21.3, T-22.2, T-26.3 |||
-| 3.2 | C11 | T-16.2, T-18.1, T-21.1 |||
-| 3.3 | C11 | T-3.2, T-16.3, T-18.1, T-21.1 |W1: 3.2 structured/generate-validated.test.ts | W1: b5f32ab, f5f9490, f4b73f1 |
-| 3.4 | C11 | T-16.3 |||
-| 3.5 | C11 | T-2.1, T-16.1, T-16.5, T-18.1 |W1: 2.1 config/*.test.ts | W1: b5f32ab, f5f9490, f4b73f1 |
-| 3.6 | C11 | T-2.1, T-16.1, T-16.5, T-18.1, T-21.1 |W1: 2.1 config/*.test.ts | W1: b5f32ab, f5f9490, f4b73f1 |
-| 3.7 | C11 | T-2.1, T-16.1, T-16.6, T-18.1, T-21.1 |W1: 2.1 config/*.test.ts | W1: b5f32ab, f5f9490, f4b73f1 |
-| 3.8 | C11 | T-2.1, T-3.2, T-16.1, T-16.7, T-18.1, T-27.3 |W1: 2.1 config/*.test.ts; 3.2 structured/generate-validated.test.ts | W1: b5f32ab, f5f9490, f4b73f1 |
-| 3.9 | C11 | T-16.7, T-21.1, T-23.2 |||
-| 3.10 | C11 | T-16.7, T-21.1 |||
-| 3.11 | C11 | T-16.7 |||
-| 3.12 | C1, C11 | T-2.2, T-16.4, T-18.1, T-21.1 |W1: 2.2 models/catalog.test.ts, gateway.test.ts | W1: b5f32ab, f5f9490, f4b73f1 |
-| 3.13 | C11, C17 | T-4.1, T-4.4, T-16.2, T-16.3, T-16.5, T-16.6, T-16.7, T-18.3, T-19.2, T-26.3 |W1: 4.1 check-repo-rules.test.mjs; 4.4 mise run gate | W1: b5f32ab, f5f9490, f4b73f1 |
+| 3.1 | C11 | T-16.2, T-16.3, T-16.5, T-16.6, T-16.7, T-16.8, T-18.3, T-19.1, T-21.3, T-22.2, T-26.3 | W4: workflows/*.test.ts, patterns/*.test.ts, mock/m2-scenarios.test.ts, models/gateway.test.ts, api/workflows/route.test.ts | W4: fc0d67d (ai-core), 690fcf4 (web), 1f72bcd (repo) |
+| 3.2 | C11 | T-16.2, T-18.1, T-21.1 | W4: workflows/*.test.ts, patterns/*.test.ts, mock/m2-scenarios.test.ts, models/gateway.test.ts, api/workflows/route.test.ts | W4: fc0d67d (ai-core), 690fcf4 (web), 1f72bcd (repo) |
+| 3.3 | C11 | T-3.2, T-16.3, T-18.1, T-21.1 | W1: 3.2 structured/generate-validated.test.ts; W4: workflows/*.test.ts, patterns/*.test.ts, mock/m2-scenarios.test.ts, models/gateway.test.ts, api/workflows/route.test.ts | W1: b5f32ab, f5f9490, f4b73f1; W4: fc0d67d (ai-core), 690fcf4 (web), 1f72bcd (repo) |
+| 3.4 | C11 | T-16.3 | W4: workflows/*.test.ts, patterns/*.test.ts, mock/m2-scenarios.test.ts, models/gateway.test.ts, api/workflows/route.test.ts | W4: fc0d67d (ai-core), 690fcf4 (web), 1f72bcd (repo) |
+| 3.5 | C11 | T-2.1, T-16.1, T-16.5, T-18.1 | W1: 2.1 config/*.test.ts; W4: workflows/*.test.ts, patterns/*.test.ts, mock/m2-scenarios.test.ts, models/gateway.test.ts, api/workflows/route.test.ts | W1: b5f32ab, f5f9490, f4b73f1; W4: fc0d67d (ai-core), 690fcf4 (web), 1f72bcd (repo) |
+| 3.6 | C11 | T-2.1, T-16.1, T-16.5, T-18.1, T-21.1 | W1: 2.1 config/*.test.ts; W4: workflows/*.test.ts, patterns/*.test.ts, mock/m2-scenarios.test.ts, models/gateway.test.ts, api/workflows/route.test.ts | W1: b5f32ab, f5f9490, f4b73f1; W4: fc0d67d (ai-core), 690fcf4 (web), 1f72bcd (repo) |
+| 3.7 | C11 | T-2.1, T-16.1, T-16.6, T-18.1, T-21.1 | W1: 2.1 config/*.test.ts; W4: workflows/*.test.ts, patterns/*.test.ts, mock/m2-scenarios.test.ts, models/gateway.test.ts, api/workflows/route.test.ts | W1: b5f32ab, f5f9490, f4b73f1; W4: fc0d67d (ai-core), 690fcf4 (web), 1f72bcd (repo) |
+| 3.8 | C11 | T-2.1, T-3.2, T-16.1, T-16.7, T-18.1, T-27.3 | W1: 2.1 config/*.test.ts; 3.2 structured/generate-validated.test.ts; W4: workflows/*.test.ts, patterns/*.test.ts, mock/m2-scenarios.test.ts, models/gateway.test.ts, api/workflows/route.test.ts | W1: b5f32ab, f5f9490, f4b73f1; W4: fc0d67d (ai-core), 690fcf4 (web), 1f72bcd (repo) |
+| 3.9 | C11 | T-16.7, T-21.1, T-23.2 | W4: workflows/*.test.ts, patterns/*.test.ts, mock/m2-scenarios.test.ts, models/gateway.test.ts, api/workflows/route.test.ts | W4: fc0d67d (ai-core), 690fcf4 (web), 1f72bcd (repo) |
+| 3.10 | C11 | T-16.7, T-21.1 | W4: workflows/*.test.ts, patterns/*.test.ts, mock/m2-scenarios.test.ts, models/gateway.test.ts, api/workflows/route.test.ts | W4: fc0d67d (ai-core), 690fcf4 (web), 1f72bcd (repo) |
+| 3.11 | C11 | T-16.7 | W4: workflows/*.test.ts, patterns/*.test.ts, mock/m2-scenarios.test.ts, models/gateway.test.ts, api/workflows/route.test.ts | W4: fc0d67d (ai-core), 690fcf4 (web), 1f72bcd (repo) |
+| 3.12 | C1, C11 | T-2.2, T-16.4, T-18.1, T-21.1 | W1: 2.2 models/catalog.test.ts, gateway.test.ts; W4: workflows/*.test.ts, patterns/*.test.ts, mock/m2-scenarios.test.ts, models/gateway.test.ts, api/workflows/route.test.ts | W1: b5f32ab, f5f9490, f4b73f1; W4: fc0d67d (ai-core), 690fcf4 (web), 1f72bcd (repo) |
+| 3.13 | C11, C17 | T-4.1, T-4.4, T-16.2, T-16.3, T-16.5, T-16.6, T-16.7, T-18.3, T-19.2, T-26.3 | W1: 4.1 check-repo-rules.test.mjs; 4.4 mise run gate; W4: workflows/*.test.ts, patterns/*.test.ts, mock/m2-scenarios.test.ts, models/gateway.test.ts, api/workflows/route.test.ts | W1: b5f32ab, f5f9490, f4b73f1; W4: fc0d67d (ai-core), 690fcf4 (web), 1f72bcd (repo) |
 
 検証の計画（plan「Requirements Traceability」の検証の列）:
 
@@ -115,14 +115,14 @@ ID 規約は `tasks.md` の「ID 対応表」を参照する（この spec の p
 
 | Requirement | Design | Task | Test | Commit |
 |---|---|---|---|---|
-| 4.1 | C12 | T-17.1, T-17.2, T-17.3, T-17.4, T-17.5, T-17.6, T-17.7, T-18.4, T-19.1, T-21.3, T-22.2, T-23.3 |||
-| 4.2 | C12 | T-3.2, T-17.1, T-18.2, T-21.2 |W1: 3.2 structured/generate-validated.test.ts | W1: b5f32ab, f5f9490, f4b73f1 |
-| 4.3 | C12 | T-17.2, T-18.2, T-21.2 |||
-| 4.4 | C12 | T-17.3, T-18.2, T-21.2 |||
-| 4.5 | C12 | T-2.1, T-17.4, T-18.2, T-21.2 |W1: 2.1 config/*.test.ts | W1: b5f32ab, f5f9490, f4b73f1 |
-| 4.6 | C12 | T-2.1, T-2.2, T-17.5, T-18.2, T-18.4, T-21.2 |W1: 2.1 config/*.test.ts; 2.2 models/catalog.test.ts, gateway.test.ts | W1: b5f32ab, f5f9490, f4b73f1 |
-| 4.7 | C12 | T-17.6, T-18.2, T-21.2, T-25.2 |||
-| 4.8 | C18 | T-4.3, T-26.4, T-26.5, T-27.2, T-28.3 |W1: 4.3 check-docs.test.mjs | W1: b5f32ab, f5f9490, f4b73f1 |
+| 4.1 | C12 | T-17.1, T-17.2, T-17.3, T-17.4, T-17.5, T-17.6, T-17.7, T-18.4, T-19.1, T-21.3, T-22.2, T-23.3 | W4: workflows/*.test.ts, patterns/*.test.ts, mock/m2-scenarios.test.ts, models/gateway.test.ts, api/workflows/route.test.ts | W4: fc0d67d (ai-core), 690fcf4 (web), 1f72bcd (repo) |
+| 4.2 | C12 | T-3.2, T-17.1, T-18.2, T-21.2 | W1: 3.2 structured/generate-validated.test.ts; W4: workflows/*.test.ts, patterns/*.test.ts, mock/m2-scenarios.test.ts, models/gateway.test.ts, api/workflows/route.test.ts | W1: b5f32ab, f5f9490, f4b73f1; W4: fc0d67d (ai-core), 690fcf4 (web), 1f72bcd (repo) |
+| 4.3 | C12 | T-17.2, T-18.2, T-21.2 | W4: workflows/*.test.ts, patterns/*.test.ts, mock/m2-scenarios.test.ts, models/gateway.test.ts, api/workflows/route.test.ts | W4: fc0d67d (ai-core), 690fcf4 (web), 1f72bcd (repo) |
+| 4.4 | C12 | T-17.3, T-18.2, T-21.2 | W4: workflows/*.test.ts, patterns/*.test.ts, mock/m2-scenarios.test.ts, models/gateway.test.ts, api/workflows/route.test.ts | W4: fc0d67d (ai-core), 690fcf4 (web), 1f72bcd (repo) |
+| 4.5 | C12 | T-2.1, T-17.4, T-18.2, T-21.2 | W1: 2.1 config/*.test.ts; W4: workflows/*.test.ts, patterns/*.test.ts, mock/m2-scenarios.test.ts, models/gateway.test.ts, api/workflows/route.test.ts | W1: b5f32ab, f5f9490, f4b73f1; W4: fc0d67d (ai-core), 690fcf4 (web), 1f72bcd (repo) |
+| 4.6 | C12 | T-2.1, T-2.2, T-17.5, T-18.2, T-18.4, T-21.2 | W1: 2.1 config/*.test.ts; 2.2 models/catalog.test.ts, gateway.test.ts; W4: workflows/*.test.ts, patterns/*.test.ts, mock/m2-scenarios.test.ts, models/gateway.test.ts, api/workflows/route.test.ts | W1: b5f32ab, f5f9490, f4b73f1; W4: fc0d67d (ai-core), 690fcf4 (web), 1f72bcd (repo) |
+| 4.7 | C12 | T-17.6, T-18.2, T-21.2, T-25.2 | W4: workflows/*.test.ts, patterns/*.test.ts, mock/m2-scenarios.test.ts, models/gateway.test.ts, api/workflows/route.test.ts | W4: fc0d67d (ai-core), 690fcf4 (web), 1f72bcd (repo) |
+| 4.8 | C18 | T-4.3, T-26.4, T-26.5, T-27.2, T-28.3 | W1: 4.3 check-docs.test.mjs | W1: b5f32ab, f5f9490, f4b73f1 |
 
 検証の計画（plan「Requirements Traceability」の検証の列）:
 
@@ -141,4 +141,4 @@ ID 規約は `tasks.md` の「ID 対応表」を参照する（この spec の p
 - 受け入れ基準を持たないタスク: なし（全サブタスクが `_Requirements:_` を持つ）。
 - `_Boundary:_` が plan の File Structure Plan に無いパス（意図した例外。`tasks.md`「表記規約」に列挙）: 生成物 `pnpm-lock.yaml`（1.1）、`specs/002-rag-and-workflows/` 配下の spec 文書（5.3、7.4、25、27、28）、`mock:judge-v1` の追加で影響を受ける `apps/web` の既存テストと E2E（2.2。plan C1「既知の影響」）、git タグのみのタスク（28.3）。
 - 「gate が保証しないもの」（検索手法の効果の差、Judge の判定、`local` モデルの脚注の遵守率、実 Postgres での挙動、Cohere の実呼び出し）の一覧は、27.1 が本ファイルに節として追加する。
-- W1（1.1〜4.4）の Test / Commit 列は W1 のタスクが担う分だけ記入した（`W1:` 接頭辞）。後続の波が同じ行に追記する。W2（5.1〜9.3）は `W2:` 接頭辞で、W3（10.1〜15.5）は `W3:` 接頭辞で追記した。W2 の `*.pg.test.ts` は未実行（Docker なし。人が `mise run test:db` で確かめる）。1.1・1.2 はマニフェストと設定のみでテストを持たない（証拠は `pnpm audit` と gate）。
+- W1（1.1〜4.4）の Test / Commit 列は W1 のタスクが担う分だけ記入した（`W1:` 接頭辞）。後続の波が同じ行に追記する。W2（5.1〜9.3）は `W2:` 接頭辞で、W3（10.1〜15.5）は `W3:` 接頭辞で、W4（16.1〜19.2）は `W4:` 接頭辞で追記した。W4 のテストは `mise run test:mutation` を最後に 86.45 で通した後に 4 本足した（再実行なし）。W2 の `*.pg.test.ts` は未実行（Docker なし。人が `mise run test:db` で確かめる）。1.1・1.2 はマニフェストと設定のみでテストを持たない（証拠は `pnpm audit` と gate）。

@@ -198,3 +198,50 @@
 - `sdd-reviewer` → REQUEST_CHANGES (0 CRITICAL/HIGH, 5 MEDIUM F-1..F-5, LOW F-6..F-19). Fixed test-first: F-1 grouped/range footnotes, F-2 rag/index re-exports, F-3 Rerank outcome on early returns, F-4 incremental traces (`onTrace`), F-5 retrieval failures → fixed `provider-unavailable`. Responses table appended to the review file.
 - Final `TURBO_FORCE=true mise run gate`: exit 0 in 27 s. `//:test executed=351`, `@platform/ai-core executed=1461 passed=1461 skipped=4`, `web executed=415 passed=415`, `eval-suite executed=3 skipped=1`, `Biome: 334 files`, `Docs: 4 module documents, 51 test references verified`.
 - Learning: a first RED pass on happy paths missed "one footnote may hold several numbers", "Rerank on but nothing to rerank" and "failures after the stream starts"; list the grouped/empty/mid-stream cases when writing the first tests.
+
+## W4 (tasks 16–19)
+
+- Preflight: gate lane is `mock` and needs no env or service → skipped. Work is done inline in the main session (no subagents; the session rules allow them only on request). `*.pg.test.ts` still not runnable (no Docker).
+- Method note: tests and the first implementation of each task were written in the same step, so the RED observed was "module not found" (16.1) or was not captured separately (16.2–16.7); non-vacuity rests on the PROVE stubs below, run with a `prove.sh` helper (perl substitution → vitest → restore).
+
+### Task 16 (workflows)
+
+- 16.1 limits/errors: PROVE 6 stubs (`>=` boundary, no integer check, override unchecked, `undefined` erases the default, cause leaked into `details`, wrong code) → each fails its targeted test. Added `resolveWorkflowLimits` (overrides may lower, never raise, a default) and, in 16.4 time, `toStepError` (moved into `errors.ts`; shared by parallelization and orchestrator-workers).
+- 16.2 prompt chaining: 6 stubs (no stop on failure, input not chained, no abort check, signal dropped, wrong failed step, failed step not recorded) all detected.
+- 16.3 routing: 10 stubs; two survivors (`hasOwn` and category-membership guards covered each other) → two tests added (extra handler key not in `categories`; `toString` as category with no own handler); re-proved.
+- 16.4 model-tier: 10 stubs; two survivors (initial abort check; base-model reuse in `resolveTiers`) → classifier-not-called assertion and `requests.length === 2` added; re-proved. `resolveTiers` learns mode/provider from the default `chat` resolve, since the gateway does not expose its config.
+- 16.5 parallelization: 14 stubs; survivor `tally unsorted` → test added; a delayed-start stub is caught by the order/first-failure tests. The barrier tests would hang (1 s timeout) for a sequential implementation.
+- 16.6 orchestrator-workers: 13 stubs; survivor "planner abort signal dropped" → test asserting the model call receives an aborted signal.
+- 16.7 evaluator-optimizer: 20 stubs; one equivalent mutant (explicit abort check before `parallelSections`, which checks it itself) removed from the code instead of tested.
+- Design decisions: a `PlatformError` other than `output-invalid` (503/400 class) is never wrapped into `WorkflowStepError`, so the route keeps answering 503/400; orchestrate's all-workers-failed error is named `workers`.
+
+### Task 17 (patterns)
+
+- 17.1–17.2: PROVE 14 stubs; one test was vacuous (the `<instruction>` marker also appears in the system prompt) → assertions now read the user message only. The same weakness was found in routing / model-evaluator / orchestrator tests and fixed with `provepy.py` (literal replacement; the perl helper had expanded `${...}` to empty strings in two earlier stubs).
+- 17.3 single path: 11 stubs; survivor "no abort after a failing step" → test where the step fails because of the abort (the abort reason, not a step failure, is surfaced).
+- 17.4 multi path: 15 stubs; survivors `.length(count)`, section signal, evaluator signal → 2 tests added (extra evaluation entry regenerated; signals reach planner and evaluator calls).
+- 17.5 reflection: 16 stubs; equivalent mutants removed from the code (cross without critic is rejected by the same-ID check; the abort check before the critic is done by `generateValidated`); abort-during-critique test added for the check before the revision.
+- 17.6 role-based cooperation: 15 stubs; survivors fixed (mock usage split into input/output so a "only input counted" stub fails; system prompt assertion for `instructions`). The repository rule `workflow-no-agent-loop` flagged the test's own `agents/` imports → spy through `vi.hoisted` + `vi.mock`.
+- 17.7: `mise`-equivalent checks run directly: `node scripts/check-repo-rules.mjs` → all rules pass (`workflow-no-agent-loop: scanned 30 FILES`, `guarded-agent-only` passes).
+
+### Task 18 (scenarios and demos)
+
+- 18.1/18.2 RED: new `m2-scenarios.test.ts` and `gateway.test.ts` cases failed until `M2_3_SCENARIOS` / `M2_4_SCENARIOS` were wired into `gateway.ts`. PROVE: duplicate marker, bad scenario ID, missing `purpose`, a sample task that contains an M1 marker (`東京の天気` — caught while designing; the sample became `大阪の天気`), unpinned first role turn (ambiguous with the tool-result turn), gateway without the scenarios → each fails a test.
+- 18.3 `workflows/demos.ts` (28 tests): 23 PROVE stubs on the first pass; survivors (`passScore`, `maxIterations`, `maxSubtasks` ignored; no abort pre-check; cache-read tokens; option error echoing a key) fixed with 6 tests. Stage-label drift in every composition fails the mock run (the scenario pin).
+- 18.4 `patterns/demos.ts` (27 tests): 17 stubs; survivors (target/goal/candidates options, tool capability, researcher's tool, signals) fixed by a capturing gateway and an agent-factory spy; `demos.ts` is asserted not to import the agents area.
+- Prompt labels were added to `reflect`, `cooperateByRole` and `createModelEvaluator` after their own tasks (tests first: RED = 3 failing label tests).
+
+### Task 19 (route and wave close)
+
+- 19.1 `apps/web/app/api/workflows/route.ts` (50 tests): 12 stubs; survivors fixed (guard order for kind/name, blank task, code-point length, platform agent limits; the inspect/try-catch was equivalent behavior and was simplified away).
+- 19.2: violation examples fail `check-repo-rules --only workflow-no-agent-loop` (exit 1); `mise.toml` and `stryker.config.mjs` updated. `mise run test:mutation` → 86.45 (6 min 46 s, over the 5 min budget); mutation survivors of `evaluator-optimizer.ts` / `parallelization.ts` (boundaries 0/100 of the pass score and scores, names in limit errors) closed with 4 tests; the mutation run was not repeated (7 min).
+- `TURBO_FORCE=true mise run gate` → exit 0: `//:test executed=351`, `@platform/ai-core executed=1732 passed=1732 skipped=4`, `web executed=472 passed=472`, `eval-suite executed=3 passed=3 skipped=1`, `Biome: 372 files`, `workflow-no-agent-loop: scanned 34 FILES`, `Docs: 4 module documents, 51 test references verified`. `NODE_ENV=production mise run check:client-bundle` → `scanned 20 files for 14 names and 3 sentinels`; the build lists `/api/workflows`.
+- Not run: `*.pg.test.ts` (no Docker), `local`-mode tests (Ollama).
+- Adversarial review: spawned with `sdd-reviewer` (fresh context); result recorded below.
+
+### W4 ship validation (2026-10-13)
+
+- `/sdd-ship rag-and-workflows W4`: GO. All of 16.1–19.2 are `[x]`; the review file records F-1 (HIGH) as fixed test-first, F-2/F-3/F-7/F-9/F-12 fixed, the rest deferred as LOW.
+- Fresh `TURBO_FORCE=true mise run gate` → exit 0: `//:test executed=351`, `@platform/ai-core executed=1732 passed=1732 skipped=4`, `web executed=472 passed=472`, `eval-suite executed=3 passed=3 skipped=1`, `Biome: 372 files`, `workflow-no-agent-loop: scanned 34 FILES`, `Docs: 4 module documents, 51 test references verified`.
+- Auto-fix (mechanical): gate counts in the notes above (1727/465) were taken before the review fixes landed; corrected to 1732/472 in this file and `tasks.md`. W4 row of the progress table marked complete; traceability `W4:` Test/Commit cells filled.
+- Not re-run: `test:mutation` (6 min 46 s, last result 86.45 before four boundary tests were added), `*.pg.test.ts`, `local` tests.
