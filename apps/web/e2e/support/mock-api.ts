@@ -19,10 +19,26 @@ export const FIXTURE_NAMES = [
 	"agent-weather",
 	"summarize-transcript",
 	"summarize-article",
+	"rag-query",
+	"rag-query-no-evidence",
+	"rag-agent-search",
+	"rag-agent-no-search",
 ] as const;
 export type FixtureName = (typeof FIXTURE_NAMES)[number];
 
-export type ApiPath = "/api/chat" | "/api/agent/tools" | "/api/summarize";
+/** Generated JSON bodies (`e2e/fixtures/*.json`), the counterpart of the streams above. */
+export const JSON_FIXTURE_NAMES = ["workflows-evaluator-optimizer"] as const;
+export type JsonFixtureName = (typeof JSON_FIXTURE_NAMES)[number];
+
+export type ApiPath =
+	| "/api/chat"
+	| "/api/agent/tools"
+	| "/api/summarize"
+	| "/api/rag/knowledge"
+	| "/api/rag/ingest"
+	| "/api/rag/query"
+	| "/api/rag/agent"
+	| "/api/workflows";
 
 /** One parsed `data: {...}` event of a UI message stream (`[DONE]` is added back on serialising). */
 export interface SseEvent {
@@ -53,6 +69,7 @@ export type Reply =
 			readonly transform?: (events: readonly SseEvent[]) => readonly SseEvent[];
 			readonly plan: StreamPlan;
 	  }
+	| { readonly kind: "json"; readonly status: number; readonly body: unknown }
 	| {
 			readonly kind: "error";
 			readonly status: number;
@@ -72,6 +89,19 @@ export interface StreamReplyOptions extends StreamPlan {
 export function streamReply(fixture: FixtureName, options: StreamReplyOptions = {}): Reply {
 	const { transform, ...plan } = options;
 	return { kind: "stream", fixture, plan, ...(transform ? { transform } : {}) };
+}
+
+/**
+ * Reply with a JSON body. A generated fixture name loads `e2e/fixtures/<name>.json` (never written
+ * by hand); any other value is used as the body as it is, for the small state replies (the
+ * knowledge-base listing, an ingest result) whose shapes the screens already type.
+ */
+export function jsonReply(body: JsonFixtureName | unknown, status = 200): Reply {
+	const loaded =
+		typeof body === "string" && (JSON_FIXTURE_NAMES as readonly string[]).includes(body)
+			? loadJsonFixture(body as JsonFixtureName)
+			: body;
+	return { kind: "json", status, body: loaded };
 }
 
 /** Reply with a failure before the stream starts: `{ error: { code, message } }` and a status. */
@@ -112,6 +142,13 @@ export function loadFixture(name: FixtureName): SseEvent[] {
 	if (events.length === 0)
 		throw new Error(`${name}.sse has no events; run \`mise run e2e:fixtures\``);
 	return events;
+}
+
+/** The body of a generated JSON fixture. A missing or empty fixture fails the spec. */
+export function loadJsonFixture(name: JsonFixtureName): unknown {
+	const text = readFileSync(path.join(FIXTURE_DIRECTORY, `${name}.json`), "utf8");
+	if (text.trim() === "") throw new Error(`${name}.json is empty; run \`mise run e2e:fixtures\``);
+	return JSON.parse(text);
 }
 
 /** Replaces every event of `type`; fails when there is none, so a changed fixture is noticed. */
@@ -267,6 +304,14 @@ export async function mockApi(
 		const index = seen.get(pathname) ?? 0;
 		seen.set(pathname, index + 1);
 		const reply = list[Math.min(index, list.length - 1)] as Reply;
+		if (reply.kind === "json") {
+			await route.fulfill({
+				status: reply.status,
+				contentType: "application/json; charset=utf-8",
+				body: JSON.stringify(reply.body),
+			});
+			return;
+		}
 		if (reply.kind === "error") {
 			await route.fulfill({
 				status: reply.status,

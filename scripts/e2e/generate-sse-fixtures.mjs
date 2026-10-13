@@ -27,18 +27,22 @@ function firstDifference(expected, actual) {
 	return "no difference";
 }
 
+const FIXTURE_KINDS = Object.freeze({ ".sse": "SSE fixture", ".json": "JSON fixture" });
+
 /**
- * The single place that touches `.sse` fixtures. The Route Handler tests pass the stream a real
- * handler produced in `mock` mode: with `SSE_FIXTURES=write` (`mise run e2e:fixtures`) the fixture
- * is written; otherwise it must match byte for byte, so a stale fixture fails the test instead of
- * silently feeding the E2E specs an outdated stream. Fixtures are never written by hand.
+ * The single place that touches the generated fixtures: `.sse` streams and `.json` bodies. The
+ * Route Handler tests pass the stream (or the JSON text) a real handler produced in `mock` mode:
+ * with `SSE_FIXTURES=write` (`mise run e2e:fixtures`) the fixture is written; otherwise it must
+ * match byte for byte, so a stale fixture fails the test instead of silently feeding the E2E
+ * specs an outdated response. Fixtures are never written by hand.
  */
 export function verifyOrWriteFixture(
 	name,
 	text,
 	{ write = process.env[WRITE_MODE_VARIABLE] === "write", directory = FIXTURE_DIRECTORY } = {},
 ) {
-	if (!name.endsWith(".sse")) throw new Error(`fixture name must end with .sse: ${name}`);
+	const kind = Object.entries(FIXTURE_KINDS).find(([suffix]) => name.endsWith(suffix))?.[1];
+	if (kind === undefined) throw new Error(`fixture name must end with .sse or .json: ${name}`);
 	if (text.length === 0) throw new Error(`refusing to use an empty stream for ${name}`);
 	const file = path.join(directory, name);
 	if (write) {
@@ -51,13 +55,13 @@ export function verifyOrWriteFixture(
 		expected = readFileSync(file, "utf8");
 	} catch (error) {
 		if (error?.code === "ENOENT") {
-			throw new Error(`SSE fixture ${name} is missing; run \`mise run e2e:fixtures\``);
+			throw new Error(`${kind} ${name} is missing; run \`mise run e2e:fixtures\``);
 		}
 		throw error;
 	}
 	if (expected !== text) {
 		throw new Error(
-			`SSE fixture ${name} is stale (${firstDifference(expected, text)}); run \`mise run e2e:fixtures\``,
+			`${kind} ${name} is stale (${firstDifference(expected, text)}); run \`mise run e2e:fixtures\``,
 		);
 	}
 	return "match";

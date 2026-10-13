@@ -6,6 +6,7 @@ import { APICallError, wrapLanguageModel } from "ai";
 import { MockLanguageModelV4 } from "ai/test";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createPlatform, type Platform, setPlatformForTesting } from "@/lib/server/platform";
+import { verifyOrWriteFixture } from "../../../../../scripts/e2e/generate-sse-fixtures.mjs";
 import { POST } from "./route";
 
 const MOCK_ENV = { VITEST: "1", AI_TEST_RUN_MODE: "mock" } as const;
@@ -493,5 +494,25 @@ describe("POST /api/workflows: abort", () => {
 		);
 
 		expect(captured.signals).toHaveLength(0);
+	});
+});
+
+describe("POST /api/workflows: generated SSE fixture used by the E2E specs", () => {
+	it("matches the generated SSE fixture (JSON) of an Evaluator-Optimizer run that misses the pass score (Req 1.17)", async () => {
+		await install();
+
+		const response = await POST(
+			post({
+				kind: "workflow",
+				name: "evaluator-optimizer",
+				task: M2_3_SAMPLE_TASKS.evaluator.stalls,
+			}),
+		);
+
+		expect(response.status).toBe(200);
+		verifyOrWriteFixture(
+			"workflows-evaluator-optimizer.json",
+			`${JSON.stringify(await response.json(), null, "\t")}\n`,
+		);
 	});
 });

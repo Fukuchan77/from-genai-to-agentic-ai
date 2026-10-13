@@ -13,6 +13,7 @@ import {
 import { createFakeClock } from "@platform/ai-core/testing";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createPlatform, getKnowledgeBase, setPlatformForTesting } from "@/lib/server/platform";
+import { verifyOrWriteFixture } from "../../../../../../scripts/e2e/generate-sse-fixtures.mjs";
 import { POST } from "./route";
 
 vi.mock("@/lib/server/platform", async (importOriginal) => {
@@ -495,5 +496,32 @@ describe("POST /api/rag/query: the stream", () => {
 			["chat", "mock:judge-v1"],
 			["structured", "mock:judge-v1"],
 		]);
+	});
+});
+
+describe("POST /api/rag/query: generated SSE fixtures used by the E2E specs", () => {
+	it("matches the generated SSE fixture of an answer with stages, trace and citations (Req 1.17)", async () => {
+		await ingestCorpus();
+		await installPlatform();
+
+		const response = await POST(
+			post(
+				query(M2_1_SAMPLE_QUESTIONS.answer, {
+					methods: { ...NO_METHODS, hybrid: true, rerank: true },
+				}),
+			),
+		);
+
+		expect(response.status).toBe(200);
+		verifyOrWriteFixture("rag-query.sse", await response.text());
+	});
+
+	it("matches the generated SSE fixture of a no-evidence answer from an empty knowledge base (Req 1.17)", async () => {
+		await installPlatform();
+
+		const response = await POST(post(query("存在しない話題について教えてください。")));
+
+		expect(response.status).toBe(200);
+		verifyOrWriteFixture("rag-query-no-evidence.sse", await response.text());
 	});
 });
