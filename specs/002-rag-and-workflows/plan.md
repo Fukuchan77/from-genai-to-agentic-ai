@@ -499,7 +499,7 @@ erDiagram
 | `unpdf` | 1.8.1 | `@platform/ai-core` | PDF のページ単位テキスト抽出 | — |
 | `@ai-sdk/cohere` | 4.0.59 | `@platform/ai-core` | Rerank | `COHERE_API_KEY` が無ければ Rerank 段をスキップ（`mock` は疑似実装） |
 
-追加しない: `drizzle-kit`（ADR-2）、`pg`、`@types/pg`、Markdown パーサ（`unified` 等。ATX 見出しとフェンスだけを扱う自前の走査で足りる）。インストールスクリプトを持つ依存は無い想定で、`allowBuilds` に追記が要る場合は理由を書く。`apps/web/next.config.ts` の `serverExternalPackages` に `@electric-sql/pglite`・`postgres`・`unpdf` を足す（リスク R-1。最小の集合は実サーバー E2E で確定する）。新しいインフラ（Compose のサービス）は追加しない。
+追加しない: `drizzle-kit`（ADR-2）、`pg`、`@types/pg`、Markdown パーサ（`unified` 等。ATX 見出しとフェンスだけを扱う自前の走査で足りる）。インストールスクリプトを持つ依存は無い想定で、`allowBuilds` に追記が要る場合は理由を書く。`apps/web/next.config.ts` の `serverExternalPackages` に足す集合は実サーバーで確定した（リスク R-1）: `@electric-sql/pglite` と `@electric-sql/pglite-pgvector` のみ（`postgres`・`unpdf` は Route Handler でしか実行されず不要。research.md I-10）。新しいインフラ（Compose のサービス）は追加しない。
 
 ### 後続 spec への契約（M2 が固定するもの）
 
@@ -669,7 +669,7 @@ erDiagram
 
 | File | Create/Modify | Responsibility | C |
 |------|---------------|----------------|---|
-| `apps/web/next.config.ts` | Modify | `serverExternalPackages` に PGlite・`postgres`・`unpdf` を足す | C13 |
+| `apps/web/next.config.ts` | Modify | `serverExternalPackages` に PGlite と pgvector 拡張を足す（実測で確定。research.md I-10） | C13 |
 | `apps/web/lib/server/platform.ts` | Modify | `getKnowledgeBase()`、`ports.rerank`、`knowledgeRoots` を組み立てる | C13 |
 | `apps/web/lib/server/platform.test.ts` | Modify | 実行モード別の DB・Rerank の組み立てのテスト | C13 |
 | `apps/web/lib/server/rag-stream.ts` | Create | `RagEvent` を UI メッセージストリームのパートへ写像する（`useChat` の `parts` が読む形） | C13 |

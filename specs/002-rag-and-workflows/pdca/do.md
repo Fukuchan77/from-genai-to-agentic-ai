@@ -245,3 +245,43 @@
 - Fresh `TURBO_FORCE=true mise run gate` → exit 0: `//:test executed=351`, `@platform/ai-core executed=1732 passed=1732 skipped=4`, `web executed=472 passed=472`, `eval-suite executed=3 passed=3 skipped=1`, `Biome: 372 files`, `workflow-no-agent-loop: scanned 34 FILES`, `Docs: 4 module documents, 51 test references verified`.
 - Auto-fix (mechanical): gate counts in the notes above (1727/465) were taken before the review fixes landed; corrected to 1732/472 in this file and `tasks.md`. W4 row of the progress table marked complete; traceability `W4:` Test/Commit cells filled.
 - Not re-run: `test:mutation` (6 min 46 s, last result 86.45 before four boundary tests were added), `*.pg.test.ts`, `local` tests.
+
+## W5 (tasks 20–23)
+
+- Preflight: the gate lane is `mock` and needs no env or service → skipped. Work is inline in the main session (subagents only on request). `*.pg.test.ts` and `local` tests are not runnable here.
+- Method: tests first for every sub-task (RED = "module not found"), then GREEN, then PROVE with a literal-replacement helper (`prove.py`: replace one fragment, run vitest, restore). Survivors were closed with extra tests and re-proved.
+
+### Task 20 (RAG screen parts)
+
+- 20.1 `AnswerView`/`CitationList` (30 tests): ~25 stubs; survivors fixed with tests: raw spelling of a card-less full-width footnote, reversed/too-wide ranges, a lone backtick, a longer backtick run not closing a shorter span, the separator between the numbers of a group. Equivalent mutant left: `high < low` in `parseGroup` (a reversed range yields no numbers, so the raw text is drawn either way); it mirrors the server grammar.
+- 20.2 `StageProgress`/`TraceView` (21 tests): ~30 stubs; survivors fixed: `aria-live` (the first stub hit the JSDoc comment, not the attribute), a stage without a reason drawing an empty span, recorded data of a method that is off, the excerpt cut and its off-by-one, rank numbering (assert `startsWith("1")`, `startsWith("2")`).
+- 20.3 `MethodSwitches` (33) / `IngestPanel` (34): 18 + 20 stubs. Survivors fixed: validity of the other field when one is fixed first, deselection reset on a source change, the previous result hidden while the next ingest runs. Left: `Number.isFinite` (a `type=number` input never yields `NaN` text in the DOM; kept as a boundary parse), `reset: withReset` vs `reset` (equivalent in the flow).
+- 20.4 `RagPanel` (43 tests): 35 stubs; survivors fixed: first-vs-newest user message in `prepareRagRequest`, a submit while generating, the run summary while still running, the error outcome of the summary.
+- `tsc --noEmit` in `apps/web` clean; `components/rag` 161 tests green.
+
+### Task 21 (workflow screen parts)
+
+- 21.1/21.2 `WorkflowResultView` (36 tests; 14 views): ~45 stubs. Survivors fixed: failed-worker count vs completed count (use 3 results), `undefined` text for a failed worker, best-iteration marker when it is not the last, combined score vs the first evaluator's score, evaluator scores in the text, overlapping fixture strings ("要約して" ⊂ the improved text made a swapped before/after invisible), the raw stop label, the empty final output.
+- 21.3 `WorkflowPanel` (41 tests): 27 stubs. Survivors fixed: aspect length counted in characters, abort on unmount. Redundant guards removed (see Implementation Notes).
+- `tsc --noEmit` in `apps/web` clean.
+
+### Task 22 (pages)
+
+- `app/rag/page.tsx`, `app/workflows/page.tsx`, `app/page.tsx` (two module cards). No unit tests by design; `tsc --noEmit` clean, `mise run check:client-bundle` → `next build` lists `/rag` (ƒ) and `/workflows` (○), `Client bundle: scanned 24 files for 14 names and 3 sentinels`.
+- Deviation noted: tasks.md 23.4 names `mise run build`, which does not exist; `check:client-bundle` builds. `layout.tsx` nav links left alone (outside the plan's file list).
+
+### Task 23 (E2E, wave close)
+
+- 23.1: `generate-sse-fixtures.mjs` accepts `.json` (RED on the script test first). Route tests generate `rag-query.sse`, `rag-query-no-evidence.sse`, `workflows-evaluator-optimizer.json` (stalls sample, `passed: false`) and, beyond the task list, `rag-agent-search.sse` / `rag-agent-no-search.sse`. `mise run e2e:fixtures` twice → identical md5; corrupting a fixture makes the three route tests fail with "is stale (line N …)".
+- Real-server finding (research I-10): the `/rag` Server Component ran PGlite in the SSR chunk layer → "Extension bundle not found" → the page showed a connection error under concurrent cold requests; Vitest stayed green. Fix: `serverExternalPackages` += `@electric-sql/pglite`, `@electric-sql/pglite-pgvector`; `real-server.spec.ts` now ingests and asks through the page.
+- Spec findings fixed on the way: `role="alert"` collides with Next's empty route announcer (filter by text); `tabTo` takes CSS selectors only (no `:has-text`); a closed `<select>` ignores ArrowDown on macOS Chromium (the keyboard test picks an example button instead); focus-contrast readings must wait for `transition-colors` (1.81:1, 1 in 4 runs).
+- Adversarial review (`sdd-reviewer`, fresh context): APPROVE_WITH_NOTES, 2 MEDIUM + 16 LOW (`.sdd/reviews/002-rag-and-workflows-impl-w5-review-2026-10-13.md`). Fixed test-first: F-1 (client fence rules diverged from `findCodeRanges`; 15 parity vectors against `resolveCitations`, 5 stubs killed), F-3 (error `code` now shown by `ErrorBanner`), F-7, F-5 (status 200), F-14, plus the records (F-4, F-16). Deferred: F-2 (W3 file), F-6, F-8…F-13, F-17, F-18; F-15 left for the human (header nav).
+- Final: `TURBO_FORCE=true mise run gate` exit 0 in ~31 s: `//:test executed=352`, `@platform/ai-core executed=1732 passed=1732 skipped=4`, `web executed=733 passed=733`, `eval-suite executed=3 skipped=1`, `Biome: 395 files`, `Docs: 4 module documents, 51 test references verified`. `mise run test:e2e` → `363 passed (1.9m)`, `Playwright: executed=363 skipped=0 (chromium=121 firefox=121 webkit=121)`; axe (WCAG 2.2 AA, light and dark, 12 rendered states on the new screens) 0 violations. `mise run check:client-bundle` → `scanned 20 files for 14 names and 3 sentinels`.
+- Not run: `test:mutation` (W5 adds no mutation targets), `*.pg.test.ts` (no Docker), `local`-mode tests (Ollama).
+
+### W5 ship (`/sdd-ship`, 2026-10-13)
+
+- Verdict GO. Fresh `TURBO_FORCE=true mise run gate` exit 0: `web executed=733 passed=733`, `ai-core 1732 passed (skipped 4)`, `//:test 352`, `Docs: 4 module documents, 51 test references verified`. `mise run test:e2e` → `363 passed (1.6m)`, `Playwright: executed=363 skipped=0 (chromium=121 firefox=121 webkit=121)`. `mise run check:client-bundle` → `scanned 20 files for 14 names and 3 sentinels`.
+- Auto-fix (mechanical): traceability W5 Test/Commit cells (22 rows) and the Gaps note.
+- Commits: b40870d (screens), 3574034 (next.config), 5968504 (e2e), then this docs commit. Boundary amendments (ErrorBanner, route tests, generator test, extra fixtures, next.config) are recorded in the task 23 notes.
+- Not run: `test:mutation`, `*.pg.test.ts`, `local` tests. Wave migration (`tasks-comp-w5.md`) is not part of this ship.

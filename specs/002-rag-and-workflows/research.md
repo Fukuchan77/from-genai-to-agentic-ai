@@ -103,6 +103,7 @@
 - **Question**: Turbopack のサーバービルドで `@electric-sql/pglite` の WASM と拡張の tarball を読み込めるか。
 - **Findings**: 未実測。M1 の W4 で、Vitest が緑のまま実サーバー（本番ビルド）では 3 ページとも 500 になった前例がある（`specs/001-agentic-ai-platform/pdca/act.md`）。`next.config.ts` には既に `serverExternalPackages: ["jsdom", "youtubei.js"]` の前例があり、PGlite・`postgres`・`unpdf` も外部化の候補になる。
 - **Decision**: 実装の最初の Web タスクで `next build` と実サーバー E2E（`real-server.spec.ts` の拡張）を通し、外部化の要否を確定する（リスク R-1）。
+- **Update（W5、2026-10-13、22.1 の実サーバー確認）**: Route Handler（`/api/rag/*`）は外部化なしで動いた（W2 9.2）が、**Server Component のページが `getKnowledgeBase()` を実行すると 500 相当になった**。`next start` の出力は `TypeError: The "path" argument must be of type string or an instance of Buffer or URL. Received an instance of URL`（`.next/server/chunks/ssr/…pglite…`）と `Error: Extension bundle not found: /_next/static/media/vector.tar.<hash>.gz`。ページのコードは SSR 用のチャンクグループに入り、そこでは `new URL("./vector.tar.gz", import.meta.url)` がクライアント用のアセット URL に書き換えられて、pgvector の tarball を読めない。Vitest は緑のままだった（M1 W4 と同じ型の失敗）。`curl` でも、起動直後の同時リクエストで再現した。**決定**: `next.config.ts` の `serverExternalPackages` に `@electric-sql/pglite` と `@electric-sql/pglite-pgvector` を足し、全レイヤで `node_modules` から読み込む。確認: 外部化後は `/rag` が空のナレッジベースを表示し、`POST /api/rag/ingest`（評価コーパス 6 件）も通る。`postgres` と `unpdf` は Route Handler でのみ実行されるため外部化していない。
 
 ## Existing patterns to reuse
 

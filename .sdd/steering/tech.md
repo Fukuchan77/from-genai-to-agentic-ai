@@ -51,6 +51,10 @@
   しない（ADR-5）。
 - **Biome の書式はタブ・ダブルクォート・行幅 100・セミコロンあり**（ADR-3）。ドラフトの
   2スペース・シングルクォート案は採らない。
+- **PGlite は `serverExternalPackages` に置く**（M2）— Server Component のページが `getKnowledgeBase()` を実行すると、
+  SSR 層のバンドルでは pgvector の tarball を読めず失敗する（Route Handler では動く）。`next.config.ts` に
+  `@electric-sql/pglite` と `@electric-sql/pglite-pgvector` を列挙し、全レイヤで `node_modules` から読む。Vitest では
+  検出できないので、実サーバー E2E（`real-server.spec.ts`）が回帰を守る。
 
 ## Conventions
 
