@@ -1,6 +1,6 @@
 # rag-and-workflows（Milestone 2）— トレーサビリティ
 
-`/sdd-tasks` が生成した骨格（2026-10-12）。Requirement / Design / Task の列は `tasks-comp-w1.md`・`tasks-comp-w2.md`・`tasks-comp-w3.md`・`tasks.md`（W4）・`tasks-w5.md`〜`tasks-w6.md` の
+`/sdd-tasks` が生成した骨格（2026-10-12）。Requirement / Design / Task の列は `tasks-comp-w1.md`・`tasks-comp-w2.md`・`tasks-comp-w3.md`・`tasks-comp-w4.md`・`tasks.md`（W5）・`tasks-w6.md` の
 `_Requirements:_` と plan.md「Requirements Traceability」から機械的に作った。Test と Commit の列は `/sdd-ship` が実装後に埋める
 （Test の列は 27.1 でも、解説のレビューで検証するものを含めて埋める）。
 
@@ -9,7 +9,7 @@ ID 規約は `tasks.md` の「ID 対応表」を参照する（この spec の p
 
 - **Requirement**: spec.md の受け入れ基準番号（`X.Y`）。`REQ-00N` は Requirement N のグループ ID
 - **Design**: plan.md の部品 ID（`C1`〜`C18`。001 の `C1`〜`C22` とは別の番号）
-- **Task**: タスク ID（`T-#.#` はサブタスク。波ごとのファイル `tasks-comp-w1.md`、`tasks-comp-w2.md`、`tasks-comp-w3.md`、`tasks.md`（W4）、`tasks-w5.md`〜`tasks-w6.md` を番号で引く）
+- **Task**: タスク ID（`T-#.#` はサブタスク。波ごとのファイル `tasks-comp-w1.md`、`tasks-comp-w2.md`、`tasks-comp-w3.md`、`tasks-comp-w4.md`、`tasks.md`（W5）、`tasks-w6.md` を番号で引く）
 - **Test** / **Commit**: `/sdd-ship` が実装後に記入する。plan の検証の略号（G = gate、DB = PGlite、PG = `test:db`、L = `test:local`、E = Playwright、D = 解説のレビュー）は、各行の下の「検証の計画」に残した
 
 
