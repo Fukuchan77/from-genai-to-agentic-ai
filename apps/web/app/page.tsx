@@ -33,6 +33,17 @@ const MODULES: readonly {
 		title: "要約",
 		description: "記事や YouTube の字幕を、構造化された要約として生成します。",
 	},
+	{
+		href: "/rag" as Route,
+		title: "RAG",
+		description: "文書を取り込み、検索の手法を切り替えながら、引用付きの回答を得ます。",
+	},
+	{
+		href: "/workflows" as Route,
+		title: "ワークフローとパターン",
+		description:
+			"ワークフロー 5 種とエージェントのデザインパターンを実行し、途中経過を確かめます。",
+	},
 ];
 
 export default async function HomePage() {
