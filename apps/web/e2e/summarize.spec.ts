@@ -1,4 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
+import { fillUntilEnabled } from "./support/form";
 import { errorReply, loadFixture, mockApi, streamReply } from "./support/mock-api";
 
 // Req 1.17, 4.5, 4.7, 4.11, NFR-10: the summarize screen against the generated
@@ -7,9 +8,11 @@ import { errorReply, loadFixture, mockApi, streamReply } from "./support/mock-ap
 
 async function summarizeArticle(page: Page): Promise<void> {
 	await page.getByRole("radio", { name: "記事の URL" }).check();
-	await page
-		.getByLabel("記事の URL（http / https）")
-		.fill("https://example.test/articles/agentic-ai");
+	await fillUntilEnabled(
+		page.getByLabel("記事の URL（http / https）"),
+		"https://example.test/articles/agentic-ai",
+		page.getByRole("button", { name: "要約する" }),
+	);
 	await page.getByRole("button", { name: "要約する" }).click();
 }
 
@@ -75,7 +78,11 @@ test("summarize: an article that cannot be fetched shows the reason and no summa
 	});
 	await page.goto("/summarize");
 
-	await page.getByLabel("記事の URL（http / https）").fill("https://example.com/missing");
+	await fillUntilEnabled(
+		page.getByLabel("記事の URL（http / https）"),
+		"https://example.com/missing",
+		page.getByRole("button", { name: "要約する" }),
+	);
 	await page.getByRole("button", { name: "要約する" }).click();
 
 	const alert = page.getByRole("alert").filter({ hasText: "ソースを取得できませんでした" });
@@ -99,7 +106,11 @@ test("summarize: a video without captions shows the reason and the transcript hi
 	await page.goto("/summarize");
 
 	await page.getByRole("radio", { name: "YouTube の URL" }).check();
-	await page.getByLabel("YouTube 動画の URL").fill("https://www.youtube.com/watch?v=abcdefghijk");
+	await fillUntilEnabled(
+		page.getByLabel("YouTube 動画の URL"),
+		"https://www.youtube.com/watch?v=abcdefghijk",
+		page.getByRole("button", { name: "要約する" }),
+	);
 	await page.getByRole("button", { name: "要約する" }).click();
 
 	const alert = page.getByRole("alert").filter({ hasText: "ソースを取得できませんでした" });
@@ -115,7 +126,11 @@ test("summarize: the real route refuses an address it must not fetch, before any
 	// address is refused without any network access, so this stays deterministic offline.
 	await page.goto("/summarize");
 
-	await page.getByLabel("記事の URL（http / https）").fill("http://localhost/article");
+	await fillUntilEnabled(
+		page.getByLabel("記事の URL（http / https）"),
+		"http://localhost/article",
+		page.getByRole("button", { name: "要約する" }),
+	);
 	await page.getByRole("button", { name: "要約する" }).click();
 
 	const alert = page.getByRole("alert").filter({ hasText: "ソースを取得できませんでした" });
