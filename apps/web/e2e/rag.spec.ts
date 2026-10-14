@@ -1,4 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
+import { fillUntilEnabled } from "./support/form";
 import { errorReply, jsonReply, type MockApi, mockApi, streamReply } from "./support/mock-api";
 
 /** The visible alerts; Next.js keeps an empty `role="alert"` route announcer on every page. */
@@ -56,7 +57,11 @@ function bodyOf(api: MockApi, path: string, index = 0): Record<string, unknown> 
 }
 
 async function ask(page: Page, question = QUESTION): Promise<void> {
-	await page.getByLabel("質問", { exact: true }).fill(question);
+	await fillUntilEnabled(
+		page.getByLabel("質問", { exact: true }),
+		question,
+		page.getByRole("button", { name: "質問する" }),
+	);
 	await page.getByRole("button", { name: "質問する" }).click();
 }
 

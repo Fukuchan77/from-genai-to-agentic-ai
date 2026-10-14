@@ -6,6 +6,7 @@ import { expect, type Page, test } from "@playwright/test";
 import { M2_1_SAMPLE_QUESTIONS } from "../../../packages/ai-core/fixtures/scenarios/m2-1";
 // A pure module (no vitest import), unlike the `@platform/ai-core/testing` index.
 import { buildTextPdf } from "../../../packages/ai-core/src/testing/pdf-builder";
+import { fillUntilEnabled } from "./support/form";
 
 // No `page.route`: every request goes through the real Route Handlers of `next start` in `mock`
 // mode (request guard, gateway, scenario models). Plan C19, Req 1.17.
@@ -48,7 +49,11 @@ for (const { path, heading } of PAGES) {
 test("chat: one round trip through the real route", async ({ page }) => {
 	await page.goto("/chat");
 
-	await page.getByLabel("メッセージ").fill("こんにちは");
+	await fillUntilEnabled(
+		page.getByLabel("メッセージ"),
+		"こんにちは",
+		page.getByRole("button", { name: "送信" }),
+	);
 	await page.getByRole("button", { name: "送信" }).click();
 
 	await expect(page.getByRole("log", { name: "会話" })).toContainText(
@@ -59,7 +64,11 @@ test("chat: one round trip through the real route", async ({ page }) => {
 test("agent: one tool call and its answer through the real route", async ({ page }) => {
 	await page.goto("/agent");
 
-	await page.getByLabel("メッセージ").fill("東京の天気を教えて");
+	await fillUntilEnabled(
+		page.getByLabel("メッセージ"),
+		"東京の天気を教えて",
+		page.getByRole("button", { name: "送信" }),
+	);
 	await page.getByRole("button", { name: "送信" }).click();
 
 	await expect(page.getByRole("log", { name: "会話" })).toContainText(
@@ -71,7 +80,11 @@ test("summarize: one summary through the real route", async ({ page }) => {
 	await page.goto("/summarize");
 
 	await page.getByRole("radio", { name: "字幕テキスト" }).check();
-	await page.getByLabel("字幕テキストを貼り付け").fill("fixture:summary-full 本文です。");
+	await fillUntilEnabled(
+		page.getByLabel("字幕テキストを貼り付け"),
+		"fixture:summary-full 本文です。",
+		page.getByRole("button", { name: "要約する" }),
+	);
 	await page.getByRole("button", { name: "要約する" }).click();
 
 	await expect(page.getByRole("list", { name: "要点" })).toBeVisible();
@@ -181,7 +194,11 @@ test("rag: ingest the corpus on the page and ask a question through the real rou
 		"RAG の全体像",
 	);
 
-	await page.getByLabel("質問", { exact: true }).fill(M2_1_SAMPLE_QUESTIONS.answer);
+	await fillUntilEnabled(
+		page.getByLabel("質問", { exact: true }),
+		M2_1_SAMPLE_QUESTIONS.answer,
+		page.getByRole("button", { name: "質問する" }),
+	);
 	await page.getByRole("button", { name: "質問する" }).click();
 
 	await expect(page.getByRole("region", { name: "回答" })).toContainText(

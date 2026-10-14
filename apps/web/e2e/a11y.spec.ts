@@ -1,5 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 import { accessibilityViolations, applyColorScheme, type ColorScheme } from "./support/axe";
+import { fillUntilEnabled } from "./support/form";
 import { errorReply, jsonReply, mapEvents, mockApi, streamReply } from "./support/mock-api";
 
 // Req 1.19, NFR-09: axe (WCAG 2.2 AA) on every screen in both themes, both on the empty screen and
@@ -23,20 +24,30 @@ for (const path of PATHS) {
 }
 
 async function sendMessage(page: Page, text: string): Promise<void> {
-	await page.getByLabel("メッセージ").fill(text);
+	await fillUntilEnabled(
+		page.getByLabel("メッセージ"),
+		text,
+		page.getByRole("button", { name: "送信" }),
+	);
 	await page.getByRole("button", { name: "送信" }).click();
 }
 
 async function summarizeArticle(page: Page): Promise<void> {
 	await page.getByRole("radio", { name: "記事の URL" }).check();
-	await page
-		.getByLabel("記事の URL（http / https）")
-		.fill("https://example.test/articles/agentic-ai");
+	await fillUntilEnabled(
+		page.getByLabel("記事の URL（http / https）"),
+		"https://example.test/articles/agentic-ai",
+		page.getByRole("button", { name: "要約する" }),
+	);
 	await page.getByRole("button", { name: "要約する" }).click();
 }
 
 async function askRag(page: Page, question = "RAG とは何ですか？"): Promise<void> {
-	await page.getByLabel("質問", { exact: true }).fill(question);
+	await fillUntilEnabled(
+		page.getByLabel("質問", { exact: true }),
+		question,
+		page.getByRole("button", { name: "質問する" }),
+	);
 	await page.getByRole("button", { name: "質問する" }).click();
 }
 

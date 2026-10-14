@@ -1,5 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 import { applyColorScheme, type ColorScheme } from "./support/axe";
+import { fillUntilEnabled } from "./support/form";
 import { jsonReply, mockApi, streamReply } from "./support/mock-api";
 
 // Req 1.19, NFR-09: the main operations work with the keyboard alone, and the focus indicator of
@@ -89,7 +90,11 @@ test("rag: ask a question and follow a footnote to its card with the keyboard on
 test("rag: the intermediate results open and close with the keyboard", async ({ page }) => {
 	await mockApi(page, { "/api/rag/query": streamReply("rag-query") });
 	await page.goto("/rag");
-	await page.getByLabel("質問", { exact: true }).fill("RAG とは何ですか？");
+	await fillUntilEnabled(
+		page.getByLabel("質問", { exact: true }),
+		"RAG とは何ですか？",
+		page.getByRole("button", { name: "質問する" }),
+	);
 	await page.getByRole("button", { name: "質問する" }).click();
 	await expect(page.getByRole("list", { name: "引用" })).toBeVisible();
 	const section = page.locator("details", { hasText: "ベクトル検索の候補" });
@@ -277,7 +282,11 @@ for (const scheme of ["light", "dark"] as const satisfies readonly ColorScheme[]
 		await mockApi(page, { "/api/rag/query": streamReply("rag-query") });
 		await page.goto("/rag");
 		await applyColorScheme(page, scheme);
-		await page.getByLabel("質問", { exact: true }).fill("RAG とは何ですか？");
+		await fillUntilEnabled(
+			page.getByLabel("質問", { exact: true }),
+			"RAG とは何ですか？",
+			page.getByRole("button", { name: "質問する" }),
+		);
 		await page.getByRole("button", { name: "質問する" }).click();
 		await expect(page.getByRole("list", { name: "引用" })).toBeVisible();
 
@@ -302,7 +311,11 @@ for (const scheme of ["light", "dark"] as const satisfies readonly ColorScheme[]
 		await mockApi(page, { "/api/rag/query": streamReply("rag-query") });
 		await page.goto("/rag");
 		await applyColorScheme(page, scheme);
-		await page.getByLabel("質問", { exact: true }).fill("RAG とは何ですか？");
+		await fillUntilEnabled(
+			page.getByLabel("質問", { exact: true }),
+			"RAG とは何ですか？",
+			page.getByRole("button", { name: "質問する" }),
+		);
 		await page.getByRole("button", { name: "質問する" }).click();
 		await expect(page.getByRole("list", { name: "引用" })).toBeVisible();
 

@@ -1,4 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
+import { fillUntilEnabled } from "./support/form";
 import {
 	errorReply,
 	type MockApi,
@@ -26,7 +27,11 @@ function errorAlert(page: Page) {
 }
 
 async function send(page: Page, text: string): Promise<void> {
-	await page.getByLabel("メッセージ").fill(text);
+	await fillUntilEnabled(
+		page.getByLabel("メッセージ"),
+		text,
+		page.getByRole("button", { name: "送信" }),
+	);
 	await page.getByRole("button", { name: "送信" }).click();
 }
 

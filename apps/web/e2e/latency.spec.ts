@@ -1,4 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
+import { fillUntilEnabled } from "./support/form";
 import { installLatencyProbe, readLatencies } from "./support/latency-probe";
 import { loadFixture, mockApi, streamReply } from "./support/mock-api";
 
@@ -17,7 +18,11 @@ const NEWEST_MESSAGE = `${LOG} > ol > li:last-child`;
 const TEXT_DELTAS = loadFixture("chat-greeting").filter((event) => event.type === "text-delta");
 
 async function sendGreeting(page: Page): Promise<void> {
-	await page.getByLabel("メッセージ").fill("こんにちは");
+	await fillUntilEnabled(
+		page.getByLabel("メッセージ"),
+		"こんにちは",
+		page.getByRole("button", { name: "送信" }),
+	);
 	await page.getByRole("button", { name: "送信" }).click();
 }
 

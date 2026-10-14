@@ -1,4 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
+import { fillUntilEnabled } from "./support/form";
 import { errorReply, jsonReply, type MockApi, mockApi } from "./support/mock-api";
 
 /** The visible alerts; Next.js keeps an empty `role="alert"` route announcer on every page. */
@@ -73,7 +74,11 @@ test("workflows: the options are sent, and a value over the limit is refused bef
 	expect(api.requests).toHaveLength(0);
 
 	await page.getByLabel("最大反復回数").fill("3");
-	await page.getByLabel("合格スコア").fill("90");
+	await fillUntilEnabled(
+		page.getByLabel("合格スコア"),
+		"90",
+		page.getByRole("button", { name: "実行" }),
+	);
 	await page.getByRole("button", { name: "実行" }).click();
 
 	await expect(page.getByRole("article", { name: /実行結果/ })).toBeVisible();

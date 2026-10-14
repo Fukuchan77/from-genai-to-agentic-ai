@@ -1,4 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
+import { fillUntilEnabled } from "./support/form";
 import { mapEvents, mockApi, streamReply } from "./support/mock-api";
 
 // Req 1.17, 5.4, 5.5, NFR-10: the tool agent screen against the generated `agent-weather.sse`
@@ -11,7 +12,11 @@ function conversation(page: Page) {
 }
 
 async function send(page: Page): Promise<void> {
-	await page.getByLabel("メッセージ").fill("東京の天気を教えて");
+	await fillUntilEnabled(
+		page.getByLabel("メッセージ"),
+		"東京の天気を教えて",
+		page.getByRole("button", { name: "送信" }),
+	);
 	await page.getByRole("button", { name: "送信" }).click();
 }
 
