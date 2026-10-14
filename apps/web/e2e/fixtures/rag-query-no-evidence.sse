@@ -1,0 +1,18 @@
+data: {"type":"data-rag-stage","id":"stage-vector-search","data":{"stage":"vector-search","status":"skipped","detail":"ナレッジベースが空です"}}
+
+data: {"type":"data-rag-trace","id":"trace","data":{"settings":{"topK":5,"minSimilarity":0.5,"pool":20,"filter":{},"methods":{"hyde":false,"multiQuery":false,"hybrid":false,"rerank":false}},"vector":[],"fullText":[],"fused":[],"rerank":{"status":"disabled"},"final":[],"stages":[{"stage":"vector-search","status":"skipped","durationMs":0,"detail":"ナレッジベースが空です"}]}}
+
+data: {"type":"data-rag-trace","id":"trace","data":{"settings":{"topK":5,"minSimilarity":0.5,"pool":20,"filter":{},"methods":{"hyde":false,"multiQuery":false,"hybrid":false,"rerank":false}},"vector":[],"fullText":[],"fused":[],"rerank":{"status":"disabled"},"final":[],"stages":[{"stage":"vector-search","status":"skipped","durationMs":0,"detail":"ナレッジベースが空です"}]}}
+
+data: {"type":"data-rag-stage","id":"stage-generate","data":{"stage":"generate","status":"skipped","detail":"根拠がありません"}}
+
+data: {"type":"text-start","id":"answer"}
+
+data: {"type":"text-delta","id":"answer","delta":"ナレッジベースに、この質問に答えられる根拠となる資料が見つかりませんでした。質問を言い換えるか、関連する文書を取り込んでから、もう一度お試しください。"}
+
+data: {"type":"text-end","id":"answer"}
+
+data: {"type":"data-rag-result","id":"result","data":{"answer":"ナレッジベースに、この質問に答えられる根拠となる資料が見つかりませんでした。質問を言い換えるか、関連する文書を取り込んでから、もう一度お試しください。","citations":[],"removedCitations":[],"noEvidence":true,"rerank":{"status":"disabled"},"settings":{"topK":5,"minSimilarity":0.5,"pool":20,"filter":{},"methods":{"hyde":false,"multiQuery":false,"hybrid":false,"rerank":false}},"usage":{"inputTokens":0,"outputTokens":0,"totalTokens":0,"cacheReadTokens":0}}}
+
+data: [DONE]
+

@@ -30,12 +30,15 @@ export interface ErrorBannerProps {
 }
 
 export function ErrorBanner({ error, onRetry, onDismiss }: ErrorBannerProps) {
-	const { message } = toDisplayError(error);
+	const { code, message } = toDisplayError(error);
 	return (
 		<Alert variant="destructive">
 			<AlertTitle>エラーが発生しました</AlertTitle>
 			<AlertDescription>
 				<p>{message}</p>
+				<p className="text-xs">
+					エラーコード: <code>{code}</code>
+				</p>
 				<div className="flex flex-wrap gap-2">
 					<Button type="button" variant="outline" size="sm" onClick={onRetry}>
 						再送信

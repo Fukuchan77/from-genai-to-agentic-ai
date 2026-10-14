@@ -22,6 +22,8 @@ export default {
 		"packages/ai-core/src/rag/retrieve/rrf.ts",
 		"packages/ai-core/src/rag/answer/citations.ts",
 		"packages/ai-core/src/rag/eval/recall.ts",
+		"packages/ai-core/src/workflows/parallelization.ts",
+		"packages/ai-core/src/workflows/evaluator-optimizer.ts",
 	],
 	vitest: {
 		configFile: "packages/ai-core/vitest.config.ts",

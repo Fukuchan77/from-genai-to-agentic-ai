@@ -1,6 +1,9 @@
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { expect, type Page, test } from "@playwright/test";
+// The mock embedding finds a chunk only for its exact text, so the sample question is the corpus
+// text itself; importing it keeps the spec in step with the corpus.
+import { M2_1_SAMPLE_QUESTIONS } from "../../../packages/ai-core/fixtures/scenarios/m2-1";
 // A pure module (no vitest import), unlike the `@platform/ai-core/testing` index.
 import { buildTextPdf } from "../../../packages/ai-core/src/testing/pdf-builder";
 
@@ -11,6 +14,8 @@ const PAGES = [
 	{ path: "/chat", heading: "チャット" },
 	{ path: "/agent", heading: "ツールエージェント" },
 	{ path: "/summarize", heading: "要約" },
+	{ path: "/rag", heading: "RAG（検索拡張生成）" },
+	{ path: "/workflows", heading: "ワークフローとエージェントパターン" },
 ] as const;
 
 function collectBrowserErrors(page: Page): string[] {
@@ -151,4 +156,51 @@ test("rag: a PDF is read by unpdf in the real server and keeps its page numbers"
 	} finally {
 		await rm(path.join(directory, file), { force: true });
 	}
+});
+
+// Plan "実サーバーの確認" (risk R-1), W5: the /rag page reads the knowledge base while it renders
+// (a Server Component), which is a different bundle layer from the Route Handlers above. Without
+// `serverExternalPackages` for PGlite it answered "Extension bundle not found" and the page showed
+// a connection error while Vitest stayed green. This walks the whole path in the browser: ingest
+// the evaluation corpus, ask the corpus's own first chunk, read the cited answer.
+test("rag: ingest the corpus on the page and ask a question through the real routes", async ({
+	page,
+}) => {
+	const errors = collectBrowserErrors(page);
+	await page.goto("/rag");
+	// The server-rendered panel, not the "cannot connect" alert.
+	await expect(page.getByRole("region", { name: "ナレッジベースの取り込み" })).toBeVisible();
+	await expect(page.getByText("ナレッジベースに接続できません")).toHaveCount(0);
+
+	await page.getByRole("radio", { name: "評価用コーパス" }).check();
+	await page.getByRole("button", { name: "取り込む" }).click();
+	await expect(page.getByRole("status", { name: "取り込み結果" })).toContainText(
+		"6 件の文書を取り込みました",
+	);
+	await expect(page.getByRole("list", { name: "取り込み済みの文書" })).toContainText(
+		"RAG の全体像",
+	);
+
+	await page.getByLabel("質問", { exact: true }).fill(M2_1_SAMPLE_QUESTIONS.answer);
+	await page.getByRole("button", { name: "質問する" }).click();
+
+	await expect(page.getByRole("region", { name: "回答" })).toContainText(
+		"RAG は、質問の前に外部の文書から関連する部分を検索し",
+	);
+	await expect(page.getByRole("link", { name: "[1]" })).toBeVisible();
+	await expect(
+		page.getByRole("list", { name: "引用" }).getByRole("listitem").first(),
+	).toContainText("RAG の全体像");
+	expect(errors).toEqual([]);
+});
+
+test("workflows: one run through the real route", async ({ page }) => {
+	await page.goto("/workflows");
+
+	await page.getByRole("button", { name: "実行" }).click();
+
+	const result = page.getByRole("article", { name: "実行結果: プロンプトチェーン" });
+	await expect(result.getByRole("list", { name: "ステップ" })).toBeVisible();
+	await expect(result.getByRole("region", { name: "最終出力" })).toBeVisible();
+	await expect(result.getByRole("region", { name: "使用量" })).toContainText("モデル呼び出し 2 回");
 });

@@ -198,3 +198,127 @@
 - `sdd-reviewer` → REQUEST_CHANGES (0 CRITICAL/HIGH, 5 MEDIUM F-1..F-5, LOW F-6..F-19). Fixed test-first: F-1 grouped/range footnotes, F-2 rag/index re-exports, F-3 Rerank outcome on early returns, F-4 incremental traces (`onTrace`), F-5 retrieval failures → fixed `provider-unavailable`. Responses table appended to the review file.
 - Final `TURBO_FORCE=true mise run gate`: exit 0 in 27 s. `//:test executed=351`, `@platform/ai-core executed=1461 passed=1461 skipped=4`, `web executed=415 passed=415`, `eval-suite executed=3 skipped=1`, `Biome: 334 files`, `Docs: 4 module documents, 51 test references verified`.
 - Learning: a first RED pass on happy paths missed "one footnote may hold several numbers", "Rerank on but nothing to rerank" and "failures after the stream starts"; list the grouped/empty/mid-stream cases when writing the first tests.
+
+## W4 (tasks 16–19)
+
+- Preflight: gate lane is `mock` and needs no env or service → skipped. Work is done inline in the main session (no subagents; the session rules allow them only on request). `*.pg.test.ts` still not runnable (no Docker).
+- Method note: tests and the first implementation of each task were written in the same step, so the RED observed was "module not found" (16.1) or was not captured separately (16.2–16.7); non-vacuity rests on the PROVE stubs below, run with a `prove.sh` helper (perl substitution → vitest → restore).
+
+### Task 16 (workflows)
+
+- 16.1 limits/errors: PROVE 6 stubs (`>=` boundary, no integer check, override unchecked, `undefined` erases the default, cause leaked into `details`, wrong code) → each fails its targeted test. Added `resolveWorkflowLimits` (overrides may lower, never raise, a default) and, in 16.4 time, `toStepError` (moved into `errors.ts`; shared by parallelization and orchestrator-workers).
+- 16.2 prompt chaining: 6 stubs (no stop on failure, input not chained, no abort check, signal dropped, wrong failed step, failed step not recorded) all detected.
+- 16.3 routing: 10 stubs; two survivors (`hasOwn` and category-membership guards covered each other) → two tests added (extra handler key not in `categories`; `toString` as category with no own handler); re-proved.
+- 16.4 model-tier: 10 stubs; two survivors (initial abort check; base-model reuse in `resolveTiers`) → classifier-not-called assertion and `requests.length === 2` added; re-proved. `resolveTiers` learns mode/provider from the default `chat` resolve, since the gateway does not expose its config.
+- 16.5 parallelization: 14 stubs; survivor `tally unsorted` → test added; a delayed-start stub is caught by the order/first-failure tests. The barrier tests would hang (1 s timeout) for a sequential implementation.
+- 16.6 orchestrator-workers: 13 stubs; survivor "planner abort signal dropped" → test asserting the model call receives an aborted signal.
+- 16.7 evaluator-optimizer: 20 stubs; one equivalent mutant (explicit abort check before `parallelSections`, which checks it itself) removed from the code instead of tested.
+- Design decisions: a `PlatformError` other than `output-invalid` (503/400 class) is never wrapped into `WorkflowStepError`, so the route keeps answering 503/400; orchestrate's all-workers-failed error is named `workers`.
+
+### Task 17 (patterns)
+
+- 17.1–17.2: PROVE 14 stubs; one test was vacuous (the `<instruction>` marker also appears in the system prompt) → assertions now read the user message only. The same weakness was found in routing / model-evaluator / orchestrator tests and fixed with `provepy.py` (literal replacement; the perl helper had expanded `${...}` to empty strings in two earlier stubs).
+- 17.3 single path: 11 stubs; survivor "no abort after a failing step" → test where the step fails because of the abort (the abort reason, not a step failure, is surfaced).
+- 17.4 multi path: 15 stubs; survivors `.length(count)`, section signal, evaluator signal → 2 tests added (extra evaluation entry regenerated; signals reach planner and evaluator calls).
+- 17.5 reflection: 16 stubs; equivalent mutants removed from the code (cross without critic is rejected by the same-ID check; the abort check before the critic is done by `generateValidated`); abort-during-critique test added for the check before the revision.
+- 17.6 role-based cooperation: 15 stubs; survivors fixed (mock usage split into input/output so a "only input counted" stub fails; system prompt assertion for `instructions`). The repository rule `workflow-no-agent-loop` flagged the test's own `agents/` imports → spy through `vi.hoisted` + `vi.mock`.
+- 17.7: `mise`-equivalent checks run directly: `node scripts/check-repo-rules.mjs` → all rules pass (`workflow-no-agent-loop: scanned 30 FILES`, `guarded-agent-only` passes).
+
+### Task 18 (scenarios and demos)
+
+- 18.1/18.2 RED: new `m2-scenarios.test.ts` and `gateway.test.ts` cases failed until `M2_3_SCENARIOS` / `M2_4_SCENARIOS` were wired into `gateway.ts`. PROVE: duplicate marker, bad scenario ID, missing `purpose`, a sample task that contains an M1 marker (`東京の天気` — caught while designing; the sample became `大阪の天気`), unpinned first role turn (ambiguous with the tool-result turn), gateway without the scenarios → each fails a test.
+- 18.3 `workflows/demos.ts` (28 tests): 23 PROVE stubs on the first pass; survivors (`passScore`, `maxIterations`, `maxSubtasks` ignored; no abort pre-check; cache-read tokens; option error echoing a key) fixed with 6 tests. Stage-label drift in every composition fails the mock run (the scenario pin).
+- 18.4 `patterns/demos.ts` (27 tests): 17 stubs; survivors (target/goal/candidates options, tool capability, researcher's tool, signals) fixed by a capturing gateway and an agent-factory spy; `demos.ts` is asserted not to import the agents area.
+- Prompt labels were added to `reflect`, `cooperateByRole` and `createModelEvaluator` after their own tasks (tests first: RED = 3 failing label tests).
+
+### Task 19 (route and wave close)
+
+- 19.1 `apps/web/app/api/workflows/route.ts` (50 tests): 12 stubs; survivors fixed (guard order for kind/name, blank task, code-point length, platform agent limits; the inspect/try-catch was equivalent behavior and was simplified away).
+- 19.2: violation examples fail `check-repo-rules --only workflow-no-agent-loop` (exit 1); `mise.toml` and `stryker.config.mjs` updated. `mise run test:mutation` → 86.45 (6 min 46 s, over the 5 min budget); mutation survivors of `evaluator-optimizer.ts` / `parallelization.ts` (boundaries 0/100 of the pass score and scores, names in limit errors) closed with 4 tests; the mutation run was not repeated (7 min).
+- `TURBO_FORCE=true mise run gate` → exit 0: `//:test executed=351`, `@platform/ai-core executed=1732 passed=1732 skipped=4`, `web executed=472 passed=472`, `eval-suite executed=3 passed=3 skipped=1`, `Biome: 372 files`, `workflow-no-agent-loop: scanned 34 FILES`, `Docs: 4 module documents, 51 test references verified`. `NODE_ENV=production mise run check:client-bundle` → `scanned 20 files for 14 names and 3 sentinels`; the build lists `/api/workflows`.
+- Not run: `*.pg.test.ts` (no Docker), `local`-mode tests (Ollama).
+- Adversarial review: spawned with `sdd-reviewer` (fresh context); result recorded below.
+
+### W4 ship validation (2026-10-13)
+
+- `/sdd-ship rag-and-workflows W4`: GO. All of 16.1–19.2 are `[x]`; the review file records F-1 (HIGH) as fixed test-first, F-2/F-3/F-7/F-9/F-12 fixed, the rest deferred as LOW.
+- Fresh `TURBO_FORCE=true mise run gate` → exit 0: `//:test executed=351`, `@platform/ai-core executed=1732 passed=1732 skipped=4`, `web executed=472 passed=472`, `eval-suite executed=3 passed=3 skipped=1`, `Biome: 372 files`, `workflow-no-agent-loop: scanned 34 FILES`, `Docs: 4 module documents, 51 test references verified`.
+- Auto-fix (mechanical): gate counts in the notes above (1727/465) were taken before the review fixes landed; corrected to 1732/472 in this file and `tasks.md`. W4 row of the progress table marked complete; traceability `W4:` Test/Commit cells filled.
+- Not re-run: `test:mutation` (6 min 46 s, last result 86.45 before four boundary tests were added), `*.pg.test.ts`, `local` tests.
+
+## W5 (tasks 20–23)
+
+- Preflight: the gate lane is `mock` and needs no env or service → skipped. Work is inline in the main session (subagents only on request). `*.pg.test.ts` and `local` tests are not runnable here.
+- Method: tests first for every sub-task (RED = "module not found"), then GREEN, then PROVE with a literal-replacement helper (`prove.py`: replace one fragment, run vitest, restore). Survivors were closed with extra tests and re-proved.
+
+### Task 20 (RAG screen parts)
+
+- 20.1 `AnswerView`/`CitationList` (30 tests): ~25 stubs; survivors fixed with tests: raw spelling of a card-less full-width footnote, reversed/too-wide ranges, a lone backtick, a longer backtick run not closing a shorter span, the separator between the numbers of a group. Equivalent mutant left: `high < low` in `parseGroup` (a reversed range yields no numbers, so the raw text is drawn either way); it mirrors the server grammar.
+- 20.2 `StageProgress`/`TraceView` (21 tests): ~30 stubs; survivors fixed: `aria-live` (the first stub hit the JSDoc comment, not the attribute), a stage without a reason drawing an empty span, recorded data of a method that is off, the excerpt cut and its off-by-one, rank numbering (assert `startsWith("1")`, `startsWith("2")`).
+- 20.3 `MethodSwitches` (33) / `IngestPanel` (34): 18 + 20 stubs. Survivors fixed: validity of the other field when one is fixed first, deselection reset on a source change, the previous result hidden while the next ingest runs. Left: `Number.isFinite` (a `type=number` input never yields `NaN` text in the DOM; kept as a boundary parse), `reset: withReset` vs `reset` (equivalent in the flow).
+- 20.4 `RagPanel` (43 tests): 35 stubs; survivors fixed: first-vs-newest user message in `prepareRagRequest`, a submit while generating, the run summary while still running, the error outcome of the summary.
+- `tsc --noEmit` in `apps/web` clean; `components/rag` 161 tests green.
+
+### Task 21 (workflow screen parts)
+
+- 21.1/21.2 `WorkflowResultView` (36 tests; 14 views): ~45 stubs. Survivors fixed: failed-worker count vs completed count (use 3 results), `undefined` text for a failed worker, best-iteration marker when it is not the last, combined score vs the first evaluator's score, evaluator scores in the text, overlapping fixture strings ("要約して" ⊂ the improved text made a swapped before/after invisible), the raw stop label, the empty final output.
+- 21.3 `WorkflowPanel` (41 tests): 27 stubs. Survivors fixed: aspect length counted in characters, abort on unmount. Redundant guards removed (see Implementation Notes).
+- `tsc --noEmit` in `apps/web` clean.
+
+### Task 22 (pages)
+
+- `app/rag/page.tsx`, `app/workflows/page.tsx`, `app/page.tsx` (two module cards). No unit tests by design; `tsc --noEmit` clean, `mise run check:client-bundle` → `next build` lists `/rag` (ƒ) and `/workflows` (○), `Client bundle: scanned 24 files for 14 names and 3 sentinels`.
+- Deviation noted: tasks.md 23.4 names `mise run build`, which does not exist; `check:client-bundle` builds. `layout.tsx` nav links left alone (outside the plan's file list).
+
+### Task 23 (E2E, wave close)
+
+- 23.1: `generate-sse-fixtures.mjs` accepts `.json` (RED on the script test first). Route tests generate `rag-query.sse`, `rag-query-no-evidence.sse`, `workflows-evaluator-optimizer.json` (stalls sample, `passed: false`) and, beyond the task list, `rag-agent-search.sse` / `rag-agent-no-search.sse`. `mise run e2e:fixtures` twice → identical md5; corrupting a fixture makes the three route tests fail with "is stale (line N …)".
+- Real-server finding (research I-10): the `/rag` Server Component ran PGlite in the SSR chunk layer → "Extension bundle not found" → the page showed a connection error under concurrent cold requests; Vitest stayed green. Fix: `serverExternalPackages` += `@electric-sql/pglite`, `@electric-sql/pglite-pgvector`; `real-server.spec.ts` now ingests and asks through the page.
+- Spec findings fixed on the way: `role="alert"` collides with Next's empty route announcer (filter by text); `tabTo` takes CSS selectors only (no `:has-text`); a closed `<select>` ignores ArrowDown on macOS Chromium (the keyboard test picks an example button instead); focus-contrast readings must wait for `transition-colors` (1.81:1, 1 in 4 runs).
+- Adversarial review (`sdd-reviewer`, fresh context): APPROVE_WITH_NOTES, 2 MEDIUM + 16 LOW (`.sdd/reviews/002-rag-and-workflows-impl-w5-review-2026-10-13.md`). Fixed test-first: F-1 (client fence rules diverged from `findCodeRanges`; 15 parity vectors against `resolveCitations`, 5 stubs killed), F-3 (error `code` now shown by `ErrorBanner`), F-7, F-5 (status 200), F-14, plus the records (F-4, F-16). Deferred: F-2 (W3 file), F-6, F-8…F-13, F-17, F-18; F-15 left for the human (header nav).
+- Final: `TURBO_FORCE=true mise run gate` exit 0 in ~31 s: `//:test executed=352`, `@platform/ai-core executed=1732 passed=1732 skipped=4`, `web executed=733 passed=733`, `eval-suite executed=3 skipped=1`, `Biome: 395 files`, `Docs: 4 module documents, 51 test references verified`. `mise run test:e2e` → `363 passed (1.9m)`, `Playwright: executed=363 skipped=0 (chromium=121 firefox=121 webkit=121)`; axe (WCAG 2.2 AA, light and dark, 12 rendered states on the new screens) 0 violations. `mise run check:client-bundle` → `scanned 20 files for 14 names and 3 sentinels`.
+- Not run: `test:mutation` (W5 adds no mutation targets), `*.pg.test.ts` (no Docker), `local`-mode tests (Ollama).
+
+### W5 ship (`/sdd-ship`, 2026-10-13)
+
+- Verdict GO. Fresh `TURBO_FORCE=true mise run gate` exit 0: `web executed=733 passed=733`, `ai-core 1732 passed (skipped 4)`, `//:test 352`, `Docs: 4 module documents, 51 test references verified`. `mise run test:e2e` → `363 passed (1.6m)`, `Playwright: executed=363 skipped=0 (chromium=121 firefox=121 webkit=121)`. `mise run check:client-bundle` → `scanned 20 files for 14 names and 3 sentinels`.
+- Auto-fix (mechanical): traceability W5 Test/Commit cells (22 rows) and the Gaps note.
+- Commits: b40870d (screens), 3574034 (next.config), 5968504 (e2e), then this docs commit. Boundary amendments (ErrorBanner, route tests, generator test, extra fixtures, next.config) are recorded in the task 23 notes.
+- Not run: `test:mutation`, `*.pg.test.ts`, `local` tests. Wave migration (`tasks-comp-w5.md`) is not part of this ship.
+
+## W6 (tasks 24–28)
+
+- Preflight: the gate lane is `mock` (no env, no service). Task 25 needs Ollama (reachable, models present: chat, structured, embedding, judge defaults) and the optional `COHERE_API_KEY` (absent → Rerank rows unmeasured). Docker is not available → `*.pg.test.ts` / `test:db` not run. Work is inline in the main session; the wave review runs in a fresh `sdd-reviewer` context.
+
+### Task 24 (evaluation tests)
+
+- 24.1 `rag-eval-set.db.test.ts` (5 tests at first, 4 after review F-11): RED was my own mistake (`chunk.id` instead of `hit.chunk.id`), investigated with a throwaway debug test before touching anything. PROVE: a corrupted gold ID in `eval-set.json` → 2 failures naming `q01-rag-definition: 3e40e887390d058X`; a fixed wrong question → `expected true to be false` on `noEvidence` (the recall@1 check can fail).
+- 24.2/24.3 are `describeLocal` tests; the gate reports `Local tests require AI_TEST_RUN_MODE=local.: 8` skips (never counted as passes). Real run: judge file 757 s, retrieval file ~69 min under load.
+- Environment finding: with an Ollama model resident (≈34% of RAM) and the long run in parallel, existing PGlite `beforeAll` hooks exceeded the 10 s default (`Hook timed out in 10000ms`, ai-core `*.db.test.ts`, web route tests, and my new test). After unloading the models the gate passed, but `gate:repeat` still failed on run 6/10. Root cause: PGlite WASM start-up (≈1 s alone) is contention-sensitive when all workspaces run in parallel. Fix: `hookTimeout: 60_000` in `packages/ai-core/vitest.config.ts` and the web `routes` project (outside the task boundary; reviewed), explicit timeouts in the new test. After that `gate:repeat` was 10/10 identical.
+
+### Task 25 (measurements)
+
+- Results are in research.md "M2 実測（W6）". The first retrieval run exceeded the then 1-hour test timeout: Vitest recorded the comparison test as failed and moved on, the comparison kept running and printed its complete table during the next test (so the test's own completion assertions were never evaluated). The table is used with that disclosure; a green full run is on the human list (review F-1). Timeout raised to 3 h; `RAG_EVAL_QUESTIONS=<n>` added; a 3-question run passed in 148 s (also gave the 8-question out-of-scope similarity table, added to the similarity test afterwards). The raw output of that row was not kept, so on 2026-10-14 the similarity test was re-run alone (`-t "top-1 cosine"`, 5 s, no LLM) and both rows came from one run with identical values (review F-3).
+- Throwaway script for 25.2 (Role-Based vs single agent, 3 trials) was a `local` test file that was deleted after the run (not committed).
+
+### Task 26–27 (docs, steering, decision)
+
+- 2-1…2-4 written against the template; `docs:check` → `Docs: 8 module documents, 110 test references verified`. Placeholders (`{{…}}`) were filled from research.md after task 25. phase-2.md and modules/index.md updated; docs/README.md refreshed.
+- ADR-8 judgement: keep both regeneration helpers (see research.md). Steering/AGENTS.md updated (rules 9 → 11, M2 areas, data layer decisions).
+
+### Task 28.1 (wave close, 2026-10-13)
+
+- `TURBO_FORCE=true mise run gate` → exit 0: `//:test executed=352`, `@platform/ai-core executed=1732 passed=1732 skipped=4`, `web executed=733 passed=733`, `eval-suite executed=8 passed=8 skipped=8` (before the review fixes; 7 after, see the last entry) (the 8 are the `local` tests), `Biome: 398 files`, `workflow-no-agent-loop: scanned 34 FILES`, `Docs: 8 module documents, 110 test references verified`. Test time per run ≈ 32 s; far below the 5-minute budget.
+- `mise run gate:repeat` → 10/10 identical results (after the `hookTimeout` fix; the first attempt failed at run 6/10).
+- `mise run test:mutation` → score 87.03 (threshold 70): 1169 killed, 45 timeout, 173 survived, 8 no coverage; 8 minutes. W6 adds no mutation target (no `stryker.config.mjs` change).
+- `mise run test:coverage`: `@platform/ai-core` Lines 98.39% (Statements 97.64%, Branches 91.44%, Functions 98.61%); threshold 80.
+- `mise run test:e2e` → `363 passed (1.5m)`, `Playwright: executed=363 skipped=0 (chromium=121 firefox=121 webkit=121)`.
+- `NODE_ENV=production mise run check:client-bundle` → `Client bundle: scanned 20 files for 14 names and 3 sentinels`. `mise run secret-scan` → `215 commits scanned … no leaks found`. `mise run audit` → `No known vulnerabilities found`.
+- Not run (human): `mise run test:db` (Docker unavailable) — research "W2 5.3 の記録" table stays empty; Rerank with a real `COHERE_API_KEY`; a full-length rerun of the retrieval comparison after the timeout change.
+
+### Ship validation (/sdd-ship, 2026-10-14)
+
+- Boundary: four edits outside every W6 `_Boundary:_` (`packages/ai-core/vitest.config.ts` and `apps/web/vitest.config.ts` `hookTimeout: 60_000`, `docs/README.md`, `docs/modules/1-1-dev-environment.md`) were approved by the user at ship time (reviewed as F-15, F-16, F-7; recorded in traceability Gaps).
+- `mise run gate` → exit 0: `//:test executed=352`, `@platform/ai-core executed=1732 passed=1732 skipped=4`, `web executed=733 passed=733`, `eval-suite executed=7 passed=7 skipped=8` (`rag-eval-set.db.test.ts` 4 tests ran; `rag-retrieval.local.test.ts` 3 and `rag-judge.local.test.ts` 4 skipped with the reason), `Biome: 398 files`, `workflow-no-agent-loop: scanned 34 FILES`, `Docs: 8 module documents, 110 test references verified`.
+- Auto-fix (mechanical): stale eval-suite counts (executed 8 → 7, `rag-eval-set` 5 → 4 tests) in do.md and the 24.1 note.
+- Still open for a human (unchanged): 28.2 (PR, push, CI), 28.3 tags, Req 4.7 `final` gap, `test:db`, Cohere, a full green retrieval run.

@@ -6,6 +6,8 @@ export {
 	M2_CORPUS_TEXT,
 } from "../../fixtures/scenarios/m2-1";
 export { M2_2_SCENARIOS } from "../../fixtures/scenarios/m2-2";
+export { M2_3_SAMPLE_TASKS, M2_3_SCENARIOS } from "../../fixtures/scenarios/m2-3";
+export { M2_4_SAMPLE_TASKS, M2_4_SCENARIOS } from "../../fixtures/scenarios/m2-4";
 export { type Cassette, type CassetteStore, createCassetteStore } from "./cassette-store";
 export { createDeterministicEmbeddingModel } from "./deterministic-embedding";
 export {

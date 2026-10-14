@@ -11,6 +11,7 @@ import {
 import { createFakeClock } from "@platform/ai-core/testing";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createPlatform, getKnowledgeBase, setPlatformForTesting } from "@/lib/server/platform";
+import { verifyOrWriteFixture } from "../../../../../../scripts/e2e/generate-sse-fixtures.mjs";
 import { POST } from "./route";
 
 vi.mock("@/lib/server/platform", async (importOriginal) => {
@@ -359,5 +360,27 @@ describe("POST /api/rag/agent: the agent run", () => {
 		const error = parts.find((part) => part.type === "error");
 		expect(error?.errorText).toBeDefined();
 		expect(error?.errorText).not.toContain("sk-secret-999");
+	});
+});
+
+describe("POST /api/rag/agent: generated SSE fixtures used by the E2E specs", () => {
+	it("matches the generated SSE fixture of a run that searches and cites (Req 1.17)", async () => {
+		await ingestCorpus();
+		await installPlatform();
+
+		const response = await POST(post(ask(M2_1_SAMPLE_QUESTIONS.agenticSearch)));
+
+		expect(response.status).toBe(200);
+		verifyOrWriteFixture("rag-agent-search.sse", await response.text());
+	});
+
+	it("matches the generated SSE fixture of a run that answers without searching (Req 1.17)", async () => {
+		await ingestCorpus();
+		await installPlatform();
+
+		const response = await POST(post(ask(M2_1_SAMPLE_QUESTIONS.agenticNoSearch)));
+
+		expect(response.status).toBe(200);
+		verifyOrWriteFixture("rag-agent-no-search.sse", await response.text());
 	});
 });

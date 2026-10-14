@@ -9,11 +9,11 @@
 | パス | 内容 |
 |---|---|
 | [modules/index.md](modules/index.md) | 19 モジュールの一覧と、解説の状態 |
-| [phases/phase-1.md](phases/phase-1.md) | Phase 1 が扱う IBM 成熟度モデルの水準と学習の流れ |
+| [phases/phase-1.md](phases/phase-1.md)、[phases/phase-2.md](phases/phase-2.md) | 各フェーズが扱う IBM 成熟度モデルの水準と学習の流れ |
 | `modules/<phase>-<n>-<name>.md` | 各モジュールの解説。ファイル名の先頭 `1-2` がモジュール番号 |
 | [modules/_template.md](modules/_template.md) | 19 モジュール共通の解説テンプレート |
 
-Phase 1（モジュール 1-0〜1-3）はマイルストーン 1 で提供します。2-1 以降は、各マイルストーンの spec が承認され、実装が完了した時点で同じテンプレートに沿って追加します。
+Phase 1（モジュール 1-0〜1-3）はマイルストーン 1、Phase 2（モジュール 2-1〜2-4）はマイルストーン 2 で提供します。3-1 以降は、各マイルストーンの spec が承認され、実装が完了した時点で同じテンプレートに沿って追加します。
 
 ## 読み方
 

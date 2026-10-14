@@ -22,12 +22,14 @@
 
 ## Phase 2 発展編（M2）
 
-| モジュール | 状態 |
-|---|---|
-| 2-1 TypeScript ネイティブ RAG | 未提供 |
-| 2-2 Advanced RAG | 未提供 |
-| 2-3 5大ワークフローパターン | 未提供 |
-| 2-4 エージェントデザインパターン | 未提供 |
+扱う成熟度の水準: [phase-2.md](../phases/phase-2.md)
+
+| モジュール | 解説 | 完成時点のタグ | 状態 |
+|---|---|---|---|
+| 2-1 TypeScript ネイティブ RAG | [2-1-typescript-native-rag.md](2-1-typescript-native-rag.md) | `module/2-1` | 提供済み |
+| 2-2 Advanced RAG | [2-2-advanced-rag.md](2-2-advanced-rag.md) | `module/2-2` | 提供済み |
+| 2-3 5大ワークフローパターン | [2-3-workflow-patterns.md](2-3-workflow-patterns.md) | `module/2-3` | 提供済み |
+| 2-4 エージェントデザインパターン | [2-4-agent-design-patterns.md](2-4-agent-design-patterns.md) | `module/2-4` | 提供済み |
 
 ## Phase 3 現場実践編（M3）
 

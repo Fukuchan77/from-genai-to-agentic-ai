@@ -29,7 +29,7 @@
 |---|---|---|
 | `lint` | `biome ci`（lint と format。未使用の変数・import はエラー） | 走査ファイル数が 0 なら失敗（`scripts/gate/count-biome.mjs`） |
 | `check:model-ids` | モデル ID の文字列がカタログ以外に書かれていないか（`docs/` と `README.md` も対象） | 走査ファイルが 0 なら失敗 |
-| `check:repo-rules` | リポジトリの規則（9 規則。例: `frozen-lockfile`、`ai-core-no-ui-deps`、`tool-risk-declared`） | 規則ごとに検査 |
+| `check:repo-rules` | リポジトリの規則（11 規則。例: `frozen-lockfile`、`ai-core-no-ui-deps`、`tool-risk-declared`） | 規則ごとに検査 |
 | `typecheck` | `turbo run typecheck` に続けて、tsconfig ごとの走査ファイル数を数える | tsconfig が 0 ファイルなら失敗（`scripts/gate/count-tsc.mjs`） |
 | `test` | `mock` モードで全ワークスペースの Vitest を1回ずつ実行 | 実行件数が 0 なら失敗（`gate-reporter`） |
 | `docs:check` | 解説（`docs/modules/`）の必須の節・トピック・手順の表記と、チェックリストが参照するテストの実在（修飾子付きの宣言 `.skip` / `.only` / `.todo` / `.fails` と、`PATTERN.test("…")` のようなメソッド呼び出しは参照先にならない。コメントアウトしたテストや `describe.skip` の中の `it` は検出できないため、レビューで確かめる） | 解説が 0 件、または参照が 0 件なら失敗 |

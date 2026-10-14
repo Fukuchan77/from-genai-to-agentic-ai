@@ -1,0 +1,38 @@
+data: {"type":"start"}
+
+data: {"type":"start-step"}
+
+data: {"type":"tool-input-available","toolCallId":"m2-1/agentic/search-then-answer-0-tool-0","toolName":"searchKnowledgeBase","input":{"query":"Agentic RAG は、検索の要否、検索語、検索の回数をエージェントに決めさせる方式である。通常の RAG は、質問のたびに必ず一回だけ検索する固定の手順であるのに対し、Agentic RAG では検索が選択肢の一つになる。"}}
+
+data: {"type":"tool-output-available","toolCallId":"m2-1/agentic/search-then-answer-0-tool-0","output":{"ok":true,"data":{"results":[{"label":1,"documentTitle":"Agentic RAG","locator":{"kind":"heading","path":["Agentic RAG"]},"excerpt":"Agentic RAG は、検索の要否、検索語、検索の回数をエージェントに決めさせる方式である。通常の RAG は、質問のたびに必ず一回だけ検索する固定の手順であるのに対し、Agentic RAG では検索が選択肢の一つになる。"}]}}}
+
+data: {"type":"finish-step"}
+
+data: {"type":"start-step"}
+
+data: {"type":"text-start","id":"m2-1/agentic/search-then-answer-1-text"}
+
+data: {"type":"text-delta","id":"m2-1/agentic/search-then-answer-1-text","delta":"固定の RAG "}
+
+data: {"type":"text-delta","id":"m2-1/agentic/search-then-answer-1-text","delta":"は毎回一回だけ検"}
+
+data: {"type":"text-delta","id":"m2-1/agentic/search-then-answer-1-text","delta":"索しますが、Ag"}
+
+data: {"type":"text-delta","id":"m2-1/agentic/search-then-answer-1-text","delta":"entic RA"}
+
+data: {"type":"text-delta","id":"m2-1/agentic/search-then-answer-1-text","delta":"G は検索の要否"}
+
+data: {"type":"text-delta","id":"m2-1/agentic/search-then-answer-1-text","delta":"や回数をエージェ"}
+
+data: {"type":"text-delta","id":"m2-1/agentic/search-then-answer-1-text","delta":"ントが決めます "}
+
+data: {"type":"text-delta","id":"m2-1/agentic/search-then-answer-1-text","delta":"[1]。"}
+
+data: {"type":"text-end","id":"m2-1/agentic/search-then-answer-1-text"}
+
+data: {"type":"finish-step"}
+
+data: {"type":"finish","finishReason":"stop","messageMetadata":{"run":{"stopReason":"completed","steps":2,"totalTokens":{"input":0,"output":0,"cacheRead":0,"reasoning":0},"elapsedMs":0,"toolsCalled":["searchKnowledgeBase"]},"rag":{"searched":true,"searchCount":1,"answer":"固定の RAG は毎回一回だけ検索しますが、Agentic RAG は検索の要否や回数をエージェントが決めます [1]。","citations":[{"chunkId":"536b42390304b0a3","label":1,"documentId":"eval:06-agentic-rag.md","documentTitle":"Agentic RAG","locator":{"kind":"heading","path":["Agentic RAG"]},"excerpt":"Agentic RAG は、検索の要否、検索語、検索の回数をエージェントに決めさせる方式である。通常の RAG は、質問のたびに必ず一回だけ検索する固定の手順であるのに対し、Agentic RAG では検索が選択肢の一つになる。","similarity":1,"cited":true}],"removedCitations":[]}}}
+
+data: [DONE]
+

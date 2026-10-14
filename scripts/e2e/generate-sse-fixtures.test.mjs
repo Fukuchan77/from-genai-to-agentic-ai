@@ -46,9 +46,26 @@ describe("verifyOrWriteFixture", () => {
 		).toThrowError("SSE fixture x.sse is missing; run `mise run e2e:fixtures`");
 	});
 
+	it("handles a .json fixture like a stream: write, match, stale, missing", () => {
+		expect(verifyOrWriteFixture("x.json", '{\n  "a": 1\n}\n', { write: true, directory })).toBe(
+			"written",
+		);
+		expect(verifyOrWriteFixture("x.json", '{\n  "a": 1\n}\n', { write: false, directory })).toBe(
+			"match",
+		);
+		expect(() =>
+			verifyOrWriteFixture("x.json", '{\n  "a": 2\n}\n', { write: false, directory }),
+		).toThrowError(
+			/JSON fixture x\.json is stale \(line 2: expected " {2}\\"a\\": 1", got " {2}\\"a\\": 2"\)/u,
+		);
+		expect(() => verifyOrWriteFixture("y.json", "{}\n", { write: false, directory })).toThrowError(
+			"JSON fixture y.json is missing; run `mise run e2e:fixtures`",
+		);
+	});
+
 	it("rejects names without .sse and empty streams, even in write mode", () => {
 		expect(() => verifyOrWriteFixture("x.txt", "a", { write: true, directory })).toThrowError(
-			"must end with .sse",
+			"must end with .sse or .json",
 		);
 		expect(() => verifyOrWriteFixture("x.sse", "", { write: true, directory })).toThrowError(
 			"empty stream",

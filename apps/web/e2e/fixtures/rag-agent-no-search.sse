@@ -1,0 +1,16 @@
+data: {"type":"start"}
+
+data: {"type":"start-step"}
+
+data: {"type":"text-start","id":"m2-1/agentic/no-search-0-text"}
+
+data: {"type":"text-delta","id":"m2-1/agentic/no-search-0-text","delta":"どういたしまして。ほかにも知りたいことがあれば聞いてください。"}
+
+data: {"type":"text-end","id":"m2-1/agentic/no-search-0-text"}
+
+data: {"type":"finish-step"}
+
+data: {"type":"finish","finishReason":"stop","messageMetadata":{"run":{"stopReason":"completed","steps":1,"totalTokens":{"input":0,"output":0,"cacheRead":0,"reasoning":0},"elapsedMs":0,"toolsCalled":[]},"rag":{"searched":false,"searchCount":0,"answer":"どういたしまして。ほかにも知りたいことがあれば聞いてください。","citations":[],"removedCitations":[]}}}
+
+data: [DONE]
+

@@ -46,6 +46,19 @@ describe("ErrorBanner", () => {
 		expect(alert.textContent).toContain("モデルに接続できません。");
 	});
 
+	it("shows the error code next to the message, so the cause can be named (RAG tasks 20.4, 21.3)", () => {
+		render(<ErrorBanner error={error} onRetry={() => {}} />);
+
+		expect(screen.getByText("provider-unavailable").tagName).toBe("CODE");
+	});
+
+	it("shows the fixed unexpected code, never raw text, for an unparseable error", () => {
+		render(<ErrorBanner error={new Error("TypeError: secret stack")} onRetry={() => {}} />);
+
+		expect(screen.getByText("unexpected").tagName).toBe("CODE");
+		expect(screen.getByRole("alert").textContent).not.toContain("secret");
+	});
+
 	it("offers a retry button that calls onRetry (Req 3.6)", () => {
 		const onRetry = vi.fn();
 		render(<ErrorBanner error={error} onRetry={onRetry} />);

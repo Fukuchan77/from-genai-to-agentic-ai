@@ -1,5 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 import { applyColorScheme, type ColorScheme } from "./support/axe";
+import { jsonReply, mockApi, streamReply } from "./support/mock-api";
 
 // Req 1.19, NFR-09: the main operations work with the keyboard alone, and the focus indicator of
 // representative focusable components keeps 3:1 against the adjacent background (WCAG 2.2 AA,
@@ -64,6 +65,81 @@ test("summarize: choose the input kind and submit with the keyboard only", async
 	await expect(page.getByRole("list", { name: "要点" })).toBeVisible();
 });
 
+test("rag: ask a question and follow a footnote to its card with the keyboard only", async ({
+	page,
+}) => {
+	await mockApi(page, { "/api/rag/query": streamReply("rag-query") });
+	await page.goto("/rag");
+
+	await tabTo(page, "#rag-question");
+	await page.keyboard.type("RAG とは何ですか？");
+	// The ingest panel's submit button comes first in the page; the question's follows the textarea.
+	await tabTo(page, 'button[type="submit"]');
+	await page.keyboard.press("Enter");
+	await expect(page.getByRole("list", { name: "引用" })).toBeVisible();
+
+	await tabTo(page, "a[href^='#rag-']");
+	await page.keyboard.press("Enter");
+
+	await expect(
+		page.getByRole("list", { name: "引用" }).getByRole("listitem").first(),
+	).toBeFocused();
+});
+
+test("rag: the intermediate results open and close with the keyboard", async ({ page }) => {
+	await mockApi(page, { "/api/rag/query": streamReply("rag-query") });
+	await page.goto("/rag");
+	await page.getByLabel("質問", { exact: true }).fill("RAG とは何ですか？");
+	await page.getByRole("button", { name: "質問する" }).click();
+	await expect(page.getByRole("list", { name: "引用" })).toBeVisible();
+	const section = page.locator("details", { hasText: "ベクトル検索の候補" });
+
+	await tabTo(page, "summary");
+	await expect(page.locator("summary").first()).toBeFocused();
+	await page.keyboard.press("Enter");
+	await expect(section.first()).toHaveAttribute("open", "");
+	await page.keyboard.press("Space");
+	await expect(section.first()).not.toHaveAttribute("open", "");
+});
+
+test("rag: the reset confirmation opens on Cancel, Escape closes it and gives the focus back", async ({
+	page,
+}) => {
+	const api = await mockApi(page, { "/api/rag/ingest": jsonReply({}) });
+	await page.goto("/rag");
+	await page.getByRole("radio", { name: "評価用コーパス" }).check();
+
+	await tabTo(page, "input[type='checkbox'][class*='mt-0.5']");
+	await page.keyboard.press("Space");
+	await tabTo(page, 'button[type="submit"]');
+	await page.keyboard.press("Enter");
+	const dialog = page.getByRole("dialog", { name: "ナレッジベースを削除しますか？" });
+	await expect(dialog).toBeVisible();
+	await expect(dialog.getByRole("button", { name: "キャンセル" })).toBeFocused();
+
+	await page.keyboard.press("Escape");
+
+	await expect(dialog).toBeHidden();
+	await expect(page.getByRole("button", { name: "取り込む" })).toBeFocused();
+	expect(api.requests).toHaveLength(0);
+});
+
+test("workflows: pick an example and run with the keyboard only", async ({ page }) => {
+	await page.goto("/workflows");
+
+	await tabTo(page, "#workflow-name");
+	await tabTo(page, "section[aria-label='入力例'] button");
+	await page.keyboard.press("Enter");
+	await expect(page.getByLabel("入力", { exact: true })).toHaveValue(
+		"新入社員向けに、社内の VPN の接続手順を説明する記事を書いてください。",
+	);
+	await tabTo(page, "#workflow-task");
+	await tabTo(page, 'button[type="submit"]');
+	await page.keyboard.press("Space");
+
+	await expect(page.getByRole("article", { name: "実行結果: プロンプトチェーン" })).toBeVisible();
+});
+
 interface FocusIndicator {
 	readonly kind: "outline" | "ring" | "none";
 	readonly width: number;
@@ -71,8 +147,24 @@ interface FocusIndicator {
 	readonly background: readonly [number, number, number];
 }
 
-/** Reads the indicator of the focused element and the colour behind it, as sRGB triples. */
-function readFocusIndicator(page: Page): Promise<FocusIndicator> {
+/**
+ * Reads the indicator of the focused element and the colour behind it, as sRGB triples. Buttons
+ * carry `transition-colors`, so right after the theme class flips their colours are half way
+ * between the two themes (a 1.8:1 reading that is neither): the transitions finish first.
+ */
+async function readFocusIndicator(page: Page): Promise<FocusIndicator> {
+	await page.evaluate(() =>
+		Promise.all(
+			document
+				.getAnimations()
+				// A looping animation never finishes; only the finite ones (the colour transitions) matter.
+				.filter(
+					(animation) =>
+						animation.effect?.getComputedTiming().iterations !== Number.POSITIVE_INFINITY,
+				)
+				.map((animation) => animation.finished.catch(() => null)),
+		),
+	);
 	return page.evaluate(() => {
 		const toRgb = (color: string): [number, number, number] => {
 			// A canvas converts any CSS colour (oklch, lab, ...) to sRGB pixels.
@@ -151,6 +243,13 @@ const TARGETS = [
 	{ path: "/chat", name: "model selector", selector: "select, [role='combobox']" },
 	{ path: "/summarize", name: "radio", selector: "input[type='radio']" },
 	{ path: "/summarize", name: "url field", selector: "input[type='url']" },
+	{ path: "/rag", name: "ingest source radio", selector: "input[type='radio']" },
+	{ path: "/rag", name: "method switch", selector: "input[type='checkbox'][class*='mt-0.5']" },
+	{ path: "/rag", name: "question field", selector: "#rag-question" },
+	{ path: "/rag", name: "number field", selector: "input[type='number']" },
+	{ path: "/workflows", name: "workflow name select", selector: "#workflow-name" },
+	{ path: "/workflows", name: "sample button", selector: "section[aria-label='入力例'] button" },
+	{ path: "/workflows", name: "task field", selector: "#workflow-task" },
 ] as const;
 
 for (const scheme of ["light", "dark"] as const satisfies readonly ColorScheme[]) {
@@ -169,4 +268,58 @@ for (const scheme of ["light", "dark"] as const satisfies readonly ColorScheme[]
 			expect(contrast(focus.indicator, focus.background)).toBeGreaterThanOrEqual(3);
 		});
 	}
+}
+
+for (const scheme of ["light", "dark"] as const satisfies readonly ColorScheme[]) {
+	test(`focus indicator of a footnote link and of the card it moves to has 3:1 contrast (${scheme})`, async ({
+		page,
+	}) => {
+		await mockApi(page, { "/api/rag/query": streamReply("rag-query") });
+		await page.goto("/rag");
+		await applyColorScheme(page, scheme);
+		await page.getByLabel("質問", { exact: true }).fill("RAG とは何ですか？");
+		await page.getByRole("button", { name: "質問する" }).click();
+		await expect(page.getByRole("list", { name: "引用" })).toBeVisible();
+
+		await tabTo(page, "a[href^='#rag-']");
+		const link = await readFocusIndicator(page);
+		await page.keyboard.press("Enter");
+		await expect(
+			page.getByRole("list", { name: "引用" }).getByRole("listitem").first(),
+		).toBeFocused();
+		const card = await readFocusIndicator(page);
+
+		for (const focus of [link, card]) {
+			expect(focus.kind, "a visible focus indicator").not.toBe("none");
+			expect(focus.width).toBeGreaterThanOrEqual(2);
+			expect(contrast(focus.indicator, focus.background)).toBeGreaterThanOrEqual(3);
+		}
+	});
+
+	test(`focus indicator of the disclosure summary and of the dialog buttons has 3:1 contrast (${scheme})`, async ({
+		page,
+	}) => {
+		await mockApi(page, { "/api/rag/query": streamReply("rag-query") });
+		await page.goto("/rag");
+		await applyColorScheme(page, scheme);
+		await page.getByLabel("質問", { exact: true }).fill("RAG とは何ですか？");
+		await page.getByRole("button", { name: "質問する" }).click();
+		await expect(page.getByRole("list", { name: "引用" })).toBeVisible();
+
+		await tabTo(page, "summary");
+		const summary = await readFocusIndicator(page);
+
+		await page.getByRole("radio", { name: "評価用コーパス" }).check();
+		await page.getByRole("checkbox", { name: /ナレッジベースを空にしてから/ }).check();
+		await page.getByRole("button", { name: "取り込む" }).click();
+		await expect(page.getByRole("dialog")).toBeVisible();
+		await page.keyboard.press(tabKey(page));
+		const dialogButton = await readFocusIndicator(page);
+
+		for (const focus of [summary, dialogButton]) {
+			expect(focus.kind, "a visible focus indicator").not.toBe("none");
+			expect(focus.width).toBeGreaterThanOrEqual(2);
+			expect(contrast(focus.indicator, focus.background)).toBeGreaterThanOrEqual(3);
+		}
+	});
 }

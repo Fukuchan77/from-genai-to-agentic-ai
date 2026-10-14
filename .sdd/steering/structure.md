@@ -3,8 +3,8 @@
 コードの配置パターンを記す永続知識。ファイルツリーの列挙ではなく、パターンと例を書く。
 全ファイルの計画は `specs/001-agentic-ai-platform/plan.md` の File Structure Plan にある。
 
-> **状態（2026-10-12）**: M1 の `apps/web`・`packages/ai-core`・`packages/eval-suite`・`tooling/`・
-> `scripts/`・`docs/` は実装済み。M2 以降の領域（`workflows/`、`harness/` など）は未作成。
+> **状態（2026-10-13）**: M1 と M2（W1〜W5）の `apps/web`・`packages/ai-core`・`packages/eval-suite`・`tooling/`・
+> `scripts/`・`docs/` は実装済み（M2 の W6 で評価・解説・統合を仕上げている）。M3 以降の領域（`harness/` など）は未作成。
 
 ## Organization Pattern
 
@@ -28,15 +28,16 @@ packages/ai-core/src/agents/
 | Path | Holds |
 |------|-------|
 | `apps/web/` | Next.js アプリ（パッケージ名 `web`、非公開）。`app/` にページと `app/api/*/route.ts`、`components/<feature>/` に画面部品、`components/ui/` に shadcn/ui の基本部品、`lib/server/` にサーバー専用モジュール、`e2e/` に Playwright |
-| `packages/ai-core/` | `@platform/ai-core`。`src/<area>/`（`config`、`models`、`mock`、`agents`、`aci`、`ports`、`chat`、`summarize`、`testing` …）と `fixtures/`（シナリオ・カセット・外部サービスの fixture） |
-| `packages/eval-suite/` | `@platform/eval-suite`。`tests/capability/` と `tests/regression/`（本体は M4） |
+| `packages/ai-core/` | `@platform/ai-core`。`src/<area>/`（`config`、`models`、`mock`、`agents`、`aci`、`ports`、`chat`、`summarize`、`testing`、M2 の `structured`、`rag`、`workflows`、`patterns` …）、`drizzle/`（手書きの SQL マイグレーション）と `fixtures/`（シナリオ・カセット・外部サービスの fixture、`rag/` の評価コーパスと質問セット） |
+| `packages/eval-suite/` | `@platform/eval-suite`。`tests/capability/`（`local` 専用の RAG 検索比較と Judge）と `tests/regression/`（RAG の評価の配管。本体は M4） |
+| `knowledge/` | 学習者の文書（RAG の取り込み元）。`README.md` 以外は `.gitignore` 済み。評価コーパスとは `kb:` / `eval:` の文書 ID で分離する |
 | `tooling/vitest/` | テスト基盤（ネットワーク遮断、`local` 判定、件数を検査するレポーター） |
 | `scripts/` | リポジトリ規約の検査（`check-*.mjs`、各々に隣の `.test.mjs`）、gate の補助（`scripts/gate/`）、E2E 用 SSE fixture 生成（`scripts/e2e/`）、共有ヘルパ（`scripts/lib/`） |
 | `docs/` | 日本語の解説。`modules/<id>-<slug>.md`、`phases/phase-N.md`、`modules/_template.md` |
 | `infra/`、`compose.yaml` | ローカル依存サービス（Compose のプロファイル `db` / `trace`） |
 | `specs/` | milestone 単位の spec（`00N-<name>/`）と、カリキュラムの確定版（`curriculum/`） |
 
-後続 milestone は、この骨格に領域を足す（例: M2 は `ai-core/src/workflows/`、M4 は
+後続 milestone は、この骨格に領域を足す（M2 は `ai-core/src/{structured,rag,workflows,patterns}/`、M4 は
 `ai-core/src/harness/`）。新しいトップレベルのワークスペースは作らない前提で進める。
 
 ## Naming Conventions
@@ -84,6 +85,12 @@ packages/ai-core/src/agents/
 - エージェント実行の結果を記録・送出する処理（トレース、評価レポート）→ `RunObserver` の実装として
   `createGuardedAgent` の `observers` に渡す（`guarded-agent.ts` を直接改変しない）
 - 新しいモデル → `packages/ai-core/src/models/catalog.ts` だけ
+- 構造化出力を検証して再生成する呼び出し → `ai-core/src/structured/` の `generateValidated`
+- RAG（取り込み、分割、埋め込み、検索、引用、評価）→ `ai-core/src/rag/`（DB は `rag/db/`、スキーマ変更は `drizzle/NNNN_<name>.sql` と `schema.ts` の両方）
+- ワークフローパターン → `ai-core/src/workflows/`、エージェントデザインパターン → `ai-core/src/patterns/`。どちらも
+  `agents/` と `ToolLoopAgent` を import しない（例外は `patterns/role-based-cooperation.ts` だけ）。HTTP 用の固定の組み立ては各領域の `demos.ts`
+- 評価の質問セットとコーパス → `ai-core/fixtures/rag/`。手法の比較と Judge は `eval-suite/tests/capability/*.local.test.ts`、
+  評価の配管の検証は `eval-suite/tests/regression/*.db.test.ts`
 - `mock` の応答 → `packages/ai-core/fixtures/`（`scenarios/`、`cassettes/`、`http/`、`transcripts/`、`web-search/`）
 - 新しい画面 → `apps/web/app/<name>/page.tsx` と `apps/web/components/<name>/`（色はテーマトークン経由。
   コントラストはルートのテストが検査する）。E2E は `apps/web/e2e/<name>.spec.ts`、API 応答の差し替えは

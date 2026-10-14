@@ -1,0 +1,75 @@
+{
+	"name": "evaluator-optimizer",
+	"result": {
+		"final": "障害が発生しました。対応中です。\n【版 B1】",
+		"passed": false,
+		"iterations": 3,
+		"history": [
+			{
+				"iteration": 1,
+				"output": "障害が発生しました。対応中です。\n【版 B1】",
+				"scores": [
+					{
+						"evaluator": "security",
+						"score": 62,
+						"feedback": "影響を受ける範囲が書かれていません。"
+					},
+					{
+						"evaluator": "performance",
+						"score": 75,
+						"feedback": "短く、すぐ読めます。"
+					}
+				],
+				"combinedScore": 62
+			},
+			{
+				"iteration": 2,
+				"output": "障害が発生しました。影響範囲を調査中です。次の連絡は 30 分後です。\n【版 B2】",
+				"scores": [
+					{
+						"evaluator": "security",
+						"score": 70,
+						"feedback": "影響範囲の記述はありますが、対象が曖昧です。"
+					},
+					{
+						"evaluator": "performance",
+						"score": 62,
+						"feedback": "連絡の頻度の根拠が弱いです。"
+					}
+				],
+				"combinedScore": 62
+			},
+			{
+				"iteration": 3,
+				"output": "障害が発生しています。影響範囲を調査中で、次の連絡は 30 分後です。\n【版 B3】",
+				"scores": [
+					{
+						"evaluator": "security",
+						"score": 58,
+						"feedback": "原因の公開範囲についての記述が後退しました。"
+					},
+					{
+						"evaluator": "performance",
+						"score": 80,
+						"feedback": "次の連絡の時刻が明確です。"
+					}
+				],
+				"combinedScore": 58
+			}
+		],
+		"bestIteration": 1,
+		"evaluationUsage": {
+			"inputTokens": 1560,
+			"outputTokens": 240,
+			"totalTokens": 1800,
+			"cacheReadTokens": 0
+		}
+	},
+	"usage": {
+		"inputTokens": 2200,
+		"outputTokens": 390,
+		"totalTokens": 2590,
+		"cacheReadTokens": 0,
+		"llmCalls": 9
+	}
+}

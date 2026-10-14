@@ -24,6 +24,9 @@ export default defineConfig({
 		globalSetup: ["../../tooling/vitest/global-setup-local.ts"],
 		reporters: ["default", "../../tooling/vitest/gate-reporter.ts"],
 		passWithNoTests: suiteName !== "gate",
+		// `beforeAll` hooks start an in-memory PGlite (WASM): about 1 s alone, but over the 10 s default
+		// when the whole gate runs every workspace in parallel on a busy machine (seen in gate:repeat).
+		hookTimeout: 60_000,
 		coverage: {
 			enabled: true,
 			provider: "v8",

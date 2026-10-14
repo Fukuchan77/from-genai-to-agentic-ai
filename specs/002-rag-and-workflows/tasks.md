@@ -9,9 +9,8 @@
 
 | ファイル | 内容 |
 |---|---|
-| `tasks.md`（本ファイル） | 表記規約、ID 対応表、進捗、gate への段階的な結線、**現在の波（W3）**のタスク全文 |
-| `tasks-w4.md`〜`tasks-w6.md` | 未着手の波。前の波の完了時に `tasks.md` へ昇格する |
-| `tasks-comp-w1.md`〜 | 完了した波の保管先（W1・W2 完了）。波の完了時に作る |
+| `tasks.md`（本ファイル） | 表記規約、ID 対応表、進捗、gate への段階的な結線、**現在の波（W6）**のタスク全文 |
+| `tasks-comp-w1.md`〜 | 完了した波の保管先（W1〜W5 完了）。波の完了時に作る |
 | `traceability.md` | 要件 → 設計 → タスク → テスト → コミット（Test と Commit は `/sdd-ship` が埋める） |
 
 タスク番号は全ファイルで一意で、移動しても変えない。`_Depends:_` と `traceability.md` は、ファイルをまたいで
@@ -64,10 +63,10 @@
 |---|---|---|---|
 | W1 基盤 | 1 依存と設定ファイル、2 設定・カタログ・ゲートウェイの拡張、3 共通部品（Rerank ポート、`generateValidated`）、4 リポジトリ検査 | 完了（2026-10-12 に移行） | [tasks-comp-w1.md](tasks-comp-w1.md) |
 | W2 ナレッジベース | 5 DB 層、6 取り込みの部品、7 埋め込みとストア、8 取り込みの組み立てと HTTP 入口、9 コーパスと実サーバー確認 | 完了（2026-10-12 に移行） | [tasks-comp-w2.md](tasks-comp-w2.md) |
-| W3 検索・回答・Agentic | 10 検索パイプライン、11 回答と引用、12 Agentic RAG、13 RAG の評価、14 評価データとシナリオ、15 RAG の HTTP 入口 | 実装・検証済み（`/sdd-ship` 済み。移行待ち） | 本ファイル |
-| W4 ワークフロー・パターン | 16 ワークフロー、17 エージェントデザインパターン、18 シナリオとデモ、19 ワークフローの HTTP 入口 | 未着手 | [tasks-w4.md](tasks-w4.md) |
-| W5 画面と E2E | 20 RAG 画面の部品、21 ワークフロー画面の部品、22 ページ、23 E2E | 未着手 | [tasks-w5.md](tasks-w5.md) |
-| W6 評価・解説・統合 | 24 評価テスト、25 `local` での実測、26 解説、27 トレーサビリティ・ステアリング、28 最終統合 | 未着手 | [tasks-w6.md](tasks-w6.md) |
+| W3 検索・回答・Agentic | 10 検索パイプライン、11 回答と引用、12 Agentic RAG、13 RAG の評価、14 評価データとシナリオ、15 RAG の HTTP 入口 | 完了（2026-10-12 に移行） | [tasks-comp-w3.md](tasks-comp-w3.md) |
+| W4 ワークフロー・パターン | 16 ワークフロー、17 エージェントデザインパターン、18 シナリオとデモ、19 ワークフローの HTTP 入口 | 完了（2026-10-13 に移行） | [tasks-comp-w4.md](tasks-comp-w4.md) |
+| W5 画面と E2E | 20 RAG 画面の部品、21 ワークフロー画面の部品、22 ページ、23 E2E | 完了（2026-10-13 に移行） | [tasks-comp-w5.md](tasks-comp-w5.md) |
+| W6 評価・解説・統合 | 24 評価テスト、25 `local` での実測、26 解説、27 トレーサビリティ・ステアリング、28 最終統合 | 未着手（現在の波） | 本ファイル |
 
 **波の依存**（plan「Implementation Waves」）: W2 は W1 に、W3 は W2 に、W5 は W3 と W4 に、W6 は W5 に依存する。W4 は W1 のみに依存するため
 W2・W3 と並行できるが、W3 と W4 は `gateway.ts`・`mock/index.ts`・`src/mock/m2-scenarios.test.ts` を共有するので、シナリオとデモのタスク
@@ -94,251 +93,210 @@ gate の各段は「走査 0 件で失敗」するため、検査対象がまだ
 
 ---
 
-## 現在の波: W3 検索・回答・Agentic RAG（大タスク 10〜15）
+## 現在の波: W6 評価・解説・統合（大タスク 24〜28）
 
-W2（大タスク 5〜9）は完了し [tasks-comp-w2.md](tasks-comp-w2.md) に移した。
+W5（大タスク 20〜23）は完了し [tasks-comp-w5.md](tasks-comp-w5.md) に移した。
 
-RRF、HyDE、Multi-Query、疑似 Rerank、検索パイプライン、引用、`streamRagQuery`、Agentic RAG のツールと `/api/rag/agent`、`/api/rag/query`、
-評価の算術と Judge、ラベル付き質問セット、`m2-1`・`m2-2` のシナリオを作る。**コーパス（9.1）を固めてから質問セット（14.1）を書く**。
+`eval-suite` のテスト、`local` での実行と結果の記録（recall、Judge、`granite4.2` の遵守率、単一エージェントとのトークン比較）、解説 2-1〜2-4、
+`phase-2.md`、トレーサビリティ、ステアリングと `AGENTS.md` の更新、`withRegeneration` の統合の要否の判断（ADR-8）、`gate:repeat`、完成タグを行う。
 
-10.1・10.2・10.3・10.4・11.1・12.1・13.1・13.2・13.3 は互いに独立で、並列に進められる。10.5〜10.8 は順に行う。14 は 10〜13 の後、15 は 14 の後に行う。
+**`local` の結果は gate の外**であることを解説に明記する（gate の緑は算術・制御フロー・型・SQL の正しさだけを保証し、検索手法の効果の差と Judge の判定は保証しない。憲章 原則 3、11）。
+Ollama や Docker を使えない環境では、実測を「未実測」と書いて「人が行うこと」に残す（憲章 原則 8。未実測を実測済みと書かない）。
 
----
-
-## 10. 検索パイプライン（C7、C2 の疑似実装）
-
-質問から最終的な上位 k 件の根拠チャンクを、手法の有効・無効の設定に従って取得し、各段の中間結果を返す。
-**「該当なし」の判定は、ベクトル検索で閾値以上の候補が 1 件も無いことだけで行い、全文検索のヒットは寄与させない**（CL-1。非空虚なテストで縛る）。
-
-_Boundary:_ `packages/ai-core/src/rag/retrieve/rrf.ts`, `packages/ai-core/src/rag/retrieve/rrf.test.ts`, `packages/ai-core/src/rag/lexical-rerank.ts`, `packages/ai-core/src/rag/lexical-rerank.test.ts`, `packages/ai-core/src/rag/retrieve/trace.ts`, `packages/ai-core/src/rag/retrieve/trace.test.ts`, `packages/ai-core/src/rag/retrieve/hyde.ts`, `packages/ai-core/src/rag/retrieve/hyde.test.ts`, `packages/ai-core/src/rag/retrieve/multi-query.ts`, `packages/ai-core/src/rag/retrieve/multi-query.test.ts`, `packages/ai-core/src/rag/retrieve/pipeline.ts`, `packages/ai-core/src/rag/retrieve/pipeline.db.test.ts`, `packages/ai-core/src/rag/retrieve/index.ts`
-_Depends:_ 2.1, 3.1, 3.2, 6.3, 7.3
-_Requirements:_ 1.4, 1.6, 1.7, 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8, 2.11
-_Traces:_ REQ-001, REQ-002, C2, C7
-
-- [x] 10.1 (P) `rag/retrieve/rrf.ts`: `reciprocalRankFusion(rankings, k): { id; score }[]`（純関数。同一 ID は統合後に 1 回だけ。順位は 1 始まりで `1 / (k + rank)` の和。同点は ID の辞書順。決定論）+ `rrf.test.ts` に、重複排除（複数のランキングに現れる ID が 1 回）、既知の入力に対するスコアの値、入力ランキングの順序を入れ替えても結果が同じ（性質テスト）、同点の辞書順、空のランキング、`k` の影響を先に足す（Req 2.4 の非空虚: 重複排除を壊すと落ちる）
-  _Boundary:_ `packages/ai-core/src/rag/retrieve/rrf.ts`, `packages/ai-core/src/rag/retrieve/rrf.test.ts`
-  _Depends:_ none
-  _Requirements:_ 2.3, 2.4
-  _Traces:_ REQ-002, C7
-- [x] 10.2 (P) `rag/lexical-rerank.ts`: `createLexicalRerank(): RerankProvider`（質問と候補を `toSearchText` の分かち書きで語に分け、重なりの割合で採点する決定論的な疑似実装。キー不要。`modelId` は疑似実装であることが分かる固定名）+ `lexical-rerank.test.ts` に、重なりが多い候補が上位、決定論（同じ入力で同じ順序）、空入力、`topN` の適用、同点の決定論を先に足す
-  _Boundary:_ `packages/ai-core/src/rag/lexical-rerank.ts`, `packages/ai-core/src/rag/lexical-rerank.test.ts`
-  _Depends:_ 3.1, 6.3
-  _Requirements:_ 2.5
-  _Traces:_ REQ-002, C2
-- [x] 10.3 (P) `rag/retrieve/trace.ts`: `RetrievalTrace`（`settings`、`hypotheticalAnswer?`、`subQueries?`、`vector`/`fullText` の `{ query; candidates }[]`、`fused`、`reranked?`、`rerank: { status: "applied" | "skipped" | "disabled"; reason? }`、`final`、`stages`）と `StageEvent { stage; status: "running" | "done" | "skipped"; detail? }` の型、トレースの組み立て（所要時間は `Clock` から）+ `trace.test.ts` に、段の記録の形、`FakeClock` による所要時間の固定（表示用の値をアサートしない）、スキップの理由の記録を先に足す
-  _Boundary:_ `packages/ai-core/src/rag/retrieve/trace.ts`, `packages/ai-core/src/rag/retrieve/trace.test.ts`
-  _Depends:_ 2.1, 7.3
-  _Requirements:_ 2.8, 2.11
-  _Traces:_ REQ-002, C7
-- [x] 10.4 (P) `rag/retrieve/hyde.ts`・`multi-query.ts`: `generateHypotheticalAnswer`（質問から仮想回答を生成）、`expandQuery`（`generateValidated` で `DEFAULT_RAG.subQueryCount`（3）件の**異なる**サブクエリ。重複・件数違いは検証失敗として再生成。CL-2）+ `hyde.test.ts`・`multi-query.test.ts` に、仮想回答のプロンプトに質問が入ること、サブクエリが 3 件、重複で再生成、3 回失敗で `output-invalid`（`StructuredOutputError`）、中断を先に足す（`mock` モデルで検証。小型モデルの遵守は `local` 専用）
-  _Boundary:_ `packages/ai-core/src/rag/retrieve/hyde.ts`, `packages/ai-core/src/rag/retrieve/hyde.test.ts`, `packages/ai-core/src/rag/retrieve/multi-query.ts`, `packages/ai-core/src/rag/retrieve/multi-query.test.ts`
-  _Depends:_ 2.1, 3.2
-  _Requirements:_ 2.1, 2.2
-  _Traces:_ REQ-002, C7
-- [x] 10.5 `rag/retrieve/pipeline.ts`（ナイーブ）: `runRetrieval({ question, settings, deps, onStage?, signal? })` の骨格。質問の埋め込み → ベクトル検索（`candidatePool` 件）→ 閾値の適用 → 上位 `topK` 件、`onStage` の発行、`filter` の伝播、**ベクトル検索で閾値以上が 0 件なら該当なし（`chunks: []`）**、ナレッジベースが空のときも該当なし + `pipeline.db.test.ts` に、上位 k 件、閾値の境界値（ちょうどの値は通る）、0 件の該当なし、フィルタ（文書名・`tags`）、段の実行順、中間結果を先に足す（PGlite、`mock` の決定論的な埋め込み）
-  _Boundary:_ `packages/ai-core/src/rag/retrieve/pipeline.ts`, `packages/ai-core/src/rag/retrieve/pipeline.db.test.ts`
-  _Depends:_ 10.1, 10.3, 7.3
-  _Requirements:_ 1.4, 1.6, 1.7, 2.8, 2.11
-  _Traces:_ REQ-001, REQ-002, C7
-- [x] 10.6 `pipeline.ts`（ハイブリッド）: `methods.hybrid` が有効なとき、サブクエリごとにベクトル検索と全文検索を並列（`Promise.all`）に実行し、`reciprocalRankFusion` で 1 つのランキングにする。全文検索の候補は `candidatePool` で打ち切る。質問を分かち書きした語が 0 件なら全文検索を実行せず空の結果にする（エラーにしない）。**全文検索だけがヒットし、ベクトル検索が閾値未満のとき、ハイブリッドが有効でも該当なしになる**（CL-1）+ `pipeline.db.test.ts` に、全文 + ベクトルの統合、重複する候補が 1 回、日本語の全文一致、語が 0 件の質問、CL-1 の非空虚なテスト（全文のみヒットで該当なし）を先に足す
-  _Boundary:_ `packages/ai-core/src/rag/retrieve/pipeline.ts`, `packages/ai-core/src/rag/retrieve/pipeline.db.test.ts`
-  _Depends:_ 10.5
-  _Requirements:_ 1.7, 2.3, 2.4, 2.8
-  _Traces:_ REQ-001, REQ-002, C7
-- [x] 10.7 `pipeline.ts`（HyDE・Multi-Query）: `methods.hyde` が有効なとき、仮想回答の埋め込みでベクトル検索を行う。`methods.multiQuery` が有効なとき、3 件のサブクエリの検索（ベクトル・全文）を並列に実行して RRF で統合する。HyDE と Multi-Query の両方が有効なときは、仮想回答を生成してからサブクエリへ展開する（plan の流れ図）。構造化出力に対応しないモデルは呼び出し側（15.3）が LLM の前に拒否する + `pipeline.db.test.ts` に、HyDE の検索クエリが仮想回答の埋め込みであること、サブクエリごとの検索が並列に呼ばれること、サブクエリが `trace.subQueries` に残ること、閾値の判定が HyDE・Multi-Query の各クエリを含むことを先に足す
-  _Boundary:_ `packages/ai-core/src/rag/retrieve/pipeline.ts`, `packages/ai-core/src/rag/retrieve/pipeline.db.test.ts`
-  _Depends:_ 10.4, 10.6
-  _Requirements:_ 2.1, 2.2, 2.7, 2.8
-  _Traces:_ REQ-002, C7
-- [x] 10.8 `pipeline.ts`（Rerank）と `rag/retrieve/index.ts`: `methods.rerank` が有効でキーあり（`mock` は疑似実装）→ 統合後の候補を再順位付けして上位 `topK` 件を使う。有効でキー無し（`rerank` が `undefined`）→ 段をスキップして `rerank: { status: "skipped", reason: "api-key-missing" }` を記録する。無効 → `status: "disabled"`。Rerank の呼び出しが失敗 → 回答を止めず統合後の順位に戻り `reason: "provider-error"` を記録する（CL-11）。`retrieve/index.ts` が検索の公開 API を出す + `pipeline.db.test.ts` に、Rerank 後の上位 k 件（疑似実装）、キー無しのスキップと記録、無効、失敗時のフォールバック、**手法 4 つの全組み合わせ（16 通り）の段の実行順とスキップの記録**を先に足す
-  _Boundary:_ `packages/ai-core/src/rag/retrieve/pipeline.ts`, `packages/ai-core/src/rag/retrieve/pipeline.db.test.ts`, `packages/ai-core/src/rag/retrieve/index.ts`
-  _Depends:_ 10.2, 10.7
-  _Requirements:_ 2.5, 2.6, 2.7, 2.8, 2.11
-  _Traces:_ REQ-002, C2, C7
-
-### Implementation Notes
-
-- 10.1〜10.4 は新規コンテキストのサブエージェントに任せ、メインで再実行して確認した。`RetrievalSettings` と段の名前（`fusion` を含む）は `trace.ts` に置いた。無効な段は `skipped`（理由「無効」）として記録するので、16 通りの組み合わせはいつも同じ 6 段が同じ順で並ぶ。
-- HyDE も Multi-Query も `structuredModel` を使う（`chatModel` は回答生成だけ）。呼び出し側（15.3）が構造化出力の対応を 1 回確かめれば済み、`RetrievalDeps` から `chatModel` を外した（`RagQueryDeps` が足す）。HyDE と Multi-Query を併用するときは、Multi-Query が仮想回答をサブクエリへ展開する。
-- PROVE で見つけた弱いテストを 4 件強化した（RRF の `k`、全文検索の語 0 件、Rerank の元スコア、Rerank の候補が全て未知の ID）。Rerank の呼び出しが `topN` を超えて返しても、パイプラインが `topK` で切る。
+24.2・24.3 は並列に進められる。25 は 24 の後、26.1〜26.4 は 25 の後に並列に進められる。27.1・27.2・27.3 は互いに独立。
 
 ---
 
-## 11. 回答と引用（C8）
+## 24. 評価テスト（C16）
 
-取得したチャンクを根拠にした回答をストリーミングで生成し、引用を照合して返す。根拠が無ければ LLM を呼ばずに「該当なし」を返す。
+RAG の検索精度の比較と Judge を `local` 専用の Capability 評価として置き、品質ゲートで検証できる「評価の配管」を Regression として置く。
+**評価は専用のインメモリ DB（PGlite）にコーパスだけを取り込んで行い、稼働中のナレッジベースと学習者の `knowledge/` には触れない**。
 
-_Boundary:_ `packages/ai-core/src/rag/answer/citations.ts`, `packages/ai-core/src/rag/answer/citations.test.ts`, `packages/ai-core/src/rag/answer/prompt.ts`, `packages/ai-core/src/rag/answer/prompt.test.ts`, `packages/ai-core/src/rag/answer/index.ts`, `packages/ai-core/src/rag/request-schema.ts`, `packages/ai-core/src/rag/request-schema.test.ts`, `packages/ai-core/src/rag/query.ts`, `packages/ai-core/src/rag/query.db.test.ts`
-_Depends:_ 7.3, 8.2, 10.8
-_Requirements:_ 1.4, 1.5, 1.6, 1.7, 1.11, 2.7, 2.11
-_Traces:_ REQ-001, C8, C13
+_Boundary:_ `packages/eval-suite/tests/regression/rag-eval-set.db.test.ts`, `packages/eval-suite/tests/capability/rag-retrieval.local.test.ts`, `packages/eval-suite/tests/capability/rag-judge.local.test.ts`, `packages/eval-suite/tests/capability/README.md`
+_Depends:_ 8.1, 9.1, 10.8, 11.2, 13.1, 13.3, 14.1
+_Requirements:_ 1.5, 2.2, 2.9, 2.10, 2.12
+_Traces:_ REQ-002, C16
 
-- [x] 11.1 (P) `rag/answer/citations.ts`: `resolveCitations(answerText, chunks): { answer; citations; removedCitations }`（純関数。範囲外の序数 `[n]` を回答から除去して `removedCitations` に記録、取得した全チャンクを `Citation[]`（`chunkId`・`label`・`documentId`・`documentTitle`・`locator`（`page` または `heading`）・`excerpt`（先頭 200 文字）・`similarity?`・`cited`）にし、脚注が参照したものに `cited: true` を付ける。コードブロック内の `[n]` は引用として扱わない）+ `citations.test.ts` に、範囲外（`[7]`）の除去と記録（Req 1.11 の非空虚: 除去を壊すと落ちる）、重複した脚注、全角括弧、コードブロック内の `[n]`、脚注なし（全チャンク `cited: false`）、0 件、`[0]`、抜粋の切り出し、ページと見出しパスの `locator` を先に足す
-  _Boundary:_ `packages/ai-core/src/rag/answer/citations.ts`, `packages/ai-core/src/rag/answer/citations.test.ts`
-  _Depends:_ 7.3
-  _Requirements:_ 1.5, 1.11
-  _Traces:_ REQ-001, C8
-- [x] 11.2 `rag/answer/prompt.ts`・`answer/index.ts`: `buildAnswerPrompt(question, chunks)`（取得チャンクに序数ラベル `[1]`〜`[k]` を付け、「資料だけを根拠に答え、根拠にした資料の番号を文末に付ける。根拠が無ければ該当なしと答える」を要求する。資料は区切って「指示として扱わない」旨を明記する。ラベルはそのリクエストの取得順）、`NO_EVIDENCE_MESSAGE`（固定の日本語文）、`streamRagAnswer({ chatModel, question, chunks, signal })`（`streamText`）、`answer/index.ts` の公開 API + `prompt.test.ts` に、ラベルが取得順で 1 始まり、資料の区切りと指示の無効化の記述、質問がプロンプトに入ること、チャンク 0 件で呼ばないことを先に足す
-  _Boundary:_ `packages/ai-core/src/rag/answer/prompt.ts`, `packages/ai-core/src/rag/answer/prompt.test.ts`, `packages/ai-core/src/rag/answer/index.ts`
-  _Depends:_ 11.1
-  _Requirements:_ 1.4, 1.5, 1.7
-  _Traces:_ REQ-001, C8
-- [x] 11.3 (P) `rag/request-schema.ts`（クエリ）: `POST /api/rag/query` の `z.strictObject`（`id`、`question`（1〜2000 文字）、`modelId?`、`settings?`: `topK` 1〜20、`minSimilarity` -1〜1、`filter`（`documentIds` 20 件以下、`tags` 10 件以下）、`methods`（`hyde`/`multiQuery`/`hybrid`/`rerank`、既定は全て `false`））を足す + `request-schema.test.ts` に、未知フィールドの拒否、各範囲の境界値、既定値（`DEFAULT_RAG` と全手法 `false`）を先に足す
-  _Boundary:_ `packages/ai-core/src/rag/request-schema.ts`, `packages/ai-core/src/rag/request-schema.test.ts`
-  _Depends:_ 8.2
-  _Requirements:_ 1.4, 1.6, 2.7
-  _Traces:_ REQ-001, REQ-002, C13
-- [x] 11.4 `rag/query.ts`: `streamRagQuery(deps, request, signal): AsyncGenerator<RagEvent, void>`（`runRetrieval` と 11.2 を合成する。`RagEvent` は `stage`（`onStage` の中継）、`trace`（累積した `RetrievalTrace`）、`text-delta`、`result`（`RagResult { answer; citations; removedCitations; noEvidence; rerank; settings; usage }`）の閉じた union。`noEvidence` のときは LLM を呼ばず `NO_EVIDENCE_MESSAGE` を `text-delta` として 1 回出す。完了時に `resolveCitations` で照合する）+ `query.db.test.ts` に、イベントの順序（`stage` → `trace` → `text-delta`* → `result`）、該当なしで LLM を呼ばない、範囲外の引用の除去、中断で後続の LLM 呼び出しが始まらず `result` を送らない、回答生成の失敗が固定文の `provider-unavailable` になる、ナレッジベースが空のときの該当なしを先に足す
-  _Boundary:_ `packages/ai-core/src/rag/query.ts`, `packages/ai-core/src/rag/query.db.test.ts`
-  _Depends:_ 10.8, 11.2
-  _Requirements:_ 1.4, 1.5, 1.7, 1.11, 2.11
-  _Traces:_ REQ-001, REQ-002, C8
-
-### Implementation Notes
-
-- `streamRagQuery` は検索の `onStage` を非同期キューで `stage` イベントに橋渡しする。PROVE で、トレースを受け取った消費側が中断した後に回答生成が始まる実バグを見つけ、`trace` の送出直後に中断を確認するよう直した。
-- 回答生成の失敗は固定文の `provider-unavailable` に変換し、中断は変換せずそのまま投げる（原因の取り違えを防ぐテストあり）。
-- クエリのスキーマの `modelId` はカタログの列挙（M1 と同じ）。plan の `modelId?: string` より厳しく、未知の ID は 400 になる。
-
----
-
-## 12. Agentic RAG（C9）
-
-ナレッジベース検索をエージェントのツールとして定義し、検索したチャンクを引用レジストリに登録する。`createGuardedAgent` の呼び出しは
-Route Handler（15.4）が行い、`rag/` は `agents/` を import しない。
-
-_Boundary:_ `packages/ai-core/src/aci/tools/search-knowledge-base.ts`, `packages/ai-core/src/aci/tools/search-knowledge-base.test.ts`, `packages/ai-core/src/aci/index.ts`, `packages/ai-core/src/rag/agentic.ts`, `packages/ai-core/src/rag/agentic.db.test.ts`
-_Depends:_ 10.8, 11.1
-_Requirements:_ 1.9, 1.10, 1.11
-_Traces:_ REQ-001, C9
-
-- [x] 12.1 (P) `aci/tools/search-knowledge-base.ts`: `createSearchKnowledgeBaseTool({ search, registry })`（`defineAciTool`、`risk: "read-only"`、ツール名 `searchKnowledgeBase`。`aci/` は `rag/` を import しないため、`KnowledgeSearcher` と `CitationRegistry` のインターフェースを `aci/` 側で定義して注入する。入力は `query`（1〜500 文字）と任意の `documentIds`。出力は `{ label, documentTitle, locator, excerpt }[]` と、0 件のときの該当なしの旨）を作り、`aci/index.ts` から再エクスポートする + `search-knowledge-base.test.ts` に、入力検証、0 件、リスク区分が `read-only`、検索の例外がツール結果に変換されてループが続く、ラベルがレジストリ由来を先に足す
-  _Boundary:_ `packages/ai-core/src/aci/tools/search-knowledge-base.ts`, `packages/ai-core/src/aci/tools/search-knowledge-base.test.ts`, `packages/ai-core/src/aci/index.ts`
-  _Depends:_ none
-  _Requirements:_ 1.9
-  _Traces:_ REQ-001, C9
-- [x] 12.2 `rag/agentic.ts`: `createCitationRegistry()`（リクエストごと。ラベルを通し番号で採番し、同じチャンクは同じラベル）、`createKnowledgeSearcher(deps)`（`runRetrieval` を包む）、`AGENTIC_RAG_INSTRUCTIONS`（検索の要否を判断し、無関係な質問には検索せずに答え、根拠が無ければ該当なしと答える）、`summarizeAgenticRun(summary: AgentRunSummary, registry, answerText)`（`toolsCalled` に `searchKnowledgeBase` があるか → `searched`・`searchCount`、`resolveCitations` の結果）+ `agentic.db.test.ts` に、ラベルの通し番号と同じチャンクの同じラベル、検索したかの導出（0 回・1 回・複数回）、レジストリがリクエスト間で共有されない、範囲外の脚注の除去、ツール経由の検索がナレッジベースの内容を返すことを先に足す
-  _Boundary:_ `packages/ai-core/src/rag/agentic.ts`, `packages/ai-core/src/rag/agentic.db.test.ts`
-  _Depends:_ 10.8, 11.1, 12.1
-  _Requirements:_ 1.9, 1.10, 1.11
-  _Traces:_ REQ-001, C9
-
-### Implementation Notes
-
-- `rag/` は `agents/` を import しない。`summarizeAgenticRun` は `{ toolsCalled }` だけを要求する構造的な型を受け取り、`AgentRunSummary` は渡されるだけで済む。
-- 引用レジストリは `ScoredChunk` を保持し、`chunks()[n-1]` がラベル `n` に対応する。リクエスト間で共有しないことは `agentic.db.test.ts` で縛った（ルート側の「毎回新規」は、同じ固定シナリオでは区別できないため単体テストに任せる）。
-
----
-
-## 13. RAG の評価（C10）
-
-検索精度の算術、RAG 専用の最小の LLM-as-a-Judge、ラベル付き質問セットの型と読み込みを提供する。評価の実行場所は `eval-suite`（24）。
-Judge の共通化・校正・レポートは 004 の対象で、M2 では行わない（ADR-10）。
-
-_Boundary:_ `packages/ai-core/src/rag/eval/recall.ts`, `packages/ai-core/src/rag/eval/recall.test.ts`, `packages/ai-core/src/rag/eval/dataset.ts`, `packages/ai-core/src/rag/eval/dataset.test.ts`, `packages/ai-core/src/rag/eval/judge.ts`, `packages/ai-core/src/rag/eval/judge.test.ts`, `packages/ai-core/src/rag/eval/index.ts`, `packages/ai-core/src/rag/index.ts`
-_Depends:_ 3.2, 8.3, 10.8, 11.4, 12.2
-_Requirements:_ 2.9, 2.10, 2.12
-_Traces:_ REQ-002, C10
-
-- [x] 13.1 (P) `rag/eval/recall.ts`: `recallAtK(retrievedIds, goldIds, k)`（含有率 = 上位 k 件に含まれる正解 / 正解の数）、`hitRateAtK`、`meanRecallAtK(results)`、`compareMethods(dataset, retrieveFor)`（手法の組み合わせごとの平均 recall と質問ごとの結果）+ `recall.test.ts` に、算術（既知の値）、境界値（k=0、k が候補より大きい、正解が 0 件）、重複 ID、平均、手法ごとの比較を先に足す（Req 2.9 の非空虚: 分母・分子を壊すと落ちる）
-  _Boundary:_ `packages/ai-core/src/rag/eval/recall.ts`, `packages/ai-core/src/rag/eval/recall.test.ts`
-  _Depends:_ none
-  _Requirements:_ 2.9
-  _Traces:_ REQ-002, C10
-- [x] 13.2 (P) `rag/eval/dataset.ts`: `EvalQuestion { id; question; goldChunkIds; referenceAnswer }` と `loadEvalSet(path)`（Zod 検証。20 問未満、正解 ID の欠落、`id` の重複、空の質問・参照回答は失敗）+ `dataset.test.ts` に、正常な読み込み、20 問未満の拒否、正解 ID が空、重複 `id`、不正な JSON を一時ファイルで先に足す
-  _Boundary:_ `packages/ai-core/src/rag/eval/dataset.ts`, `packages/ai-core/src/rag/eval/dataset.test.ts`
-  _Depends:_ none
-  _Requirements:_ 2.12
-  _Traces:_ REQ-002, C10
-- [x] 13.3 (P) `rag/eval/judge.ts`: `judgeRagAnswer({ judgeModel, question, answer, chunks })`（評価軸 — 忠実性（回答が取得チャンクに裏付けられているか）と回答関連性（回答が質問に答えているか）— ごとに別のプロンプトで `generateValidated` を呼び、`{ axis; verdict: "pass" | "fail" | "unknown"; score: 1〜5; rationale }` を返す。`unknown` は根拠不足。`JudgeModel` は注入できる型）+ `judge.test.ts` に、フェイク Judge による軸の分離（2 軸が別の呼び出しで、互いのルーブリックを含まない）、`unknown` の扱い、スコアの範囲違反で再生成、取得チャンクが 0 件のとき忠実性が `unknown` を先に足す
-  _Boundary:_ `packages/ai-core/src/rag/eval/judge.ts`, `packages/ai-core/src/rag/eval/judge.test.ts`
-  _Depends:_ 3.2
-  _Requirements:_ 2.10
-  _Traces:_ REQ-002, C10
-- [x] 13.4 `rag/eval/index.ts` と `rag/index.ts`（最終版）: 評価の公開 API を作り、`@platform/ai-core/rag` の公開 API を完成させる（`retrieve`・`answer`・`query`・`agentic`・`eval` と型、`createSearchKnowledgeBaseTool` と引用レジストリの再エクスポート。plan「後続 spec への契約」の表の公開場所と一致させる）。`rag/` が `agents/` を import しないことを確認する
-  _Boundary:_ `packages/ai-core/src/rag/eval/index.ts`, `packages/ai-core/src/rag/index.ts`
-  _Depends:_ 8.3, 10.8, 11.4, 12.2, 13.1, 13.2, 13.3
+- [x] 24.1 `tests/regression/rag-eval-set.db.test.ts`（gate）: コーパスを専用の PGlite に取り込み、質問セットが 20 問以上で、すべての正解チャンク ID が実在し、`mock` の埋め込みで「質問 = チャンク本文」のとき recall@1 が 1.0 になること（評価の配管の検証。検索手法の効果の差は主張しない）を検証する。`eval-suite` の既存の Vitest 設定（接尾辞 `test`）が `*.db.test.ts` を gate に含めることを確認する（設定の変更は不要な想定。必要なら止めて人に報告する）
+  _Boundary:_ `packages/eval-suite/tests/regression/rag-eval-set.db.test.ts`
+  _Depends:_ 9.1, 13.1, 14.1, 8.1
+  _Requirements:_ 2.9, 2.12
+  _Traces:_ REQ-002, C16
+  _Verify:_ `mise run gate` で `rag-eval-set.db.test.ts` が実行され（`executed` に数えられ）、正解 ID を 1 つ壊すと落ちる（PROVE を Implementation Notes に記録）
+- [x] 24.2 (P) `tests/capability/rag-retrieval.local.test.ts`（`describeLocal`）: 手法の組み合わせ（ナイーブ、HyDE、Multi-Query、ハイブリッド、Rerank を含む組み合わせ）ごとの平均 recall@k を質問セットで比較し、結果を表で出力する。Rerank は `COHERE_API_KEY` が無ければスキップして理由を表に出す。`granite4.2` が構造化出力（Multi-Query の 3 件）を守る割合（再生成の回数）を観察として出力する（割合そのものは断定せず、パイプラインが完走することだけをアサートする）。Ollama がなければ理由付きでスキップされる
+  _Boundary:_ `packages/eval-suite/tests/capability/rag-retrieval.local.test.ts`
+  _Depends:_ 8.1, 10.8, 13.1, 14.1
+  _Requirements:_ 2.9, 2.2
+  _Traces:_ REQ-002, C16
+  _Verify:_ gate では理由付きでスキップされ（合格に数えない）、`mise run test:local` で Ollama があれば実行される。`describeLocal` を外すと Ollama なしで失敗する
+- [x] 24.3 (P) `tests/capability/rag-judge.local.test.ts`（`describeLocal`）: 忠実性と回答関連性を `judgeRagAnswer` で採点する。裏付けのある回答は忠実性が `pass`、チャンクに無い内容を足した回答は `fail`、質問に答えていない回答は回答関連性が `fail` になることを、小さな固定のケースで検証する。`granite4.2` が回答の脚注を守る割合を質問セットの一部で観察として出力する。Ollama がなければ理由付きでスキップされる
+  _Boundary:_ `packages/eval-suite/tests/capability/rag-judge.local.test.ts`
+  _Depends:_ 11.2, 13.3, 14.1
+  _Requirements:_ 2.10, 1.5
+  _Traces:_ REQ-002, C16
+  _Verify:_ gate では理由付きでスキップされ、`mise run test:local` で Ollama があれば実行される
+- [x] 24.4 `tests/capability/README.md`: RAG の評価の置き場所と、gate / `local` の線引き（gate が保証するのは配管、`local` だけが手法の効果の差と Judge を示す）を足す
+  _Boundary:_ `packages/eval-suite/tests/capability/README.md`
+  _Depends:_ 24.1, 24.2, 24.3
   _Requirements:_ 2.9, 2.10
-  _Traces:_ REQ-002, C10
-  _Verify:_ `mise run typecheck` と `mise run check:repo-rules`（`guarded-agent-only`、`ai-core-no-ui-deps`）が成功し、`apps/web` から `@platform/ai-core/rag` の契約表の全シンボルを import できる
+  _Traces:_ REQ-002, C16
+  _Verify:_ README の記述が 3 つのテストファイルの名前と一致する（`docs:check` の対象外なので手で確認する）
 
 ### Implementation Notes
 
-- `compareMethods` のシグネチャは plan の `(dataset, retrieveFor)` に `{ combinations, k, signal? }` を足した。`goldChunkIds` は 1 件以上が必須（`loadEvalSet`）なので、無関係な質問（該当なし）は質問セットに入れず、14.2 のシナリオと `query.db.test.ts` の該当なしのテストで確かめる。
-- Judge の軸の印は `[judge-axis:<軸>]`（プロンプトの先頭行）。本番プロンプトに `fixture:` を載せないため。`mock` のシナリオは軸ごとに 1 ターン（pass）で、fail と unknown はフェイク Judge の単体テストで確かめる。
+- 24.1: PROVE — a gold ID changed in `eval-set.json` fails two tests (`only labels chunk IDs that exist…`, `returns every gold chunk first…`: "gold chunk … is missing"); a question that is not the chunk body fails the recall@1 test (`expected true to be false` on `noEvidence`). First RED was my own bug (`chunk.id` on a `ScoredChunk`, which wraps `chunk`), found by a debug test, not by tsc because the file was not yet type-checked. The `eval-suite` Vitest config already includes `*.db.test.ts` in the gate (`executed=8`, was 3; 7 after review F-11 removed a duplicate test); no config change.
+- The first full-gate run with the new DB test failed with `Hook timed out in 10000ms` while Ollama was busy; both the new test (explicit 90 s timeouts, `afterAll` guards a missing handle) and the shared configs (`hookTimeout: 60_000` in `packages/ai-core` and the `apps/web` routes project) were hardened after `gate:repeat` run 6/10 failed the same way in existing PGlite hooks.
+- 24.2/24.3 run only under `AI_TEST_RUN_MODE=local`; in the gate they report 8 skips with the reason. The comparison test took more than 60 min for 32 questions under load: it exceeded its first 1-hour timeout (recorded as failed; the comparison finished and printed its table during the next test, so its own assertions were never evaluated), so the timeout is now 3 h and `RAG_EVAL_QUESTIONS=<n>` limits the questions for a quick check (3 questions: 148 s). A `local` test must never run in `beforeAll` (it runs even when skipped): the harness is built lazily inside the first test.
 
 ---
 
-## 14. 評価データとシナリオ（C15）
+## 25. `local` での実測と記録（C18 の前提）
 
-ラベル付き質問セット（20 問以上）と、`mock` の応答（シナリオ）を用意する。
+`local` でしか得られない数値を実測して `research.md` に記録する。解説（26）はこの記録から数値を引く。
 
-_Boundary:_ `packages/ai-core/fixtures/rag/eval-set.json`, `packages/ai-core/src/rag/eval/dataset.test.ts`, `packages/ai-core/fixtures/scenarios/m2-1.ts`, `packages/ai-core/fixtures/scenarios/m2-2.ts`, `packages/ai-core/src/mock/m2-scenarios.test.ts`, `packages/ai-core/src/mock/index.ts`, `packages/ai-core/src/models/gateway.ts`, `packages/ai-core/src/models/gateway.test.ts`
-_Depends:_ 2.3, 9.1, 10.8, 11.2, 12.2, 13.2, 13.3
-_Requirements:_ 1.12, 2.10, 2.12
-_Traces:_ REQ-002, C15
+_Boundary:_ `specs/002-rag-and-workflows/research.md`
+_Depends:_ 7.4, 18.4, 24.2, 24.3
+_Requirements:_ 1.7, 2.2, 2.9, 2.10, 4.7
+_Traces:_ REQ-001, REQ-002, REQ-004, C16, C18
 
-- [x] 14.1 `fixtures/rag/eval-set.json`: ラベル付き質問セット（20 問以上。質問、正解チャンク ID、参照回答）を書く。質問は、キーワードが一致しない言い換え（ハイブリッド・Rerank の効果が見える）、抽象的な質問（HyDE）、複数の観点にまたがる質問（Multi-Query）、無関係な質問（該当なしの確認）を含める。正解チャンク ID は、コミットしない一時スクリプトで 9.1 のコーパスに `chunkDocument` を実行して得る + `dataset.test.ts` に、実際の `eval-set.json` が `loadEvalSet` を通る（20 問以上、`id` が一意、参照回答が空でない）ケースを先に足す。正解 ID がコーパスに実在することの恒久的な検査は 24.1 が行う
-  _Boundary:_ `packages/ai-core/fixtures/rag/eval-set.json`, `packages/ai-core/src/rag/eval/dataset.test.ts`
-  _Depends:_ 9.1, 13.2
-  _Requirements:_ 2.12
-  _Traces:_ REQ-002, C15
-- [x] 14.2 `fixtures/scenarios/m2-1.ts`・`m2-2.ts`: RAG の回答（脚注付き）、範囲外の脚注を含む回答、HyDE の仮想回答、Multi-Query の 3 件のサブクエリ、Agentic RAG（検索ツールを呼んでから答える流れ、検索せずに答える流れ）、Judge（忠実性・回答関連性）のシナリオを、`purpose` と `lastUserTextIncludes` の `fixture:` マーカーで照合する形で作る。シナリオ ID は `m2-1/...`・`m2-2/...`。`models/gateway.ts` の `mock` 既定シナリオに足し、`mock/index.ts` から `M2_1_SCENARIOS`・`M2_2_SCENARIOS` を再エクスポートする + `m2.test.ts` に、曖昧な一致（同じ入力に複数のシナリオが一致）の検出、全 `fixture:` マーカーの網羅を、`gateway.test.ts` に、`mock` の既定シナリオに M2 が含まれ M1 のシナリオが引き続き一致することを先に足す。画面の入力例は、シナリオに対応する質問文を提示する
-  _Boundary:_ `packages/ai-core/fixtures/scenarios/m2-1.ts`, `packages/ai-core/fixtures/scenarios/m2-2.ts`, `packages/ai-core/src/mock/m2-scenarios.test.ts`, `packages/ai-core/src/mock/index.ts`, `packages/ai-core/src/models/gateway.ts`, `packages/ai-core/src/models/gateway.test.ts`
-  _Depends:_ 2.3, 10.8, 11.2, 12.2, 13.3
-  _Requirements:_ 2.10, 1.12
-  _Traces:_ REQ-001, REQ-002, C15
+- [x] 25.1 実 Ollama で `mise run test:local` を実行し、手法の組み合わせごとの recall@k、Judge の採点、`granite4.2` の構造化出力の遵守（Multi-Query の 3 件の成功率）と脚注の遵守率を、research.md の末尾の「M2 実測（W6）」に表で記録する。日本語の `local` 埋め込みでの類似度の分布を再測定し、既定の閾値 0.5 の妥当性（I-8）を更新する。Ollama を使えない環境では、記録欄に「未実測」と理由を書き、「人が行うこと」に残す
+  _Boundary:_ `specs/002-rag-and-workflows/research.md`
+  _Depends:_ 7.4, 24.2, 24.3
+  _Requirements:_ 1.7, 2.2, 2.9, 2.10
+  _Traces:_ REQ-001, REQ-002, C16, C18
+  _Verify:_ 記録した数値は `mise run test:local` の出力から転記したもので、実行日とモデル ID（Ollama のタグ）が併記されている
+- [x] 25.2 Role-Based Cooperation と単一エージェントのトークン使用量を、同じタスクで比較して実測する（憲章 原則 1 の根拠。`runPatternDemo("role-based-cooperation")` の役割ごとの `AgentRunSummary.usage` の合計と、M1 の `/agent`（単一エージェント + ツール）で同じタスクを実行したときの使用量を比べる）。結果を research.md の「M2 実測（W6）」に記録する。実測で単一エージェントで足りると分かっても、Role-Based Cooperation の実装は残す（plan 憲章 原則 1 の確定済みの扱い）。Ollama を使えない環境では「未実測」と書く
+  _Boundary:_ `specs/002-rag-and-workflows/research.md`
+  _Depends:_ 18.4, 25.1
+  _Requirements:_ 4.7
+  _Traces:_ REQ-004, C12, C18
+  _Verify:_ 比較したタスクの入力、両方のトークン使用量、実行したモデル ID と日付が記録されている
 
 ### Implementation Notes
 
-- 境界の調整: `fixtures/scenarios/m2.test.ts` は Vitest の `include`（`src/**`）に入らず、置いても実行されない（空虚なテストになる）ので、`packages/ai-core/src/mock/m2-scenarios.test.ts` に置いた。`m2-*.ts` は `fixtures/scenarios/` のまま。
-- `mock` の埋め込みは「同じ文字列でなければ似ない」ので、入力例は「コーパスのチャンク本文そのもの」か、HyDE・Multi-Query の応答がチャンク本文になる質問にした。コーパスの文を直すと `m2-scenarios.test.ts` が落ちる（`M2_CORPUS_TEXT` をコーパスに固定）。
-- 質問セットは 32 問（言い換え・抽象・複数観点を含む）。正解 ID は一時スクリプトで `eval:` の文書 ID から得た。
+- Measured on 2026-10-13 with Ollama (see research.md "M2 実測（W6）"): hybrid recall@5 89.1% vs naive 70.8%, while HyDE (65.6%) and Multi-Query (63.5%) were *below* naive with the 8.8B local model; Multi-Query gave valid output 32/32 first time; footnotes 9/10; Judge verdicts as expected on three fixed cases.
+- Default threshold 0.5 never said "no evidence" for nomic-embed-text on Japanese (out-of-scope top-1 similarity 0.627–0.746, 8/8 ≥ 0.5): worse than the I-8 pilot. Decision unchanged (documented as a weak defence); recorded rather than hidden.
+- Role-Based Cooperation used ~1.26× the tokens of a single agent for a two-tool task and both were correct; the implementation stays (plan decision). Rerank rows are *unmeasured* (no `COHERE_API_KEY`) and Docker was not available: both are on the human list.
 
 ---
 
-## 15. RAG の HTTP 入口と W3 の締め（C13、C17）
+## 26. 解説ドキュメント（C18）
 
-`POST /api/rag/query` と `POST /api/rag/agent` を既存の検査順（`guard → resolve → validate → adapt → stream`）で提供する。
-`RagEvent` から UI メッセージストリームのパートへの写像は 15.2 に集め、Route Handler はそれを呼ぶだけにする。
+モジュール 2-1〜2-4 の解説を `docs/modules/_template.md` の必須節で書く。各解説に、「本番ではどう作るか」の節（005 Req 2。ハブのページへのリンクのみで、
+文書の転載はしない。2-1・2-2 は CE、2-3 は LE・AE、2-4 は AE。文字列は `specs/curriculum/README.md` の表と一致させる。CL-12）、ハンズオン手順
+（実行モードと必要なサービス — Docker の Postgres、Ollama、`COHERE_API_KEY` — を明示）、習熟度チェックリスト（テスト名を参照し、`docs:check` が実在を検証する。
+`local` 専用のテストを参照する項目はスキップされうることを明記する）、元教材との対照表（「移植で諦めたもの」の列を持つ）、移植時の変更点（API・版は実測値）を置く。
 
-_Boundary:_ `apps/web/lib/server/platform.ts`, `apps/web/lib/server/platform.test.ts`, `apps/web/lib/server/rag-stream.ts`, `apps/web/lib/server/rag-stream.test.ts`, `apps/web/app/api/rag/query/route.ts`, `apps/web/app/api/rag/query/route.test.ts`, `apps/web/app/api/rag/agent/route.ts`, `apps/web/app/api/rag/agent/route.test.ts`, `stryker.config.mjs`
-_Depends:_ 3.1, 8.4, 9.3, 10.2, 11.3, 11.4, 12.2, 13.4, 14.2
-_Requirements:_ 1.4, 1.5, 1.7, 1.9, 1.10, 1.11, 2.4, 2.5, 2.6, 2.8, 2.9, 2.11
-_Traces:_ REQ-001, REQ-002, C13, C17
+_Boundary:_ `docs/modules/2-1-typescript-native-rag.md`, `docs/modules/2-2-advanced-rag.md`, `docs/modules/2-3-workflow-patterns.md`, `docs/modules/2-4-agent-design-patterns.md`, `docs/phases/phase-2.md`, `docs/modules/index.md`
+_Depends:_ 4.3, 19.2, 23.4, 25.1, 25.2
+_Requirements:_ 1.12, 2.9, 2.10, 3.1, 3.13, 4.8
+_Traces:_ REQ-001, REQ-002, REQ-003, REQ-004, C18
 
-- [x] 15.1 `apps/web/lib/server/platform.ts`: `ports.rerank` を足す（`mock` は `createLexicalRerank()`、`local`/`live` は `COHERE_API_KEY` があれば `createCohereRerank`、なければ `undefined`。CL-6）+ `platform.test.ts` に、実行モード別の Rerank の組み立て（`mock` は疑似、キーなしは `undefined`、キーありは Cohere）を先に足す（Cohere へは接続しない）
-  _Boundary:_ `apps/web/lib/server/platform.ts`, `apps/web/lib/server/platform.test.ts`
-  _Depends:_ 3.1, 8.4, 10.2
-  _Requirements:_ 2.5, 2.6
-  _Traces:_ REQ-002, C13
-- [x] 15.2 (P) `apps/web/lib/server/rag-stream.ts`: `RagEvent` を UI メッセージストリームのパートへ写像する（`stage` → `data-rag-stage`（`id: stage-<stage>` で上書き）、`trace` → `data-rag-trace`（`id: trace`）、`text-delta` → `text-start`/`text-delta`/`text-end`、`result` → `data-rag-result`（`id: result`）。ストリームの途中のエラーは `PlatformError` の `code` と日本語のメッセージだけに変換する（M1 の `toStreamErrorText`）。生のメッセージ・スタック・SQL を送らない）+ `rag-stream.test.ts` に、イベントごとの写像、同じ `id` の上書き、中断時に `data-rag-result` を送らない、エラーの `code` への変換と秘密情報を含まないことを先に足す
-  _Boundary:_ `apps/web/lib/server/rag-stream.ts`, `apps/web/lib/server/rag-stream.test.ts`
-  _Depends:_ 11.4
-  _Requirements:_ 1.4, 1.5, 2.8, 2.11
-  _Traces:_ REQ-001, REQ-002, C13
-- [x] 15.3 `app/api/rag/query/route.ts`: 引用付き回答のストリーム。guard → resolve（チャットモデル `purpose: "chat"`、構造化出力 `"structured"`、埋め込み）→ validate（11.3 のクエリのスキーマ）→ stream の順で処理する。HyDE または Multi-Query が有効で、モデルが構造化出力に対応しない場合は LLM を呼ぶ前に 400 `capability-unsupported`。埋め込みモデルが無い場合は `AI_MODEL_EMBEDDING` を案内する `invalid-request`。`request.signal` を検索・生成に伝播する + `route.test.ts` に、検査順（413 → 400 → 400 → `live` のみ 429）、拒否のコード、ストリームの形（`data-rag-stage`・`data-rag-trace`・テキスト・`data-rag-result`）、該当なしで LLM を呼ばない、中断、Rerank のキー無しのスキップが結果に載ることを先に足す（`mock` のシナリオを使う）
-  _Boundary:_ `apps/web/app/api/rag/query/route.ts`, `apps/web/app/api/rag/query/route.test.ts`
-  _Depends:_ 11.3, 14.2, 15.1, 15.2
-  _Requirements:_ 1.4, 1.5, 1.7, 2.6, 2.8, 2.11
-  _Traces:_ REQ-001, REQ-002, C13
-- [x] 15.4 (P) `app/api/rag/agent/route.ts`: Agentic RAG。M1 の `/api/agent/tools` と同じ形で、リクエストごとに `createGuardedAgent` を 1 回生成し、`searchKnowledgeBase`（`risk: "read-only"`）だけをツールとして渡す。引用レジストリはリクエストごとに作る。`finish` の `messageMetadata` に `{ run: AgentRunSummary; rag: AgenticRagSummary }` を載せる。ツール非対応のモデルは 400 `capability-unsupported`。`signal` と `abortSignal` を伝播する + `route.test.ts` に、検査順、ツール呼び出しのストリーム（`tool-searchKnowledgeBase` パート）、検索せずに答えた場合の `searched: false`、`messageMetadata` の形、停止理由が `run` に載る、レジストリがリクエスト間で共有されない、中断を先に足す（`mock` のシナリオを使う）
-  _Boundary:_ `apps/web/app/api/rag/agent/route.ts`, `apps/web/app/api/rag/agent/route.test.ts`
-  _Depends:_ 12.2, 14.2, 15.1
-  _Requirements:_ 1.9, 1.10, 1.11
-  _Traces:_ REQ-001, C13
-- [x] 15.5 **W3 の締め**: `stryker.config.mjs` の `mutate` に `rag/retrieve/rrf.ts`、`rag/answer/citations.ts`、`rag/eval/recall.ts` を足し、`mise run test:mutation` が閾値 70 を満たすことを確かめる。`mise run gate` が成功することを確かめ、所要時間を Implementation Notes に記録する（予算 5 分）。`rag/` の行カバレッジ（80%）を `mise run test:coverage` で確かめる
-  _Boundary:_ `stryker.config.mjs`
-  _Depends:_ 9.3, 13.4, 15.3, 15.4
-  _Requirements:_ 1.11, 2.4, 2.9
-  _Traces:_ REQ-001, REQ-002, C17
-  _Verify:_ `mise run gate`、`mise run test:mutation`、`mise run test:coverage` が成功する。gate の所要時間を記録する 波の敵対的レビュー（憲章 原則 9。新規コンテキストで `sdd-reviewer`）を行い、記録 `.sdd/reviews/002-rag-and-workflows-impl-w3-review-YYYY-MM-DD.md` が存在し、指摘への対応が追記されていることを確かめる（波の移行条件 3）
+- [x] 26.1 (P) `docs/modules/2-1-typescript-native-rag.md`: RAG の取り込み・分割・埋め込み・検索・引用・Agentic RAG の解説。タスク 4.3 で定義した 2-1 の必須トピックの見出しをすべて含める。「`mock` の緑が保証しないもの」（検索の効果の差、日本語の埋め込みの品質）と、日本語の埋め込みでの閾値の限界（research I-8、25.1 の再測定値）を書く。Req 1.12 の分類（`*.db.test.ts` / `*.pg.test.ts`）とその根拠を、research.md の実測へのリンクとともに書く。ハンズオンは `local`（Ollama + Docker の Postgres）を原則とし、`mock`（PGlite）でも動くことを併記する。チェックリストは `rag/` のテスト名を参照する
+  _Boundary:_ `docs/modules/2-1-typescript-native-rag.md`
+  _Depends:_ 4.3, 23.4, 25.1
+  _Requirements:_ 1.12
+  _Traces:_ REQ-001, C18
+  _Verify:_ `mise run docs:check` が成功する（必須トピック、必須節、テスト名の実在、「移植で諦めたもの」の列）
+- [x] 26.2 (P) `docs/modules/2-2-advanced-rag.md`: HyDE・Multi-Query・RRF・Rerank・ハイブリッド検索の解説と、手法の組み合わせの比較。タスク 4.3 で定義した 2-2 の必須トピックを含める。「`mock` の緑が保証しないもの」（手法の効果の差と Judge の判定は `*.local.test.ts` だけが示し、gate ではスキップされる）と、CL-1（「該当なし」の判定がベクトル検索の閾値だけで行われること）、CL-11（Rerank の失敗時のフォールバック）を書く。比較結果の数値は 25.1 の実測から引く。Rerank のハンズオンは `COHERE_API_KEY` が任意であることを明示する
+  _Boundary:_ `docs/modules/2-2-advanced-rag.md`
+  _Depends:_ 4.3, 23.4, 25.1
+  _Requirements:_ 2.9, 2.10
+  _Traces:_ REQ-002, C18
+  _Verify:_ `mise run docs:check` が成功する
+- [x] 26.3 (P) `docs/modules/2-3-workflow-patterns.md`: ワークフローとエージェントの峻別、5 パターンの利点とトレードオフ（`workflow-no-agent-loop` が境界を機械的に守ること、制御フローをコードとして読めること）、LangGraph 的なグラフ抽象を使わない理由、耐久実行を扱わないこと（本番との境界）を書く。「本番ではどう作るか」は LE・AE のハブのページへのリンク。ハンズオンは `/workflows` 画面での各パターンの実行（`mock` で完走、`local`/`live` で実モデル）
+  _Boundary:_ `docs/modules/2-3-workflow-patterns.md`
+  _Depends:_ 23.4, 19.2
+  _Requirements:_ 3.1, 3.13
+  _Traces:_ REQ-003, C18
+  _Verify:_ `mise run docs:check` が成功する
+- [x] 26.4 (P) `docs/modules/2-4-agent-design-patterns.md`: 18 パターンの体系と、リファレンス実装の 6 パターンの解説。**18 パターンすべてについて、リファレンス実装のどのモジュール・関数に対応するか、または解説のみで扱うかを示す対応表**（Req 4.8）を含める。LangGraph との比較。ハンズオンには、Cross-Reflection に `AI_MODEL_JUDGE`（生成側と異なるカタログ ID）の設定が必須であること（`live` の Anthropic 既定では未設定だと `invalid-request` になること。CL-5）を前提として書く。Role-Based Cooperation は、単一エージェントとのトークン使用量の比較（25.2 の実測値。未実測なら未実測と書く）を記録し、共有予算の考え方（CL-8）を書く
+  _Boundary:_ `docs/modules/2-4-agent-design-patterns.md`
+  _Depends:_ 4.3, 23.4, 25.2
+  _Requirements:_ 4.8
+  _Traces:_ REQ-004, C18
+  _Verify:_ `mise run docs:check` が成功する（`2-4` の必須トピックと参照テストの実在）。対応表の行数が 18 である
+- [x] 26.5 `docs/phases/phase-2.md`（Phase 2 の成熟度の水準と、モジュール一覧）と `docs/modules/index.md`（2-1〜2-4 を「提供済み」にし、解説と完成タグへのリンクを足す）
+  _Boundary:_ `docs/phases/phase-2.md`, `docs/modules/index.md`
+  _Depends:_ 26.1, 26.2, 26.3, 26.4
+  _Requirements:_ 4.8
+  _Traces:_ REQ-004, C18
+  _Verify:_ `mise run docs:check` が成功し、`index.md` のリンクがすべて実在する
 
 ### Implementation Notes
 
-- `Platform.ports` は `PlatformPortSet`（`PlatformPorts` + `rerank`）にした。録画ラッパの対象は従来の 3 ポートのままで、Rerank は録画しない（ADR-7）。`resolveKnowledgeEmbedding` を `platform.ts` に足し、`/api/rag/query` と `/api/rag/agent` が `AI_MODEL_EMBEDDING` の案内を共有する。
-- `/api/rag/agent` は M1 の会話スキーマをそのまま使うので `modelId` と `personaId` が必須（ペルソナは使わない）。回答テキストは `messageMetadata` で見える最後のステップの `text-delta` から組み立てる。中断済みのリクエストでは `abort` パートだけが返り、ツールは実行されない。
-- 検査順（413 → 400 → `live` のみ 429）は両ルートのテストで縛った。
-- W3 の締め（15.5）: `mise run test:mutation` は 86 点台で閾値 70 を満たす（`rrf.ts` 82.98、`citations.ts` 82.87、`recall.ts` 93.42。レビュー対応で `citations.ts` を直したため再実行した結果は do.md）。`TURBO_FORCE=true mise run gate` は約 27 秒（予算 5 分）。`ai-core` の行カバレッジは 98%、`rag/` は 100%（基準 80%）。
-- gate を全ワークスペース同時に走らせると PGlite の起動が 5 秒の既定を超えるテストが出たため、`rag/db/schema.db.test.ts` と `lib/server/platform.test.ts` の 2 件に 30 秒のタイムアウトを明示した（境界外の既存テストの変更。理由は負荷による時間切れで、ロジックは変えていない）。
-- 敵対的レビュー（`sdd-reviewer`、新規コンテキスト）: `.sdd/reviews/002-rag-and-workflows-impl-w3-review-2026-10-12.md`。判定は REQUEST_CHANGES（MEDIUM 5 件）。F-1〜F-5 をテスト先行で直し、残りの LOW への対応を同ファイルの Responses に追記した。
+- The four module docs were written against `docs/modules/_template.md`; `mise run docs:check` verifies required sections/topics and that every `<!-- test: … -->` name exists (110 references over 8 documents). The 18-pattern table uses the names of Liu et al.'s catalogue (arXiv 2405.10467 v4), checked on the paper's page; 13 of 18 are implemented or covered by existing parts, 5 are explanation-only.
+- "本番ではどう作るか" links use `https://github.com/Fukuchan77/vaz-agentic-ai-next/blob/main/docs/guide/<page>.md` (the form used by the root README); the pages exist in the local hub clone (checked 2026-10-13). The repository rule that compares the strings (005 Req 2.3) does not exist yet.
+- Boundary amendment: `docs/README.md` (module list) and `docs/modules/1-1-dev-environment.md` (rule count 9 → 11) were also edited; both are small and recorded in traceability Gaps (review F-16, F-7).
+- Model IDs must not appear in docs (`check:model-ids` scans them): the docs use `catalog: local.ollama.*`; measured model tags live in research.md only.
+
+---
+
+## 27. トレーサビリティ・ステアリング・判断（C18）
+
+受け入れ基準 → テストの対応表、固定した決定のステアリングへの反映、`withRegeneration` の統合の要否の判断を記録する。
+
+_Boundary:_ `specs/002-rag-and-workflows/traceability.md`, `.sdd/steering/tech.md`, `.sdd/steering/structure.md`, `AGENTS.md`, `specs/curriculum/changes-from-drafts.md`, `specs/002-rag-and-workflows/research.md`
+_Depends:_ 19.2, 25.2, 26.5
+_Requirements:_ 1.12, 2.2, 3.8, 4.8
+_Traces:_ REQ-001, REQ-002, REQ-003, REQ-004, C18
+
+- [x] 27.1 (P) `traceability.md`: 骨格（`/sdd-tasks` が作成）の Test 列に、各受け入れ基準を検証するテストファイル（またはテスト名）を埋める。**「gate が保証しないもの」の一覧**（検索手法の効果の差、Judge の判定、`local` モデルの脚注の遵守率、実 Postgres での挙動、Cohere の実呼び出し）を節として追加し、それぞれがどのテスト（`*.local.test.ts`/`*.pg.test.ts`）または手動のハンズオンで確認されるかを書く。Commit 列は `/sdd-ship` が埋める
+  _Boundary:_ `specs/002-rag-and-workflows/traceability.md`
+  _Depends:_ 26.5
+  _Requirements:_ 1.12
+  _Traces:_ REQ-001, REQ-002, REQ-003, REQ-004, C18
+  _Verify:_ 全 45 の受け入れ基準の行に Test 列が埋まっている（解説のレビューで検証するもの — 4.8 など — は「D」と書く）
+- [x] 27.2 (P) ステアリングと `AGENTS.md`: `.sdd/steering/tech.md`（DB 層 — PGlite と Postgres の二層、`drizzle-orm`、手書き SQL のマイグレーション、`drizzle-kit` を採らないこと — 、日本語の全文検索の決定、768 次元、`rag/`・`workflows/`・`patterns/`・`structured/`、新しい規則 `workflow-no-agent-loop`・`no-sql-raw`、`COHERE_API_KEY`）と `structure.md`（新しい領域の配置と「Where Things Go」）、`AGENTS.md`（プロジェクトの状態を M2 の実装済みの範囲に更新）、`specs/curriculum/changes-from-drafts.md`（M2 で実測により確定した API・設定の差分）を更新する。更新後、変更した用語の旧名と数値（規則の数 9 → 11 など）を grep で確認する
+  _Boundary:_ `.sdd/steering/tech.md`, `.sdd/steering/structure.md`, `AGENTS.md`, `specs/curriculum/changes-from-drafts.md`
+  _Depends:_ 26.5
+  _Requirements:_ 4.8
+  _Traces:_ REQ-004, C18
+  _Verify:_ `grep` で旧い数値・名前（規則 9 個、M2 が「未作成」など）が残っていない
+- [x] 27.3 (P) `withRegeneration` の統合の要否の判断（ADR-8）: M1 の `summarize/retry.ts` と M2 の `generateValidated` の重複を比べ、統合するか、重複を許容するかを決めて research.md の ADR-8 に追記する。統合する場合の変更は M2 の範囲外なので、後続のタスクとして記録するだけにする（この spec では `summarize/retry.ts` を変更しない）
+  _Boundary:_ `specs/002-rag-and-workflows/research.md`
+  _Depends:_ 19.2, 25.2
+  _Requirements:_ 2.2, 3.8
+  _Traces:_ REQ-002, REQ-003, C3
+  _Verify:_ ADR-8 に判断と根拠が追記されている
+
+### Implementation Notes
+
+- 27.3: not merged — `withRegeneration` is a streaming async generator with a restart event and `SummaryValidationError`; `generateValidated` owns a non-streaming call and throws `StructuredOutputError`. Merging would touch the M1 public contract for ~8 duplicated lines (recorded in ADR-8, Q-2 resolved).
+- 27.2: rule count 9 → 11 and the M2 areas were updated in steering/AGENTS.md. The first `grep` used only the spelling "9規則" and missed `docs/modules/1-1-dev-environment.md` ("9 規則", fixed after the wave review F-7); grep `9 *規則` as well.
+
+---
+
+## 28. 最終統合と完成タグ（C17、C18）
+
+M2 全体の検証をまとめて行う。タグの push と、Docker の Postgres・Cohere の実キーを使う確認は人が行う。
+
+_Boundary:_ `specs/002-rag-and-workflows/traceability.md`
+_Depends:_ 27.1, 27.2, 27.3
+_Requirements:_ 1.12, 4.8
+_Traces:_ REQ-001, REQ-004, C17, C18
+
+- [x] 28.1 **W6 の締め**: `mise run gate`、`mise run gate:repeat`（10 回とも同じ判定）、`mise run test:mutation`（閾値 70）、`mise run test:coverage`（`packages/ai-core` の行カバレッジ 80%）、`mise run test:e2e`（3 エンジン、skipped 0）、`mise run check:client-bundle`、`mise run secret-scan`、`mise run audit` を実行し、結果と所要時間を Implementation Notes と traceability.md に記録する。`mise run gate` の所要時間が 5 分を超えていないこと、`docs:check` が 2-1〜2-4 を含めて成功することを確かめる。`mise run test:db` が少なくとも 1 回実行されているか（5.3、7.4）を確かめ、未実行なら「人が行うこと」として一覧にする
+  _Boundary:_ `specs/002-rag-and-workflows/traceability.md`
+  _Depends:_ 27.1, 27.2, 27.3
+  _Requirements:_ 1.12
+  _Traces:_ REQ-001, C17
+  _Verify:_ 上記のコマンドがすべて成功する。失敗が M2 以前から base ブランチにあるものなら、新しいものと分けて報告する 波の敵対的レビュー（憲章 原則 9。新規コンテキストで `sdd-reviewer`）を行い、記録 `.sdd/reviews/002-rag-and-workflows-impl-w6-review-YYYY-MM-DD.md` が存在し、指摘への対応が追記されていることを確かめる（波の移行条件 3）
+- [ ] 28.2 PR の `ci-status` が成功することを確かめる（PR の作成と push は人が行う。CI のジョブ構成は変えない）。成功したら、波の移行手順（`tasks.md`）に従って進捗を更新する（移行のコミットは別に行う）
+  _Boundary:_ `specs/002-rag-and-workflows/traceability.md`
+  _Depends:_ 28.1
+  _Requirements:_ 1.12
+  _Traces:_ REQ-001, C17
+  _Verify:_ CI の `gate`、`secret-scan`、`audit`、`mutation`、`e2e`、`client-bundle` が成功し、`ci-status` が成功する
+- [ ] 28.3 完成タグ `module/2-1`〜`module/2-4`: M2 の全タスクが完了した統合コミットに、注釈付きタグ 4 つをローカルで付ける（メッセージに、含むもの — 対応するモジュールの要件 Req 1〜4 — と、含まないもの — 実 Postgres・Cohere 実キーの人による確認が未了ならその旨 — を書く）。push は人が行う
+  _Boundary:_ git タグのみ（ファイルの変更なし）
+  _Depends:_ 28.1
+  _Requirements:_ 4.8
+  _Traces:_ REQ-004, C18
+  _Verify:_ タグのコミットで `mise run gate` が成功する。`git tag -l 'module/2-*'` が 4 件を返す
+
+### Implementation Notes
+
+- 28.1 (2026-10-14, after the review fixes): `TURBO_FORCE=true mise run gate` → exit 0 (`//:test executed=352`, `ai-core executed=1732 skipped=4`, `web executed=733`, `eval-suite executed=7 skipped=8`, `Docs: 8 module documents, 110 test references verified`); `gate:repeat` → 10/10 identical, 8m15s. `test:mutation`, `test:coverage`, `test:e2e`, `check:client-bundle`, `secret-scan`, `audit` were run on 2026-10-13 (mutation 87.03, coverage 98.39%, e2e 363 passed skipped=0); since then only eval-suite tests, docs, comments and AGENTS.md changed, so they were not re-run. `test:db` not run (no Docker): human list.
+- The wave review (`.sdd/reviews/002-rag-and-workflows-impl-w6-review-2026-10-13.md`) was `REQUEST_CHANGES`; every finding has a recorded response. Renaming a test cited by a doc is caught by `docs:check` (it caught one here).
+- Open for a human: 28.2 (PR/push/CI), 28.3 tags (to be placed on the integration commit after `/sdd-ship`), Req 4.7 `final` gap, `/agent` token comparison, full green retrieval run, `test:db`, Cohere.

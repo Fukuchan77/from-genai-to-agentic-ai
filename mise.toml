@@ -183,4 +183,4 @@ node scripts/check-client-bundle.mjs --dir apps/web/.next/static --sentinel chan
 
 [tasks."check:repo-rules"]
 description = "Validate repository governance rules"
-run = "node scripts/check-repo-rules.mjs --only no-dynamic-eval,actions-pinned,frozen-lockfile,allow-builds-reasoned,no-deprecated-object-api,guarded-agent-only,ai-core-no-ui-deps,no-sensitive-logging,tool-risk-declared,no-sql-raw"
+run = "node scripts/check-repo-rules.mjs --only no-dynamic-eval,actions-pinned,frozen-lockfile,allow-builds-reasoned,no-deprecated-object-api,guarded-agent-only,ai-core-no-ui-deps,no-sensitive-logging,tool-risk-declared,no-sql-raw,workflow-no-agent-loop"

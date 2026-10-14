@@ -44,6 +44,8 @@ export default defineConfig({
 				test: {
 					name: "routes",
 					environment: "node",
+					// Route tests start an in-memory PGlite in `beforeAll`; see packages/ai-core/vitest.config.ts.
+					hookTimeout: 60_000,
 					include: [
 						`app/api/**/*.${suite.suffix}.ts`,
 						`lib/server/**/*.${suite.suffix}.ts`,
