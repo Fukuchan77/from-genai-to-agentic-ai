@@ -285,3 +285,40 @@
 - Auto-fix (mechanical): traceability W5 Test/Commit cells (22 rows) and the Gaps note.
 - Commits: b40870d (screens), 3574034 (next.config), 5968504 (e2e), then this docs commit. Boundary amendments (ErrorBanner, route tests, generator test, extra fixtures, next.config) are recorded in the task 23 notes.
 - Not run: `test:mutation`, `*.pg.test.ts`, `local` tests. Wave migration (`tasks-comp-w5.md`) is not part of this ship.
+
+## W6 (tasks 24–28)
+
+- Preflight: the gate lane is `mock` (no env, no service). Task 25 needs Ollama (reachable, models present: chat, structured, embedding, judge defaults) and the optional `COHERE_API_KEY` (absent → Rerank rows unmeasured). Docker is not available → `*.pg.test.ts` / `test:db` not run. Work is inline in the main session; the wave review runs in a fresh `sdd-reviewer` context.
+
+### Task 24 (evaluation tests)
+
+- 24.1 `rag-eval-set.db.test.ts` (5 tests at first, 4 after review F-11): RED was my own mistake (`chunk.id` instead of `hit.chunk.id`), investigated with a throwaway debug test before touching anything. PROVE: a corrupted gold ID in `eval-set.json` → 2 failures naming `q01-rag-definition: 3e40e887390d058X`; a fixed wrong question → `expected true to be false` on `noEvidence` (the recall@1 check can fail).
+- 24.2/24.3 are `describeLocal` tests; the gate reports `Local tests require AI_TEST_RUN_MODE=local.: 8` skips (never counted as passes). Real run: judge file 757 s, retrieval file ~69 min under load.
+- Environment finding: with an Ollama model resident (≈34% of RAM) and the long run in parallel, existing PGlite `beforeAll` hooks exceeded the 10 s default (`Hook timed out in 10000ms`, ai-core `*.db.test.ts`, web route tests, and my new test). After unloading the models the gate passed, but `gate:repeat` still failed on run 6/10. Root cause: PGlite WASM start-up (≈1 s alone) is contention-sensitive when all workspaces run in parallel. Fix: `hookTimeout: 60_000` in `packages/ai-core/vitest.config.ts` and the web `routes` project (outside the task boundary; reviewed), explicit timeouts in the new test. After that `gate:repeat` was 10/10 identical.
+
+### Task 25 (measurements)
+
+- Results are in research.md "M2 実測（W6）". The first retrieval run exceeded the then 1-hour test timeout: Vitest recorded the comparison test as failed and moved on, the comparison kept running and printed its complete table during the next test (so the test's own completion assertions were never evaluated). The table is used with that disclosure; a green full run is on the human list (review F-1). Timeout raised to 3 h; `RAG_EVAL_QUESTIONS=<n>` added; a 3-question run passed in 148 s (also gave the 8-question out-of-scope similarity table, added to the similarity test afterwards). The raw output of that row was not kept, so on 2026-10-14 the similarity test was re-run alone (`-t "top-1 cosine"`, 5 s, no LLM) and both rows came from one run with identical values (review F-3).
+- Throwaway script for 25.2 (Role-Based vs single agent, 3 trials) was a `local` test file that was deleted after the run (not committed).
+
+### Task 26–27 (docs, steering, decision)
+
+- 2-1…2-4 written against the template; `docs:check` → `Docs: 8 module documents, 110 test references verified`. Placeholders (`{{…}}`) were filled from research.md after task 25. phase-2.md and modules/index.md updated; docs/README.md refreshed.
+- ADR-8 judgement: keep both regeneration helpers (see research.md). Steering/AGENTS.md updated (rules 9 → 11, M2 areas, data layer decisions).
+
+### Task 28.1 (wave close, 2026-10-13)
+
+- `TURBO_FORCE=true mise run gate` → exit 0: `//:test executed=352`, `@platform/ai-core executed=1732 passed=1732 skipped=4`, `web executed=733 passed=733`, `eval-suite executed=8 passed=8 skipped=8` (before the review fixes; 7 after, see the last entry) (the 8 are the `local` tests), `Biome: 398 files`, `workflow-no-agent-loop: scanned 34 FILES`, `Docs: 8 module documents, 110 test references verified`. Test time per run ≈ 32 s; far below the 5-minute budget.
+- `mise run gate:repeat` → 10/10 identical results (after the `hookTimeout` fix; the first attempt failed at run 6/10).
+- `mise run test:mutation` → score 87.03 (threshold 70): 1169 killed, 45 timeout, 173 survived, 8 no coverage; 8 minutes. W6 adds no mutation target (no `stryker.config.mjs` change).
+- `mise run test:coverage`: `@platform/ai-core` Lines 98.39% (Statements 97.64%, Branches 91.44%, Functions 98.61%); threshold 80.
+- `mise run test:e2e` → `363 passed (1.5m)`, `Playwright: executed=363 skipped=0 (chromium=121 firefox=121 webkit=121)`.
+- `NODE_ENV=production mise run check:client-bundle` → `Client bundle: scanned 20 files for 14 names and 3 sentinels`. `mise run secret-scan` → `215 commits scanned … no leaks found`. `mise run audit` → `No known vulnerabilities found`.
+- Not run (human): `mise run test:db` (Docker unavailable) — research "W2 5.3 の記録" table stays empty; Rerank with a real `COHERE_API_KEY`; a full-length rerun of the retrieval comparison after the timeout change.
+
+### Ship validation (/sdd-ship, 2026-10-14)
+
+- Boundary: four edits outside every W6 `_Boundary:_` (`packages/ai-core/vitest.config.ts` and `apps/web/vitest.config.ts` `hookTimeout: 60_000`, `docs/README.md`, `docs/modules/1-1-dev-environment.md`) were approved by the user at ship time (reviewed as F-15, F-16, F-7; recorded in traceability Gaps).
+- `mise run gate` → exit 0: `//:test executed=352`, `@platform/ai-core executed=1732 passed=1732 skipped=4`, `web executed=733 passed=733`, `eval-suite executed=7 passed=7 skipped=8` (`rag-eval-set.db.test.ts` 4 tests ran; `rag-retrieval.local.test.ts` 3 and `rag-judge.local.test.ts` 4 skipped with the reason), `Biome: 398 files`, `workflow-no-agent-loop: scanned 34 FILES`, `Docs: 8 module documents, 110 test references verified`.
+- Auto-fix (mechanical): stale eval-suite counts (executed 8 → 7, `rag-eval-set` 5 → 4 tests) in do.md and the 24.1 note.
+- Still open for a human (unchanged): 28.2 (PR, push, CI), 28.3 tags, Req 4.7 `final` gap, `test:db`, Cohere, a full green retrieval run.
