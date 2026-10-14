@@ -123,6 +123,16 @@ jobs:
         env:
           E2E_PROJECTS: ${{ matrix.browser }}
         run: mise run test:e2e
+      # Traces (network, console, DOM snapshots) of failed tests; the E2E flake seen only on WebKit
+      # in CI cannot be diagnosed from the log alone.
+      - name: Upload E2E traces
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: e2e-traces-${{ matrix.browser }}
+          path: apps/web/test-results
+          if-no-files-found: ignore
+          retention-days: 14
 
   client-bundle:
     name: Client bundle check
