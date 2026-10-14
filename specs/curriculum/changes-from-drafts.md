@@ -92,3 +92,26 @@
 ## 8. コード例の扱い
 
 確定版には、ドラフトのコード例（マスター §3.2・§3.3、各ドラフトの §4）を載せない。コンポーネントの契約は plan、実装はリファレンス実装を正とする。ドラフトのコード例で使われていた古い API は §3・§4 に、設計上の欠陥は §7 に記録した。解説の差分表にドラフトのモデル ID は書かず、採用したモデルはモデルカタログへの参照で示す（constitution 原則 8）。
+
+## 9. M2 の実装で実測により確定した API・設定（002）
+
+M2（モジュール 2-1〜2-4）の実装で確かめた、ドラフト（Python / LangChain / LangGraph を前提にした記述）との差分を記録する。数値と版の根拠は [002 research.md](../002-rag-and-workflows/research.md) の I-1〜I-10 と ADR-1〜12 にある。2-1〜2-4 の解説「移植時の変更点」はこの節を元に書く。
+
+| ドラフトの記述 | 確定版 | 根拠 |
+|---|---|---|
+| LCEL（`prompt → llm → parser` のパイプ演算子）や LangChain の Retriever で RAG を組む | 非同期関数の合成。取り込み・検索・回答・引用の各段は、引数と戻り値の型が見える TypeScript の関数で、段の進行は `data-*` パートで UI へ流す | 002 plan C4〜C9、spec Req 1.4、2.11 |
+| ベクトルストアに FAISS / Chroma / LangChain の PGVector ラッパを使う | pgvector を `drizzle-orm` の型付きクエリ（`cosineDistance`）で直接引く。ベクトルは 768 次元に統一し、`rag_meta` に埋め込みモデルを記録する。データ層は PGlite（gate と `mock`）と Docker の Postgres 17（`test:db`、ハンズオン）の二層 | research ADR-1、ADR-4、I-1、I-2 |
+| スキーマとマイグレーションを ORM のツールに生成させる | 手書き SQL（`packages/ai-core/drizzle/NNNN_<name>.sql`）と自前の小さなマイグレーター。`drizzle-kit` は `npm audit` の中程度 4 件を持ち込むため採らない。`schema.ts` との乖離はスキーマ照合テストで検出する | research ADR-2、I-2 |
+| 日本語の全文検索を BM25 ライブラリや形態素解析器で行う | `Intl.Segmenter` で分かち書きして `search_text` に保存し、`to_tsvector('simple', …)` の生成列を GIN で引く。ひらがなだけの 2 文字以下の語は検索語から除く。順位は `ts_rank`（BM25 ではない） | research ADR-3、I-3 |
+| `EnsembleRetriever` で検索結果を統合する | Reciprocal Rank Fusion を TypeScript の純関数で実装する（SQL には書かない）。同じチャンクは統合後に 1 回だけ含める | spec Req 2.3、2.4、research Req 1.12 の分類 |
+| Rerank に `CohereRerank`（LangChain） | AI SDK v7 の `rerank()` と `@ai-sdk/cohere`。キーは `COHERE_API_KEY`、モデル ID はカタログにだけ書く。キーが無い `local` / `live` では Rerank 段をスキップして結果に記録し、`mock` は語の重なりによる疑似実装を使う | research ADR-7、I-4 |
+| 構造化出力の失敗を `OutputFixingParser` や `with_structured_output` に任せる | `generateValidated`（`generateText` + `Output.object` + 追加検証）。前回の問題点を次のプロンプトに添えて最大 2 回再生成し、なお不正なら `StructuredOutputError`。Multi-Query の「ちょうど 3 件」もここで守る | research ADR-8、ADR-9 #2、I-7 |
+| 回答の引用を、モデルに構造化出力で返させる | 序数の脚注 `[n]`。サーバーが範囲外の序数を除去して記録し、取得した全チャンクを `cited` 付きで返す。小型モデルは「引用を付けない」ことはあっても偽の ID を作ることは少なかった | research ADR-6、I-7 |
+| 「該当なし」を LLM に判断させる | ベクトル検索のコサイン類似度の閾値（既定 0.5）で判定し、閾値以上が 0 件ならモデルを呼ばない。`local` の日本語の埋め込みでは関連と無関係の類似度が重なるため、閾値は弱い防御である | research I-8、ADR-9 #1 |
+| LangGraph のグラフ（`StateGraph`）で 5 つのワークフローパターンを組む | `generateText` / `streamText` を合成する関数。`ToolLoopAgent` は使わず、リポジトリ規則 `workflow-no-agent-loop` が `workflows/` と `patterns/` から `agents/` への依存を禁じる（例外は `patterns/role-based-cooperation.ts`） | spec Req 3.13、research ADR-8 |
+| Evaluator-Optimizer の合格をモデルの自己申告で決める | 評価器が 0〜100 点とフィードバックを返し、コードがスコアと合格基準（既定 85）を比べる。複数の評価器の統合スコアは最小値、最大反復（既定 3）でも未合格なら最高スコアの生成物を未合格と明示して返す | spec Req 3.8〜3.11、research ADR-9 #4 |
+| 軽量モデルと高性能モデルを固定の名前で振り分ける | カタログに「ティア」（`light` / `capable`）を足し、`ModelPurpose` は変えない。`live` の Anthropic では両者が同じモデルになり、結果に `distinct: false` を含める | research ADR-11 |
+| Cross-Reflection の批評側を別名のモデルとして直書きする | 批評側は `purpose: "judge"` のモデルで、生成側とカタログ ID が異なることを要求する。同じ ID になる構成（`live` の Anthropic 既定）は `invalid-request` で拒否し、`AI_MODEL_JUDGE` の設定方法を案内する | research ADR-9 #5 |
+| RAG の評価を RAGAS などの外部ライブラリで行う | RAG 専用の最小実装（recall@k、忠実性と回答関連性を軸ごとに別プロンプトで採点する Judge、`unknown` を選択肢に含める）。比較と Judge の実行は `eval-suite` の `*.local.test.ts`、gate が保証するのは評価の配管（質問セットの検証と `mock` の埋め込みでの recall@1）まで。評価基盤への統合は M4 | research ADR-10、ADR-12、spec Req 2.9、2.10、2.12 |
+| Server Component から DB を使う例（Node の長寿命プロセス前提） | Next.js のサーバービルドでは、PGlite を `serverExternalPackages`（`@electric-sql/pglite`、`@electric-sql/pglite-pgvector`）に置かないと、SSR 層で pgvector の tarball を読めない。Vitest では検出できず、実サーバー E2E が守る | research I-10 |
+

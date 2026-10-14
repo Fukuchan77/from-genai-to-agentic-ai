@@ -4,8 +4,9 @@
 版の実測値と ADR の詳細は `specs/001-agentic-ai-platform/research.md`、コンポーネントの契約は
 同 `plan.md` にある。
 
-> **状態（2026-10-12）**: M1（001）の W1〜W5 は実装済み。以下は承認済みの plan.md / research.md の
-> 決定と実測値で、実装で版などが変われば更新する。
+> **状態（2026-10-13）**: M1（001）の W1〜W5 と M2（002）の W1〜W5 は実装済みで、M2 の W6（評価・解説・統合）を
+> 仕上げている。以下は承認済みの plan.md / research.md の決定と実測値で、実装で版などが変われば更新する。
+> M2 の決定の詳細は `specs/002-rag-and-workflows/research.md`（ADR-1〜12）にある。
 
 ## Stack
 
@@ -16,7 +17,8 @@
 | Monorepo | pnpm workspaces + Turborepo | 入口は mise タスク。turbo は `typecheck` / `test` / `build` を依存順に実行（ADR-1） |
 | Web | Next.js（App Router、Turbopack、React Compiler、`typedRoutes`） | UI は shadcn/ui + Tailwind CSS v4 の基本部品と自前のチャット部品（ADR-11） |
 | AI | Vercel AI SDK v7 + Zod | プロバイダ: Anthropic（`live` 既定）/ OpenAI / Azure / Google / Ollama |
-| Data store | Postgres + pgvector（Docker Compose） | M2 から。gate では使わない。検索は pgvector + Reciprocal Rank Fusion |
+| Data store | 二層: PGlite + pgvector（インプロセス。gate と `mock` の Web アプリ）と Postgres 17 + pgvector（Docker Compose。`local` / `live` のハンズオンと `test:db`） | M2 から。型付きクエリは `drizzle-orm`。検索は pgvector（コサイン）+ 全文検索 + Reciprocal Rank Fusion（TypeScript の純関数）。ベクトルは 768 次元に統一 |
+| Rerank | Cohere（`@ai-sdk/cohere`）。`mock` は語の重なりによる疑似実装 | キー名 `COHERE_API_KEY`。キーが無い `local` / `live` では Rerank 段をスキップして記録する（ADR-7） |
 | Observability | OpenTelemetry（OTLP）+ Langfuse | 受信基盤（Compose の `trace` プロファイル）は M1 で用意し、計測とエクスポートは M4 |
 | Sandbox | E2B（キーがなければローカルコンテナ） | LLM 生成コードの実行専用（M3 から） |
 | Testing | Vitest（単体・回帰）、Playwright（3エンジン E2E）、Stryker（ミューテーション） | `@axe-core/playwright` で WCAG 2.2 AA。Stryker は TypeScript 7・Vitest 5 に未対応のため、`tsconfigFile` の回避と `@stryker-mutator/vitest-runner` へのパッチ（`patchedDependencies`）で動かす。対応版が出たら外す（plan C18） |
@@ -51,6 +53,22 @@
   しない（ADR-5）。
 - **Biome の書式はタブ・ダブルクォート・行幅 100・セミコロンあり**（ADR-3）。ドラフトの
   2スペース・シングルクォート案は採らない。
+- **データ層は二層で、SQL は 1 回だけ書く**（M2、ADR-1）— ストアは Drizzle のクエリビルダーで書き、`PgDatabase` を受け取る。
+  `*.db.test.ts`（gate）は PGlite、`*.pg.test.ts`（`mise run test:db`）は Compose の Postgres に同じストア関数を実行する。
+  手書き SQL を使うのは `rag/db/migrate.ts` だけで、`sql.raw` はリポジトリ規則 `no-sql-raw` が他で禁止する。
+- **マイグレーションは手書き SQL + 自前のマイグレーター。`drizzle-kit` は採らない**（M2、ADR-2）— `packages/ai-core/drizzle/NNNN_<name>.sql`
+  を順に適用し、`rag_migrations` に記録する。`drizzle-kit` は `npm audit` の中程度 4 件を持ち込むため入れない。`schema.ts` との乖離は
+  スキーマ照合テストが検出する。
+- **日本語の全文検索は `Intl.Segmenter` + `simple` + 助詞の除去**（M2、ADR-3）— 取り込み時に分かち書きして `search_text` に保存し、
+  生成列 `tsv` を GIN で引く。順位は `ts_rank`（BM25 ではない）。「該当なし」の判定はベクトル検索の閾値だけで行う（CL-1）。
+- **埋め込みは 768 次元に統一し、`rag_meta` にモデルを記録する**（M2、ADR-4）— 別のモデルでの取り込み・検索は
+  `reset: true` で作り直すまで `invalid-request`。閾値の既定は 0.5 だが、`local` の日本語の埋め込みでは関連と無関係の類似度が重なる（research I-8）。
+- **引用は序数の脚注 `[n]`**（M2、ADR-6）— サーバーが範囲外の序数を除去して記録し、取得した全チャンクを `cited` 付きで返す。
+  チャンク ID は内容ハッシュ（ADR-5）で、評価セットの正解 ID はそれに依存する。
+- **`structured/` の `generateValidated` が構造化出力の再生成を担う**（M2、ADR-8）— Multi-Query、Judge、ルーター、評価器、パターンが使う。
+  M1 の `summarize/retry.ts`（ストリーム用）とは統合せず、重複を許容する（W6 27.3 の判断）。
+- **`workflows/` と `patterns/` は `agents/` を import しない**（M2、憲章 原則 1）— 制御フローはコードで書く。規則 `workflow-no-agent-loop` が
+  検査し、例外は `patterns/role-based-cooperation.ts`（`createGuardedAgent` で役割ごとのエージェントを作る）だけ。
 - **PGlite は `serverExternalPackages` に置く**（M2）— Server Component のページが `getKnowledgeBase()` を実行すると、
   SSR 層のバンドルでは pgvector の tarball を読めず失敗する（Route Handler では動く）。`next.config.ts` に
   `@electric-sql/pglite` と `@electric-sql/pglite-pgvector` を列挙し、全レイヤで `node_modules` から読む。Vitest では
@@ -68,7 +86,9 @@
 - **Dependency injection**: 時刻と外部サービスはポート（`Clock`、`HttpFetcher`、
   `TranscriptSource`、`WebSearchProvider`）越しに注入する。`process.env` を直接読むのは設定読み込みの
   既定引数の1か所だけ。
-- **Testing**: TDD（RED → GREEN → REFACTOR）。テストは実装の隣に置く。命名で実行経路が決まる:
+- **Testing**: TDD（RED → GREEN → REFACTOR）。テストは実装の隣に置く。M2 の評価は `packages/eval-suite/tests/` に置き、
+  gate が保証するのは評価の配管（質問セットの検証、`mock` の埋め込みでの recall@1）まで。手法の効果の差と Judge の判定は
+  `*.local.test.ts` だけが示し、結果は `specs/002-rag-and-workflows/research.md`「M2 実測（W6）」に記録する。命名で実行経路が決まる:
   - `*.test.ts` — gate で実行（`mock`）
   - `*.local.test.ts` — 比較・品質評価。`local` のときだけ実行し、なければ理由付きスキップ
   - `*.db.test.ts` — インプロセス DB で gate に含める
@@ -78,7 +98,7 @@
 - **Language**: spec・解説・UI 文言は日本語。コード、識別子、コメント、コミット、PR は英語。
 - **Commands**: `mise run <task>` → `pnpm exec <cmd>` の順。
 - **Gate command**: `mise run gate`。`lint`（Biome の非空走査を含む）→ `check:model-ids` →
-  `check:repo-rules`（9規則）→ `typecheck`（tsc の対象ファイル数を検査）→ `test`（`mock`）→
+  `check:repo-rules`（11規則。M2 で `workflow-no-agent-loop` と `no-sql-raw` を追加）→ `typecheck`（tsc の対象ファイル数を検査）→ `test`（`mock`）→
   `docs:check`。Docker・API キー・ネットワーク不要。後続 milestone で規則や段を足すときも「0 件なら失敗」を保つ。
 - **CI**: `gate`、`secret-scan`、`audit`、`mutation`、`client-bundle`、`e2e`（3エンジン）の各ジョブを
   `ci-status` が集約する。E2E は `mise run test:e2e`、SSE fixture は Route Handler から
