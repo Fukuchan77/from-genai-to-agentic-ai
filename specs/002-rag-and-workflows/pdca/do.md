@@ -322,3 +322,9 @@
 - `mise run gate` → exit 0: `//:test executed=352`, `@platform/ai-core executed=1732 passed=1732 skipped=4`, `web executed=733 passed=733`, `eval-suite executed=7 passed=7 skipped=8` (`rag-eval-set.db.test.ts` 4 tests ran; `rag-retrieval.local.test.ts` 3 and `rag-judge.local.test.ts` 4 skipped with the reason), `Biome: 398 files`, `workflow-no-agent-loop: scanned 34 FILES`, `Docs: 8 module documents, 110 test references verified`.
 - Auto-fix (mechanical): stale eval-suite counts (executed 8 → 7, `rag-eval-set` 5 → 4 tests) in do.md and the 24.1 note.
 - Still open for a human (unchanged): 28.2 (PR, push, CI), 28.3 tags, Req 4.7 `final` gap, `test:db`, Cohere, a full green retrieval run.
+
+## T28.2 / T28.3 (2026-10-16)
+
+- 28.2: CI confirmed from GitHub (`gh pr checks 39`, `gh run` on main): `ci-status` success for #39 and for main HEAD `0ba762e`. #40/#41 were red on main until #42 (E2E fill fix).
+- 28.3: tags `module/2-1`〜`2-4` (annotated, local) on `0ba762e`. Verify: `TURBO_FORCE=true mise run gate` → exit 0 (352 / 1732 skipped 4 / 733 / 7 skipped 8; Docs 8 modules, 110 refs). No new tests or code, so PROVE n/a; no VDD trigger (only tasks.md/do.md touched).
+- Human steps left: push the tags; `test:db`; Cohere; `/agent` token comparison; Req 4.7 `final` gap.

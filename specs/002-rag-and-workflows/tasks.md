@@ -282,13 +282,13 @@ _Traces:_ REQ-001, REQ-004, C17, C18
   _Requirements:_ 1.12
   _Traces:_ REQ-001, C17
   _Verify:_ 上記のコマンドがすべて成功する。失敗が M2 以前から base ブランチにあるものなら、新しいものと分けて報告する 波の敵対的レビュー（憲章 原則 9。新規コンテキストで `sdd-reviewer`）を行い、記録 `.sdd/reviews/002-rag-and-workflows-impl-w6-review-YYYY-MM-DD.md` が存在し、指摘への対応が追記されていることを確かめる（波の移行条件 3）
-- [ ] 28.2 PR の `ci-status` が成功することを確かめる（PR の作成と push は人が行う。CI のジョブ構成は変えない）。成功したら、波の移行手順（`tasks.md`）に従って進捗を更新する（移行のコミットは別に行う）
+- [x] 28.2 PR の `ci-status` が成功することを確かめる（PR の作成と push は人が行う。CI のジョブ構成は変えない）。成功したら、波の移行手順（`tasks.md`）に従って進捗を更新する（移行のコミットは別に行う）
   _Boundary:_ `specs/002-rag-and-workflows/traceability.md`
   _Depends:_ 28.1
   _Requirements:_ 1.12
   _Traces:_ REQ-001, C17
   _Verify:_ CI の `gate`、`secret-scan`、`audit`、`mutation`、`e2e`、`client-bundle` が成功し、`ci-status` が成功する
-- [ ] 28.3 完成タグ `module/2-1`〜`module/2-4`: M2 の全タスクが完了した統合コミットに、注釈付きタグ 4 つをローカルで付ける（メッセージに、含むもの — 対応するモジュールの要件 Req 1〜4 — と、含まないもの — 実 Postgres・Cohere 実キーの人による確認が未了ならその旨 — を書く）。push は人が行う
+- [x] 28.3 完成タグ `module/2-1`〜`module/2-4`: M2 の全タスクが完了した統合コミットに、注釈付きタグ 4 つをローカルで付ける（メッセージに、含むもの — 対応するモジュールの要件 Req 1〜4 — と、含まないもの — 実 Postgres・Cohere 実キーの人による確認が未了ならその旨 — を書く）。push は人が行う
   _Boundary:_ git タグのみ（ファイルの変更なし）
   _Depends:_ 28.1
   _Requirements:_ 4.8
@@ -300,3 +300,5 @@ _Traces:_ REQ-001, REQ-004, C17, C18
 - 28.1 (2026-10-14, after the review fixes): `TURBO_FORCE=true mise run gate` → exit 0 (`//:test executed=352`, `ai-core executed=1732 skipped=4`, `web executed=733`, `eval-suite executed=7 skipped=8`, `Docs: 8 module documents, 110 test references verified`); `gate:repeat` → 10/10 identical, 8m15s. `test:mutation`, `test:coverage`, `test:e2e`, `check:client-bundle`, `secret-scan`, `audit` were run on 2026-10-13 (mutation 87.03, coverage 98.39%, e2e 363 passed skipped=0); since then only eval-suite tests, docs, comments and AGENTS.md changed, so they were not re-run. `test:db` not run (no Docker): human list.
 - The wave review (`.sdd/reviews/002-rag-and-workflows-impl-w6-review-2026-10-13.md`) was `REQUEST_CHANGES`; every finding has a recorded response. Renaming a test cited by a doc is caught by `docs:check` (it caught one here).
 - Open for a human: 28.2 (PR/push/CI), 28.3 tags (to be placed on the integration commit after `/sdd-ship`), Req 4.7 `final` gap, `/agent` token comparison, full green retrieval run, `test:db`, Cohere.
+- 28.2 (2026-10-16): PR #39 (`ci-status` and all 8 jobs success), and on `main` HEAD `0ba762e` (PR #42) all jobs incl. `ci-status` success. PRs #40/#41 ran red on main (E2E fill/hydration fixes) before #42 turned it green; the tags therefore sit on `0ba762e`, not on the #39 merge.
+- 28.3 (2026-10-16): annotated tags `module/2-1`〜`2-4` placed locally on `0ba762e` (tree identical to `47bbfce`). `TURBO_FORCE=true mise run gate` on that tree → exit 0 (`//:test` 352, `ai-core` 1732 skipped=4, `web` 733, `eval-suite` 7 skipped=8, `Docs: 8 module documents, 110 test references verified`). Not pushed — push is a human step (`git push origin module/2-1 module/2-2 module/2-3 module/2-4`).
