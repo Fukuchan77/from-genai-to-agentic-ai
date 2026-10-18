@@ -15,6 +15,13 @@ export {
 	type RerankSdkCall,
 	type RerankSdkRequest,
 } from "./rerank";
+export type {
+	SandboxExecutionError,
+	SandboxKind,
+	SandboxProvider,
+	SandboxRunResult,
+	SandboxSession,
+} from "./sandbox";
 export {
 	createYoutubeiTranscriptSource,
 	type TranscriptFailureReason,

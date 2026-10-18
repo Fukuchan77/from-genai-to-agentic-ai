@@ -58,6 +58,12 @@ depends = ["services:up:db"]
 env = { AI_TEST_RUN_MODE = "mock", AI_TEST_SUITE = "pg" }
 run = "pnpm exec turbo run test"
 
+[tasks."test:container"]
+description = "Run Docker-backed sandbox tests (skipped with a reason when Docker is unreachable)"
+env = { AI_TEST_RUN_MODE = "mock", AI_TEST_SUITE = "container" }
+# Only @platform/ai-core has container tests, so the other workspaces' configs need no such suite.
+run = "pnpm --filter @platform/ai-core run test"
+
 [tasks."e2e:fixtures"]
 description = "Regenerate the E2E SSE fixtures from the Route Handlers in mock mode"
 env = { SSE_FIXTURES = "write", AI_TEST_RUN_MODE = "mock", AI_TEST_SUITE = "gate" }
@@ -175,10 +181,10 @@ run = "node scripts/check-model-ids.mjs"
 
 [tasks."check:client-bundle"]
 description = "Build the web app with sentinel secrets and check the client bundle for them"
-env = { AI_RUN_MODE = "mock", NODE_ENV = "production", ANTHROPIC_API_KEY = "changeme-bundle-sentinel-anthropic", TAVILY_API_KEY = "changeme-bundle-sentinel-tavily", COHERE_API_KEY = "changeme-bundle-sentinel-cohere" }
+env = { AI_RUN_MODE = "mock", NODE_ENV = "production", ANTHROPIC_API_KEY = "changeme-bundle-sentinel-anthropic", TAVILY_API_KEY = "changeme-bundle-sentinel-tavily", COHERE_API_KEY = "changeme-bundle-sentinel-cohere", E2B_API_KEY = "changeme-bundle-sentinel-e2b", GITHUB_TOKEN = "changeme-bundle-sentinel-github" }
 run = """
 pnpm --filter web exec next build
-node scripts/check-client-bundle.mjs --dir apps/web/.next/static --sentinel changeme-bundle-sentinel-anthropic --sentinel changeme-bundle-sentinel-tavily --sentinel changeme-bundle-sentinel-cohere
+node scripts/check-client-bundle.mjs --dir apps/web/.next/static --sentinel changeme-bundle-sentinel-anthropic --sentinel changeme-bundle-sentinel-tavily --sentinel changeme-bundle-sentinel-cohere --sentinel changeme-bundle-sentinel-e2b --sentinel changeme-bundle-sentinel-github
 """
 
 [tasks."check:repo-rules"]

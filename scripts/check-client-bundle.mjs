@@ -5,7 +5,8 @@ import { runIfMain } from "./lib/cli.mjs";
 
 const DEFAULT_DIRECTORY = "apps/web/.next/static";
 const DEFAULT_SCHEMA = "packages/ai-core/src/config/env-schema.ts";
-const SECRET_NAME = /(?:API_KEY|SECRET|PASSWORD|SALT|AUTH|ENCRYPTION_KEY)/u;
+// `TOKEN` is a whole word (`GITHUB_TOKEN`): `AGENT_MAX_TOTAL_TOKENS` counts tokens, not a credential.
+const SECRET_NAME = /(?:API_KEY|SECRET|PASSWORD|SALT|AUTH|ENCRYPTION_KEY|(?:^|_)TOKEN(?:$|_))/u;
 
 /** Environment variable names in the config schema that hold secrets. */
 export function secretEnvNames(schemaSource) {

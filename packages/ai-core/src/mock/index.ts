@@ -1,3 +1,12 @@
+import type { ScenarioDefinition } from "./scenario";
+
+/**
+ * Every M3 scenario, in one list for the `mock` gateway. Each wave adds its module's scenarios
+ * here (3-1 in W2 … 3-6 in W6) and updates the expected counts in `m3-scenarios.test.ts`, whose
+ * detectors keep the list unambiguous. Empty until the first wave that needs a model response.
+ */
+export const M3_SCENARIOS: readonly ScenarioDefinition[] = Object.freeze([]);
+
 export { M1_2_SCENARIOS } from "../../fixtures/scenarios/m1-2";
 export { M1_3_SCENARIOS } from "../../fixtures/scenarios/m1-3";
 export {

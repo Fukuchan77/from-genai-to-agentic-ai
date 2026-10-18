@@ -20,6 +20,8 @@ export const RULE_NAMES = [
 	"no-sensitive-logging",
 	"workflow-no-agent-loop",
 	"no-sql-raw",
+	"mcp-import-scope",
+	"sandbox-import-scope",
 ];
 
 export class RepoRuleError extends Error {
@@ -621,6 +623,29 @@ function miseSetupCommands(source) {
 }
 
 const WORKFLOW_DIRECTORIES = ["packages/ai-core/src/workflows", "packages/ai-core/src/patterns"];
+/**
+ * M3 files whose control flow must be plain code (003 ADR-9): the planner, the re-planner and the
+ * moderator decide with structured output, not with an agent loop. The other files of those areas
+ * may use `createGuardedAgent`, so only these are scanned, and only the ones that exist.
+ */
+const WORKFLOW_FILES = [
+	"packages/ai-core/src/helpdesk/planner.ts",
+	"packages/ai-core/src/helpdesk/replanner.ts",
+	"packages/ai-core/src/helpdesk/helpdesk.ts",
+	"packages/ai-core/src/requirements/interview.ts",
+	"packages/ai-core/src/requirements/personas.ts",
+	"packages/ai-core/src/marketing/council.ts",
+	"packages/ai-core/src/marketing/moderator.ts",
+	"packages/ai-core/src/marketing/profile.ts",
+	"packages/ai-core/src/marketing/recommend.ts",
+];
+const MCP_PACKAGE = "@ai-sdk/mcp";
+const MCP_ALLOWED_DIRECTORY = "packages/ai-core/src/mcp/";
+const SCOPED_IMPORT_DIRECTORIES = ["apps", "packages", "scripts", "tooling"];
+const SCOPED_IMPORT_EXTENSIONS = new Set([".ts", ".tsx", ".mts", ".cts", ".js", ".mjs", ".cjs"]);
+const E2B_PACKAGE = "@e2b/code-interpreter";
+const E2B_ALLOWED_FILE = "packages/ai-core/src/sandbox/e2b.ts";
+const DOCKER_ALLOWED_DIRECTORY = "packages/ai-core/src/sandbox/docker/";
 const AGENT_LOOP_ALLOWED_FILES = new Set([
 	"packages/ai-core/src/patterns/role-based-cooperation.ts",
 ]);
@@ -635,6 +660,46 @@ function importsAgentsArea(source) {
 		return true;
 	}
 	return source.startsWith(".") && source.split("/").includes("agents");
+}
+
+/**
+ * Module specifiers a file loads, including `require`-style calls through an alias of
+ * `createRequire(...)`. `dynamicUnknown` lists `import(x)` / `require(x)` calls whose argument is not a
+ * string literal (a template literal, an identifier): those can load anything, so a scoped package
+ * cannot be ruled out.
+ */
+function loadedModules(tokens) {
+	const sources = moduleImports(tokens).map((imported) => ({
+		source: imported.source,
+		line: tokens[imported.start].line,
+	}));
+	const requireNames = new Set();
+	for (let index = 3; index < tokens.length; index += 1) {
+		if (
+			tokens[index].value === "createRequire" &&
+			tokens[index + 1]?.value === "(" &&
+			tokens[index - 1]?.value === "=" &&
+			["const", "let", "var"].includes(tokens[index - 3]?.value)
+		) {
+			requireNames.add(tokens[index - 2].value);
+		}
+	}
+	const dynamicUnknown = [];
+	for (let index = 0; index < tokens.length - 2; index += 1) {
+		const token = tokens[index];
+		if (token.type !== "identifier") continue;
+		if (tokens[index - 1]?.value === "." || tokens[index - 1]?.value === "?.") continue;
+		const isLoader =
+			token.value === "import" || token.value === "require" || requireNames.has(token.value);
+		if (!isLoader || tokens[index + 1]?.value !== "(") continue;
+		const argument = tokens[index + 2];
+		if (argument.type === "string") {
+			if (requireNames.has(token.value)) sources.push({ source: argument.value, line: token.line });
+		} else if (argument.value !== ")") {
+			dynamicUnknown.push({ line: token.line });
+		}
+	}
+	return { sources, dynamicUnknown };
 }
 
 /** Members of a `sql` template tag that splice text into a query without parameters. */
@@ -1089,9 +1154,14 @@ const runners = {
 	},
 
 	async "workflow-no-agent-loop"(root) {
-		const files = (await collectFiles(root, WORKFLOW_DIRECTORIES, new Set([".ts"]))).filter(
-			(file) => WORKFLOW_DIRECTORIES.some((directory) => file.startsWith(`${directory}/`)),
-		);
+		const directoryFiles = (
+			await collectFiles(root, WORKFLOW_DIRECTORIES, new Set([".ts"]))
+		).filter((file) => WORKFLOW_DIRECTORIES.some((directory) => file.startsWith(`${directory}/`)));
+		const listedFiles = [];
+		for (const file of WORKFLOW_FILES) {
+			if (await fileExists(path.join(root, file))) listedFiles.push(file);
+		}
+		const files = [...directoryFiles, ...listedFiles];
 		const violations = [];
 		const detail = "workflows and patterns must not use the agent loop";
 		for (const file of await readCodeFiles(root, files)) {
@@ -1115,6 +1185,92 @@ const runners = {
 			}
 			for (const line of [...lines].sort((left, right) => left - right)) {
 				violations.push(violation(file.relativePath, line, detail));
+			}
+		}
+		return { fileCount: files.length, violations };
+	},
+
+	async "mcp-import-scope"(root) {
+		const { files, code } = await codeFiles(
+			root,
+			SCOPED_IMPORT_DIRECTORIES,
+			SCOPED_IMPORT_EXTENSIONS,
+		);
+		const violations = [];
+		for (const file of code) {
+			if (file.relativePath.startsWith(MCP_ALLOWED_DIRECTORY)) continue;
+			const { sources, dynamicUnknown } = loadedModules(file.tokens);
+			for (const { source, line } of sources) {
+				if (source === MCP_PACKAGE || source.startsWith(`${MCP_PACKAGE}/`)) {
+					violations.push(
+						violation(
+							file.relativePath,
+							line,
+							`${MCP_PACKAGE} may be imported only inside ${MCP_ALLOWED_DIRECTORY}`,
+						),
+					);
+				}
+			}
+			for (const { line } of dynamicUnknown) {
+				violations.push(
+					violation(
+						file.relativePath,
+						line,
+						"dynamic import/require needs a string literal specifier",
+					),
+				);
+			}
+		}
+		return { fileCount: files.length, violations };
+	},
+
+	async "sandbox-import-scope"(root) {
+		const { files, code } = await codeFiles(
+			root,
+			SCOPED_IMPORT_DIRECTORIES,
+			SCOPED_IMPORT_EXTENSIONS,
+		);
+		const violations = [];
+		for (const file of code) {
+			if (file.relativePath !== E2B_ALLOWED_FILE) {
+				const { sources, dynamicUnknown } = loadedModules(file.tokens);
+				for (const { line } of dynamicUnknown) {
+					violations.push(
+						violation(
+							file.relativePath,
+							line,
+							"dynamic import/require needs a string literal specifier",
+						),
+					);
+				}
+				for (const { source, line } of sources) {
+					if (source === E2B_PACKAGE || source.startsWith(`${E2B_PACKAGE}/`)) {
+						violations.push(
+							violation(
+								file.relativePath,
+								line,
+								`${E2B_PACKAGE} may be imported only in ${E2B_ALLOWED_FILE}`,
+							),
+						);
+					}
+				}
+			}
+			if (file.relativePath.startsWith(DOCKER_ALLOWED_DIRECTORY)) continue;
+			// Approximation (plan C16): `node:http` reaches the Docker Engine through a unix socket, so
+			// the `socketPath` option and the socket file names mark a Docker connection. A path built
+			// at run time or a raw `node:net` connection is not detected.
+			for (const token of file.tokens) {
+				const isSocketOption = token.type === "identifier" && token.value === "socketPath";
+				const isSocketFile = token.type === "string" && token.value.includes("docker.sock");
+				if (isSocketOption || isSocketFile) {
+					violations.push(
+						violation(
+							file.relativePath,
+							token.line,
+							`Docker socket access may appear only inside ${DOCKER_ALLOWED_DIRECTORY}`,
+						),
+					);
+				}
 			}
 		}
 		return { fileCount: files.length, violations };
