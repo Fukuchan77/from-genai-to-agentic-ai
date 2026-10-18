@@ -7,6 +7,7 @@ import {
 	HTTP_STATUS_BY_CODE,
 	parseStreamErrorText,
 	toErrorResponse,
+	toNotFoundResponse,
 	toPublicError,
 	toStreamErrorText,
 	UNEXPECTED_ERROR_MESSAGE,
@@ -257,5 +258,17 @@ describe("invalid-request reasons (review F-3)", () => {
 		);
 
 		expect(error.details).toBeUndefined();
+	});
+});
+
+describe("toNotFoundResponse (003: a missing resource is 404 with the invalid-request code)", () => {
+	it("answers 404 with the shared JSON error shape and the given Japanese message", async () => {
+		const response = toNotFoundResponse("チケット T-0404 は見つかりません。");
+
+		expect(response.status).toBe(404);
+		expect(response.headers.get("content-type")).toContain("application/json");
+		expect(await bodyOf(response)).toEqual({
+			error: { code: "invalid-request", message: "チケット T-0404 は見つかりません。" },
+		});
 	});
 });

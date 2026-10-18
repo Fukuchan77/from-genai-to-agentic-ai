@@ -137,6 +137,18 @@ export function toErrorResponse(error: unknown): Response {
 }
 
 /**
+ * A missing resource: 404 with the shared JSON error shape. The code stays `invalid-request` (the
+ * closed vocabulary has no `not-found`), so a client reads it like any other rejected request. The
+ * message must not echo the request, only the resource's own name.
+ */
+export function toNotFoundResponse(message: string): Response {
+	return new Response(JSON.stringify({ error: { code: "invalid-request", message } }), {
+		status: 404,
+		headers: { "content-type": "application/json; charset=utf-8" },
+	});
+}
+
+/**
  * The `onError` text for a stream that fails after it has started. The AI SDK sends one string,
  * so `code` and `message` travel as JSON; `parseStreamErrorText` reads it back in the UI.
  */

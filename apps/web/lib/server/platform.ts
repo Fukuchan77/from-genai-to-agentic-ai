@@ -11,6 +11,7 @@ import { createBrotliDecompress, createUnzip } from "node:zlib";
 import type { ToolRuntime } from "@platform/ai-core/aci";
 import { type EnvSource, loadPlatformConfig, type PlatformConfig } from "@platform/ai-core/config";
 import { PlatformError } from "@platform/ai-core/errors";
+import { createTicketStore, type TicketStore } from "@platform/ai-core/helpdesk";
 import {
 	connectMcpServers,
 	filesServerConfig,
@@ -632,4 +633,18 @@ export function setMcpRegistryForTesting(registry: McpRegistry | undefined): voi
 	const holder = globalThis as McpRegistryHolder;
 	if (registry) holder[MCP_REGISTRY_KEY] = Promise.resolve(registry);
 	else delete holder[MCP_REGISTRY_KEY];
+}
+
+// --- Help-desk tickets (plan C13, Req 2.6, 2.7) ---
+
+/**
+ * The ticket store, on the knowledge base's database (one PGlite in `mock`, the Compose Postgres
+ * elsewhere) and the platform clock. An unreachable Postgres is `provider-unavailable` with the
+ * start-up guidance, exactly as for the knowledge base; the store itself holds no state.
+ */
+export async function getHelpdeskStore(
+	factories: KnowledgeBaseFactories = DEFAULT_KNOWLEDGE_BASE_FACTORIES,
+): Promise<TicketStore> {
+	const [platform, handle] = await Promise.all([getPlatform(), getKnowledgeBase(factories)]);
+	return createTicketStore(handle.db, { clock: platform.clock });
 }

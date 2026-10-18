@@ -15,6 +15,7 @@ import {
 	createKnowledgeBase,
 	createMcpRegistry,
 	createPlatform,
+	getHelpdeskStore,
 	getKnowledgeBase,
 	getMcpRegistry,
 	getPlatform,
@@ -854,6 +855,58 @@ describe("createMcpRegistry and getMcpRegistry", () => {
 			expect(attempts).toBe(2);
 		} finally {
 			setMcpRegistryForTesting(undefined);
+			setPlatformForTesting(undefined);
+		}
+	});
+});
+
+describe("getHelpdeskStore (plan C13, Req 2.6, 2.7)", () => {
+	async function withPlatform(env: Record<string, string>) {
+		setPlatformForTesting(
+			await createPlatform({ env, clock: createFakeClock(Date.parse("2026-10-18T00:00:00.000Z")) }),
+		);
+		setKnowledgeBaseForTesting(undefined);
+	}
+
+	it("stores tickets in the shared knowledge-base database with the platform clock", async () => {
+		await withPlatform(MOCK_ENV);
+		try {
+			const store = await getHelpdeskStore();
+
+			const ticket = await store.create({ inquiry: "VPN に接続できません" });
+			const handle = await getKnowledgeBase();
+
+			expect(ticket).toMatchObject({ id: "T-0001", status: "open" });
+			expect(ticket.createdAt).toEqual(new Date("2026-10-18T00:00:00.000Z"));
+			expect(await (await getHelpdeskStore()).get("T-0001")).toEqual(ticket);
+			expect(handle.kind).toBe("pglite");
+			await handle.close();
+		} finally {
+			setKnowledgeBaseForTesting(undefined);
+			setPlatformForTesting(undefined);
+		}
+		// Starting PGlite takes seconds when the gate runs every workspace at once.
+	}, 30_000);
+
+	it("reports an unreachable database as provider-unavailable with the start-up guidance, and tries again next time", async () => {
+		await withPlatform(LOCAL_ENV);
+		let attempts = 0;
+		const { factories } = fakeFactories({
+			postgres: async () => {
+				attempts += 1;
+				throw new KnowledgeBaseUnavailableError();
+			},
+		});
+		try {
+			const failure = await getHelpdeskStore(factories).catch((error: unknown) => error);
+
+			expect(failure).toBeInstanceOf(KnowledgeBaseUnavailableError);
+			expect(failure).toMatchObject({ code: "provider-unavailable" });
+			expect((failure as Error).message).toMatch(/services:up:db/);
+			await getHelpdeskStore(factories).catch(() => undefined);
+			expect(attempts).toBe(2);
+		} finally {
+			setKnowledgeBaseForTesting(undefined);
 			setPlatformForTesting(undefined);
 		}
 	});
