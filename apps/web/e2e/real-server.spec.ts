@@ -4,6 +4,7 @@ import { expect, type Page, test } from "@playwright/test";
 // The mock embedding finds a chunk only for its exact text, so the sample question is the corpus
 // text itself; importing it keeps the spec in step with the corpus.
 import { M2_1_SAMPLE_QUESTIONS } from "../../../packages/ai-core/fixtures/scenarios/m2-1";
+import { M3_1_SAMPLE_TASKS } from "../../../packages/ai-core/fixtures/scenarios/m3-1";
 // A pure module (no vitest import), unlike the `@platform/ai-core/testing` index.
 import { buildTextPdf } from "../../../packages/ai-core/src/testing/pdf-builder";
 import { fillUntilEnabled } from "./support/form";
@@ -220,4 +221,106 @@ test("workflows: one run through the real route", async ({ page }) => {
 	await expect(result.getByRole("list", { name: "ステップ" })).toBeVisible();
 	await expect(result.getByRole("region", { name: "最終出力" })).toBeVisible();
 	await expect(result.getByRole("region", { name: "使用量" })).toContainText("モデル呼び出し 2 回");
+});
+
+// Module 3-1 (plan C13, risk R-1): `@ai-sdk/mcp` and `@modelcontextprotocol/server` are bundled and
+// the platform's own file server starts as a child process from the repository's source (Node's type
+// stripping). Vitest never goes through the bundler, so only this spec can catch either failing.
+
+interface McpServerStatusBody {
+	id: string;
+	state: string;
+	reason?: string;
+	tools: { name: string; risk: string; registered: boolean; disabledReason?: string }[];
+}
+
+test("mcp: the real route starts the file server as a child process and lists its tools", async ({
+	request,
+}) => {
+	const response = await request.get("/api/mcp/servers");
+
+	expect(response.status()).toBe(200);
+	const body = (await response.json()) as {
+		servers: McpServerStatusBody[];
+		limits: { maxTools: number };
+		think: { enabled: boolean };
+	};
+	const files = body.servers.find((server) => server.id === "files");
+	expect(files?.state, files?.reason).toBe("connected");
+	expect(
+		files?.tools
+			.filter((tool) => tool.registered)
+			.map((tool) => tool.name)
+			.sort(),
+	).toEqual(["findAndReadFiles", "listFiles", "readFile", "searchFiles"]);
+	// The write and delete tools are listed with the reason they are not loaded (Req 1.17).
+	expect(files?.tools.find((tool) => tool.name === "writeFile")).toMatchObject({
+		risk: "destructive",
+		registered: false,
+	});
+	// `mock` never connects to GitHub, token or not (Req 1.9).
+	expect(body.servers.map((server) => server.id)).toEqual(["files"]);
+	expect(body.limits.maxTools).toBe(20);
+});
+
+test("mcp: a chat run lists the allowed root and reads a file through the child process", async ({
+	request,
+}) => {
+	const response = await request.post("/api/mcp/chat", {
+		data: {
+			id: "mcp-e2e",
+			messages: [
+				{
+					id: "u1",
+					role: "user",
+					parts: [{ type: "text", text: M3_1_SAMPLE_TASKS.listAndRead }],
+				},
+			],
+		},
+	});
+
+	expect(response.status()).toBe(200);
+	const text = await response.text();
+	// The first entry of `workspace/` is its tracked README.
+	expect(text).toContain("README.md");
+	expect(text).toContain('"stopReason":"completed"');
+	expect(text).toContain('"toolsCalled":["listFiles","readFile"]');
+});
+
+test("mcp: a path outside the allowed root ends the run with the fatal error and the root path", async ({
+	request,
+}) => {
+	const response = await request.post("/api/mcp/chat", {
+		data: {
+			id: "mcp-e2e-outside",
+			messages: [
+				{
+					id: "u1",
+					role: "user",
+					parts: [{ type: "text", text: M3_1_SAMPLE_TASKS.outsideRoot }],
+				},
+			],
+		},
+	});
+
+	expect(response.status()).toBe(200);
+	const text = await response.text();
+	expect(text).toContain('"stopReason":"error"');
+	expect(text).toContain('"code":"not-allowed"');
+	expect(text).toContain("許可されたルート");
+});
+
+test("mcp: the comparison runs both ways through the real route", async ({ request }) => {
+	const response = await request.post("/api/mcp/compare", { data: { task: "list-and-read" } });
+
+	expect(response.status()).toBe(200);
+	const body = (await response.json()) as {
+		highLevel: { steps: number; tokens: number };
+		lowLevel: { steps: number; tokens: number };
+		comparison: { steps: number; ratio?: number };
+	};
+	expect(body.highLevel.steps).toBe(2);
+	expect(body.lowLevel.steps).toBe(3);
+	expect(body.comparison.steps).toBe(1);
+	expect(body.comparison.ratio).toBeLessThan(1);
 });

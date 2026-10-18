@@ -12,6 +12,13 @@ import type { ToolRuntime } from "@platform/ai-core/aci";
 import { type EnvSource, loadPlatformConfig, type PlatformConfig } from "@platform/ai-core/config";
 import { PlatformError } from "@platform/ai-core/errors";
 import {
+	connectMcpServers,
+	filesServerConfig,
+	githubServerConfig,
+	type McpRegistry,
+	type McpServerConfig,
+} from "@platform/ai-core/mcp";
+import {
 	CASSETTE_FIXTURE_DIRECTORY,
 	createCassetteStore,
 	createFixtureHttpFetcher,
@@ -541,4 +548,88 @@ export async function resolveKnowledgeEmbedding(
 		}
 		throw error;
 	}
+}
+
+// --- MCP servers (plan C13, Req 1.7-1.10) ---
+
+// The repository root, derived from the fixtures directory (`packages/ai-core/fixtures`) like the
+// knowledge roots: `next dev` runs in `apps/web`, other tools run at the repository root.
+const REPOSITORY_ROOT = path.resolve(DEFAULT_FIXTURE_DIRECTORY, "..", "..", "..");
+
+/** The entry the platform's own file server is started from (CL-3). */
+const FILES_SERVER_FILE = path.resolve(DEFAULT_FIXTURE_DIRECTORY, "..", "src", "files", "stdio.ts");
+
+/**
+ * The servers this process connects to. The file server needs no key and runs in every mode. GitHub
+ * is offered only outside `mock` and only with `GITHUB_TOKEN`, so the gate never reaches the network
+ * and a learner without a token sees no GitHub server (Req 1.9). A relative `MCP_FS_ROOT` is
+ * resolved against the repository root.
+ */
+export function mcpServerConfigs(
+	platform: Pick<Platform, "mode" | "config">,
+): readonly McpServerConfig[] {
+	const configs: McpServerConfig[] = [
+		filesServerConfig({
+			root: path.resolve(REPOSITORY_ROOT, platform.config.mcpFsRoot),
+			serverFile: FILES_SERVER_FILE,
+		}),
+	];
+	if (platform.mode !== "mock") {
+		const github = githubServerConfig({ GITHUB_TOKEN: platform.config.credentials.github });
+		if (!("reason" in github)) configs.push(github);
+	}
+	return configs;
+}
+
+export interface McpRegistryDeps {
+	readonly connect: typeof connectMcpServers;
+}
+
+const DEFAULT_MCP_DEPS: McpRegistryDeps = { connect: connectMcpServers };
+
+/**
+ * Connects to every configured server. A server that cannot be reached is recorded in the
+ * registry's status, not thrown; only a failure to prepare the connections is an error, and its
+ * cause (which may hold a header or a path) stays out of the message.
+ */
+export async function createMcpRegistry(
+	platform: Pick<Platform, "mode" | "config" | "clock">,
+	deps: McpRegistryDeps = DEFAULT_MCP_DEPS,
+): Promise<McpRegistry> {
+	try {
+		return await deps.connect(mcpServerConfigs(platform), { clock: platform.clock });
+	} catch {
+		throw new PlatformError(
+			"provider-unavailable",
+			"MCP サーバーへの接続を準備できませんでした。サーバーの設定を確認してください。",
+		);
+	}
+}
+
+const MCP_REGISTRY_KEY = Symbol.for("from-genai-to-agentic-ai.mcp-registry");
+
+type McpRegistryHolder = { [MCP_REGISTRY_KEY]?: Promise<McpRegistry> };
+
+/**
+ * The shared registry, created on first use and kept on `globalThis` (a Route Handler can be a
+ * separate bundle and dev reloads modules, so a module variable would start a second set of child
+ * processes). A failed creation is not cached.
+ */
+export function getMcpRegistry(deps: McpRegistryDeps = DEFAULT_MCP_DEPS): Promise<McpRegistry> {
+	const holder = globalThis as McpRegistryHolder;
+	const existing = holder[MCP_REGISTRY_KEY];
+	if (existing) return existing;
+	const created = getPlatform().then((platform) => createMcpRegistry(platform, deps));
+	holder[MCP_REGISTRY_KEY] = created;
+	created.catch(() => {
+		if (holder[MCP_REGISTRY_KEY] === created) delete holder[MCP_REGISTRY_KEY];
+	});
+	return created;
+}
+
+/** Test seam: installs `registry` as the shared one, or clears it with `undefined`. */
+export function setMcpRegistryForTesting(registry: McpRegistry | undefined): void {
+	const holder = globalThis as McpRegistryHolder;
+	if (registry) holder[MCP_REGISTRY_KEY] = Promise.resolve(registry);
+	else delete holder[MCP_REGISTRY_KEY];
 }

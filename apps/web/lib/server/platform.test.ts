@@ -3,6 +3,7 @@ import { access } from "node:fs/promises";
 import path from "node:path";
 import { Readable } from "node:stream";
 import { gzipSync } from "node:zlib";
+import type { McpRegistry, McpServerConfig } from "@platform/ai-core/mcp";
 import { defaultRerankModel, ModelSelectionError } from "@platform/ai-core/models";
 import type { HttpFetcher, TranscriptSource, WebSearchProvider } from "@platform/ai-core/ports";
 import { createFakeClock, createNodeHttpFetcher } from "@platform/ai-core/ports";
@@ -12,13 +13,17 @@ import { describe, expect, it, vi } from "vitest";
 import {
 	createGuardedFetch,
 	createKnowledgeBase,
+	createMcpRegistry,
 	createPlatform,
 	getKnowledgeBase,
+	getMcpRegistry,
 	getPlatform,
 	type HttpRequestFunction,
 	type KnowledgeBaseFactories,
+	mcpServerConfigs,
 	resolveKnowledgeEmbedding,
 	setKnowledgeBaseForTesting,
+	setMcpRegistryForTesting,
 	setPlatformForTesting,
 } from "./platform";
 
@@ -730,5 +735,126 @@ describe("resolveKnowledgeEmbedding", () => {
 		const gateway = { resolveEmbedding: async () => Promise.reject(failure) };
 
 		await expect(resolveKnowledgeEmbedding({ gateway: gateway as never })).rejects.toBe(failure);
+	});
+});
+
+describe("mcpServerConfigs (plan C13, Req 1.7, 1.9)", () => {
+	const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..", "..", "..");
+	const TOKEN = "ghp_test-token-for-platform";
+
+	async function configsFor(env: Record<string, string>): Promise<readonly McpServerConfig[]> {
+		return mcpServerConfigs(await createPlatform({ env }));
+	}
+
+	it("offers only the platform's own file server in mock mode, even when a GitHub token is set", async () => {
+		const configs = await configsFor({ ...MOCK_ENV, GITHUB_TOKEN: TOKEN });
+
+		expect(configs.map((config) => config.id)).toEqual(["files"]);
+	});
+
+	it("adds the GitHub server outside mock mode only when GITHUB_TOKEN is set", async () => {
+		const without = await configsFor(LOCAL_ENV);
+		const withToken = await configsFor({ ...LOCAL_ENV, GITHUB_TOKEN: TOKEN });
+
+		expect(without.map((config) => config.id)).toEqual(["files"]);
+		expect(withToken.map((config) => config.id)).toEqual(["files", "github"]);
+	});
+
+	it("starts the file server from the repository's own source with the default allowed root", async () => {
+		const [files] = await configsFor(MOCK_ENV);
+
+		if (files?.transport.kind !== "stdio") throw new Error("expected stdio");
+		expect(files.transport.args).toEqual([
+			path.join(REPO_ROOT, "packages", "ai-core", "src", "files", "stdio.ts"),
+		]);
+		expect(files.transport.env.MCP_FS_ROOT).toBe(path.join(REPO_ROOT, "workspace"));
+		expect(files.trustErrorMeta).toBe(true);
+	});
+
+	it("resolves a relative MCP_FS_ROOT against the repository root, not the working directory", async () => {
+		const [files] = await configsFor({ ...MOCK_ENV, MCP_FS_ROOT: "notes/area" });
+
+		if (files?.transport.kind !== "stdio") throw new Error("expected stdio");
+		expect(files.transport.env.MCP_FS_ROOT).toBe(path.join(REPO_ROOT, "notes", "area"));
+	});
+
+	it("keeps an absolute MCP_FS_ROOT as it is", async () => {
+		const [files] = await configsFor({ ...MOCK_ENV, MCP_FS_ROOT: "/srv/learner-files" });
+
+		if (files?.transport.kind !== "stdio") throw new Error("expected stdio");
+		expect(files.transport.env.MCP_FS_ROOT).toBe("/srv/learner-files");
+	});
+
+	it("keeps the token out of every config but the GitHub Authorization header", async () => {
+		const configs = await configsFor({ ...LOCAL_ENV, GITHUB_TOKEN: TOKEN });
+		const [files, github] = configs;
+
+		expect(JSON.stringify(files)).not.toContain(TOKEN);
+		if (github?.transport.kind !== "http") throw new Error("expected http");
+		expect(github.transport.headers.Authorization).toBe(`Bearer ${TOKEN}`);
+	});
+});
+
+describe("createMcpRegistry and getMcpRegistry", () => {
+	function fakeRegistry(): McpRegistry {
+		return { status: () => [], toolsFor: () => [], close: async () => undefined };
+	}
+
+	it("connects to the configured servers with the platform's clock", async () => {
+		const platform = await createPlatform({ env: MOCK_ENV });
+		const registry = fakeRegistry();
+		const connect = vi.fn(async () => registry);
+
+		const created = await createMcpRegistry(platform, { connect });
+
+		expect(created).toBe(registry);
+		expect(connect).toHaveBeenCalledTimes(1);
+		const [configs, options] = connect.mock.calls[0] as unknown as [
+			readonly McpServerConfig[],
+			{ clock: unknown },
+		];
+		expect(configs.map((config) => config.id)).toEqual(["files"]);
+		expect(options.clock).toBe(platform.clock);
+	});
+
+	it("reports a failure to prepare the connections as provider-unavailable", async () => {
+		const platform = await createPlatform({ env: MOCK_ENV });
+		const connect = vi.fn(async () => {
+			throw new Error("secret detail ghp_leak");
+		});
+
+		const failure = await createMcpRegistry(platform, { connect }).catch((error: unknown) => error);
+
+		expect(failure).toMatchObject({ code: "provider-unavailable" });
+		expect(String((failure as Error).message)).not.toContain("ghp_leak");
+	});
+
+	it("builds the registry once, even for concurrent callers, and does not cache a failure", async () => {
+		setPlatformForTesting(await createPlatform({ env: MOCK_ENV }));
+		setMcpRegistryForTesting(undefined);
+		const registry = fakeRegistry();
+		let attempts = 0;
+		const connect = vi.fn(async () => {
+			attempts += 1;
+			if (attempts === 1) throw new Error("first attempt fails");
+			return registry;
+		});
+		try {
+			await expect(getMcpRegistry({ connect })).rejects.toMatchObject({
+				code: "provider-unavailable",
+			});
+
+			const [first, second] = await Promise.all([
+				getMcpRegistry({ connect }),
+				getMcpRegistry({ connect }),
+			]);
+
+			expect(first).toBe(registry);
+			expect(second).toBe(registry);
+			expect(attempts).toBe(2);
+		} finally {
+			setMcpRegistryForTesting(undefined);
+			setPlatformForTesting(undefined);
+		}
 	});
 });

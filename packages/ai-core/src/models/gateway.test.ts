@@ -1,4 +1,4 @@
-import { embed, generateText } from "ai";
+import { embed, generateText, jsonSchema, tool } from "ai";
 import { describe, expect, it, vi } from "vitest";
 import { type EnvSource, loadPlatformConfig } from "../config";
 import { PlatformError } from "../errors";
@@ -7,6 +7,7 @@ import {
 	M2_3_SAMPLE_TASKS,
 	M2_4_SAMPLE_TASKS,
 	M2_CORPUS_TEXT,
+	M3_1_SAMPLE_TASKS,
 } from "../mock";
 import type { RecordingStore } from "../mock/recording";
 import { createFakeClock } from "../ports/clock";
@@ -150,6 +151,23 @@ describe("createModelGateway resolve (mock)", () => {
 				prompt: `[段: 批評 1]\n<task>\n${M2_4_SAMPLE_TASKS.crossReflection}\n</task>`,
 			}),
 		).rejects.toThrow();
+	});
+
+	it("answers the M3-1 MCP scenario with a tool call on the first step", async () => {
+		const gateway = createModelGateway({ config: configFor({}) });
+		const chat = await gateway.resolve({ purpose: "chat" });
+
+		const first = await generateText({
+			model: chat.model,
+			prompt: M3_1_SAMPLE_TASKS.listAndRead,
+			tools: {
+				listFiles: tool({
+					inputSchema: jsonSchema({ type: "object" }),
+					execute: async () => "[0] a.txt",
+				}),
+			},
+		});
+		expect(first.toolCalls.map((call) => call.toolName)).toEqual(["listFiles"]);
 	});
 
 	it("binds a separate mock model per purpose and uses injected scenarios", async () => {
