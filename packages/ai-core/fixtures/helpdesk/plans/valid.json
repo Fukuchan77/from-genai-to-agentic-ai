@@ -1,0 +1,11 @@
+{
+	"tasks": [
+		{ "id": "t1", "description": "問い合わせの内容から、必要な手順書を検索する", "dependsOn": [] },
+		{
+			"id": "t2",
+			"description": "見つかった手順書から、該当する手順を抜き出す",
+			"dependsOn": ["t1"]
+		},
+		{ "id": "t3", "description": "利用者向けの回答の根拠を整理する", "dependsOn": ["t2"] }
+	]
+}

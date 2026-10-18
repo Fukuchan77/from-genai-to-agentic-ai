@@ -5,7 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { loadPlatformConfig } from "../../config";
 import { createPostgresDatabase, type RagDatabaseHandle } from "./client";
 import { KnowledgeBaseUnavailableError } from "./errors";
-import { ragChunks, ragDocuments } from "./schema";
+import { helpdeskTickets, ragChunks, ragDocuments } from "./schema";
 
 // Runs only through `mise run test:db` (Compose `db` profile, PostgreSQL 17 + pgvector).
 // Everything happens in a scratch database, so the learner's `agentic_ai` data is never touched.
@@ -56,7 +56,7 @@ describe("Compose Postgres", () => {
 
 		expect(handle.kind).toBe("postgres");
 		const applied = await rows<{ name: string }>(handle, sql`SELECT name FROM rag_migrations`);
-		expect(applied.map((row) => row.name)).toEqual(["0001_rag_schema.sql"]);
+		expect(applied.map((row) => row.name)).toEqual(["0001_rag_schema.sql", "0002_helpdesk.sql"]);
 		const [version] = await rows<{ extversion: string }>(
 			handle,
 			sql`SELECT extversion FROM pg_extension WHERE extname = 'vector'`,
@@ -64,6 +64,38 @@ describe("Compose Postgres", () => {
 		const [major = 0, minor = 0] = String(version?.extversion).split(".").map(Number);
 		// HNSW needs pgvector 0.5.0 or newer.
 		expect(major > 0 || minor >= 5).toBe(true);
+	});
+
+	it("applies 0002_helpdesk.sql with runMigrations and enforces its constraints", async () => {
+		const handle = await open();
+
+		const tables = await rows<{ table_name: string }>(
+			handle,
+			sql`SELECT table_name FROM information_schema.tables
+				WHERE table_schema = 'public' AND table_name LIKE 'helpdesk_%' ORDER BY table_name`,
+		);
+		expect(tables.map((row) => row.table_name)).toEqual([
+			"helpdesk_plan_revisions",
+			"helpdesk_tickets",
+		]);
+		const now = new Date("2026-10-18T00:00:00.000Z");
+		const contradiction = handle.db.insert(helpdeskTickets).values({
+			id: "T-0001",
+			inquiry: "q",
+			status: "resolved",
+			answer: null,
+			escalationReason: null,
+			stepsUsed: 1,
+			stoppedReason: null,
+			createdAt: now,
+			updatedAt: now,
+		});
+		await expect(contradiction).rejects.toThrow();
+		const [count] = await rows<{ count: number }>(
+			handle,
+			sql`SELECT count(*)::int AS count FROM helpdesk_tickets`,
+		);
+		expect(count?.count).toBe(0);
 	});
 
 	it("creates the HNSW and GIN indexes", async () => {
@@ -86,7 +118,7 @@ describe("Compose Postgres", () => {
 			second,
 			sql`SELECT count(*)::int AS count FROM rag_migrations`,
 		);
-		expect(applied?.count).toBe(1);
+		expect(applied?.count).toBe(2);
 	});
 
 	it("stores a chunk through postgres.js and orders neighbours by cosine distance", async () => {

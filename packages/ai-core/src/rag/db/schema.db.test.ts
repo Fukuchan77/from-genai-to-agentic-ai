@@ -5,7 +5,14 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import { PlatformError } from "../../errors";
 import { createPgliteDatabase, createPostgresDatabase, type RagDatabaseHandle } from "./client";
 import { KnowledgeBaseUnavailableError } from "./errors";
-import { ragChunks, ragDocuments, ragMeta, ragMigrations } from "./schema";
+import {
+	helpdeskPlanRevisions,
+	helpdeskTickets,
+	ragChunks,
+	ragDocuments,
+	ragMeta,
+	ragMigrations,
+} from "./schema";
 
 // postgres.js would retry a blocked socket until its connect timeout; a fake client keeps the
 // connection-failure path deterministic. The real driver is exercised by client.pg.test.ts.
@@ -21,7 +28,14 @@ vi.mock("postgres", () => ({
 	})),
 }));
 
-const TABLES: readonly PgTable[] = [ragMigrations, ragMeta, ragDocuments, ragChunks];
+const TABLES: readonly PgTable[] = [
+	ragMigrations,
+	ragMeta,
+	ragDocuments,
+	ragChunks,
+	helpdeskTickets,
+	helpdeskPlanRevisions,
+];
 const NOW = new Date("2026-10-12T00:00:00.000Z");
 
 let handle: RagDatabaseHandle;
@@ -104,7 +118,7 @@ describe("createPgliteDatabase", () => {
 	it("returns a PGlite handle with the migrations applied", async () => {
 		expect(handle.kind).toBe("pglite");
 		const applied = await rows<{ name: string }>(sql`SELECT name FROM rag_migrations`);
-		expect(applied.map((row) => row.name)).toEqual(["0001_rag_schema.sql"]);
+		expect(applied.map((row) => row.name)).toEqual(["0001_rag_schema.sql", "0002_helpdesk.sql"]);
 	});
 
 	it("creates an independent in-memory database per call", async () => {
@@ -375,5 +389,221 @@ describe("Drizzle queries over the migrated schema", () => {
 		expect(nearest[1]?.distance).toBeCloseTo(1, 6);
 		expect(stored?.embedding).toEqual(unitVector(0));
 		expect(stored?.headingPath).toEqual(["見出し"]);
+	});
+});
+
+describe("helpdesk tables (0002_helpdesk.sql, 003 plan Data Model)", () => {
+	type Ticket = typeof helpdeskTickets.$inferInsert;
+
+	function ticket(overrides: Partial<Ticket> = {}): Ticket {
+		return {
+			id: "T-0001",
+			inquiry: "VPN に接続できません",
+			status: "open",
+			answer: null,
+			escalationReason: null,
+			stepsUsed: 0,
+			stoppedReason: null,
+			createdAt: NOW,
+			updatedAt: NOW,
+			...overrides,
+		};
+	}
+
+	beforeEach(async () => {
+		await handle.db.execute(sql`TRUNCATE helpdesk_plan_revisions, helpdesk_tickets CASCADE`);
+	});
+
+	describe("helpdesk_tickets status / answer / escalation_reason / stopped_reason", () => {
+		it("accepts each consistent combination", async () => {
+			await handle.db.insert(helpdeskTickets).values([
+				ticket({ id: "T-0001" }),
+				ticket({ id: "T-0002", stoppedReason: "step-limit", stepsUsed: 12 }),
+				ticket({ id: "T-0003", stoppedReason: "aborted", stepsUsed: 3 }),
+				ticket({ id: "T-0004", status: "resolved", answer: "設定画面から再接続してください。" }),
+				ticket({
+					id: "T-0005",
+					status: "escalated",
+					escalationReason: "根拠が見つかりませんでした。",
+				}),
+			]);
+
+			const stored = await rows<{ id: string }>(sql`SELECT id FROM helpdesk_tickets ORDER BY id`);
+			expect(stored.map((row) => row.id)).toEqual([
+				"T-0001",
+				"T-0002",
+				"T-0003",
+				"T-0004",
+				"T-0005",
+			]);
+		});
+
+		it.each([
+			["resolved without an answer", { status: "resolved" }],
+			[
+				"resolved with an escalation reason",
+				{ status: "resolved", answer: "a", escalationReason: "r" },
+			],
+			[
+				"resolved with a stopped reason",
+				{ status: "resolved", answer: "a", stoppedReason: "aborted" },
+			],
+			["escalated without a reason", { status: "escalated" }],
+			["escalated with an answer", { status: "escalated", escalationReason: "r", answer: "a" }],
+			[
+				"escalated with a stopped reason",
+				{ status: "escalated", escalationReason: "r", stoppedReason: "aborted" },
+			],
+			["open with an answer (a resolved ticket put back)", { status: "open", answer: "a" }],
+			["open with an escalation reason", { status: "open", escalationReason: "r" }],
+		] as const)("rejects %s", async (_name, overrides) => {
+			expect(
+				await failureOf(handle.db.insert(helpdeskTickets).values(ticket({ ...overrides }))),
+			).toMatch(/helpdesk_tickets_state_check/);
+		});
+
+		it("rejects an unknown status, an unknown stopped reason, a negative step count and a malformed id", async () => {
+			expect(
+				await failureOf(
+					handle.db.insert(helpdeskTickets).values(ticket({ status: "closed" as "open" })),
+				),
+			).toMatch(/helpdesk_tickets_state_check/);
+			expect(
+				await failureOf(
+					handle.db
+						.insert(helpdeskTickets)
+						.values(ticket({ stoppedReason: "crashed" as "aborted" })),
+				),
+			).toMatch(/helpdesk_tickets_stopped_reason_check/);
+			expect(
+				await failureOf(handle.db.insert(helpdeskTickets).values(ticket({ stepsUsed: -1 }))),
+			).toMatch(/helpdesk_tickets_steps_used_check/);
+			expect(
+				await failureOf(handle.db.insert(helpdeskTickets).values(ticket({ id: "T-1" }))),
+			).toMatch(/helpdesk_tickets_id_check/);
+			expect(
+				await failureOf(handle.db.insert(helpdeskTickets).values(ticket({ id: "x-0001" }))),
+			).toMatch(/helpdesk_tickets_id_check/);
+		});
+
+		it("rejects a second row with the same id", async () => {
+			await handle.db.insert(helpdeskTickets).values(ticket());
+			expect(await failureOf(handle.db.insert(helpdeskTickets).values(ticket()))).toMatch(
+				/helpdesk_tickets_pkey/,
+			);
+		});
+
+		it("rejects an update that leaves a resolved ticket without its answer", async () => {
+			await handle.db.insert(helpdeskTickets).values(ticket({ status: "resolved", answer: "a" }));
+
+			expect(
+				await failureOf(handle.db.execute(sql`UPDATE helpdesk_tickets SET answer = NULL`)),
+			).toMatch(/helpdesk_tickets_state_check/);
+			expect(
+				await failureOf(handle.db.execute(sql`UPDATE helpdesk_tickets SET status = 'open'`)),
+			).toMatch(/helpdesk_tickets_state_check/);
+		});
+
+		it("takes the timestamps from the caller: no column default", async () => {
+			const defaults = await rows<{ column_name: string; column_default: string | null }>(
+				sql`SELECT column_name, column_default FROM information_schema.columns
+					WHERE table_name IN ('helpdesk_tickets', 'helpdesk_plan_revisions')
+						AND column_name IN ('created_at', 'updated_at')`,
+			);
+			expect(defaults).toHaveLength(3);
+			for (const column of defaults) expect(column.column_default).toBeNull();
+		});
+	});
+
+	describe("helpdesk_plan_revisions", () => {
+		const plan = { tasks: [{ id: "t1", description: "検索", dependsOn: [] }] };
+		const diff = { added: ["t2"], removed: [], changed: [] };
+
+		function revision(overrides: Partial<typeof helpdeskPlanRevisions.$inferInsert> = {}) {
+			return {
+				ticketId: "T-0001",
+				revision: 0,
+				plan,
+				diff: null,
+				reason: "initial",
+				createdAt: NOW,
+				...overrides,
+			};
+		}
+
+		it("requires a NULL diff for revision 0 and a diff for every later revision", async () => {
+			await handle.db.insert(helpdeskTickets).values(ticket());
+
+			expect(
+				await failureOf(handle.db.insert(helpdeskPlanRevisions).values(revision({ diff }))),
+			).toMatch(/helpdesk_plan_revisions_diff_check/);
+			expect(
+				await failureOf(
+					handle.db.insert(helpdeskPlanRevisions).values(revision({ revision: 1, diff: null })),
+				),
+			).toMatch(/helpdesk_plan_revisions_diff_check/);
+			await handle.db
+				.insert(helpdeskPlanRevisions)
+				.values([revision(), revision({ revision: 1, diff })]);
+		});
+
+		it("rejects a negative revision and a second row with the same (ticket, revision)", async () => {
+			await handle.db.insert(helpdeskTickets).values(ticket());
+			await handle.db.insert(helpdeskPlanRevisions).values(revision());
+
+			expect(
+				await failureOf(
+					handle.db.insert(helpdeskPlanRevisions).values(revision({ revision: -1, diff })),
+				),
+			).toMatch(/helpdesk_plan_revisions_diff_check/);
+			expect(await failureOf(handle.db.insert(helpdeskPlanRevisions).values(revision()))).toMatch(
+				/helpdesk_plan_revisions_pkey/,
+			);
+		});
+
+		it("rejects a revision of a ticket that does not exist", async () => {
+			expect(await failureOf(handle.db.insert(helpdeskPlanRevisions).values(revision()))).toMatch(
+				/helpdesk_plan_revisions_ticket_id_fkey/,
+			);
+		});
+
+		it("deletes a ticket's revisions with it (ON DELETE CASCADE) and leaves other tickets alone", async () => {
+			await handle.db.insert(helpdeskTickets).values([ticket(), ticket({ id: "T-0002" })]);
+			await handle.db
+				.insert(helpdeskPlanRevisions)
+				.values([revision(), revision({ ticketId: "T-0002" })]);
+
+			await handle.db.execute(sql`DELETE FROM helpdesk_tickets WHERE id = 'T-0001'`);
+
+			const left = await rows<{ ticket_id: string }>(
+				sql`SELECT ticket_id FROM helpdesk_plan_revisions`,
+			);
+			expect(left.map((row) => row.ticket_id)).toEqual(["T-0002"]);
+		});
+
+		it("stores the plan and the diff as jsonb and reads them back unchanged", async () => {
+			await handle.db.insert(helpdeskTickets).values(ticket());
+			await handle.db
+				.insert(helpdeskPlanRevisions)
+				.values([revision(), revision({ revision: 1, diff })]);
+
+			const stored = await handle.db
+				.select()
+				.from(helpdeskPlanRevisions)
+				.orderBy(helpdeskPlanRevisions.revision);
+
+			expect(stored.map((row) => row.plan)).toEqual([plan, plan]);
+			expect(stored.map((row) => row.diff)).toEqual([null, diff]);
+		});
+	});
+
+	it("leaves the rag_* tables alone when the helpdesk tables are emptied, and the other way round", async () => {
+		await insertDocument("kb:keep.md");
+		await handle.db.insert(helpdeskTickets).values(ticket());
+
+		await handle.db.execute(sql`TRUNCATE helpdesk_plan_revisions, helpdesk_tickets CASCADE`);
+
+		const documents = await rows<{ id: string }>(sql`SELECT id FROM rag_documents`);
+		expect(documents.map((row) => row.id)).toEqual(["kb:keep.md"]);
 	});
 });

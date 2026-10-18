@@ -9,6 +9,10 @@ export { KnowledgeBaseUnavailableError } from "./errors";
 export { type MigrationResult, runMigrations } from "./migrate";
 export {
 	EMBEDDING_DIMENSIONS,
+	HELPDESK_STOPPED_REASONS,
+	HELPDESK_TICKET_STATUSES,
+	helpdeskPlanRevisions,
+	helpdeskTickets,
 	ragChunks,
 	ragDocuments,
 	ragMeta,

@@ -1,0 +1,6 @@
+{
+	"tasks": [
+		{ "id": "t1", "description": "手順書を検索する", "dependsOn": [] },
+		{ "id": "t2", "description": "該当する手順を抜き出す", "dependsOn": ["t9"] }
+	]
+}
