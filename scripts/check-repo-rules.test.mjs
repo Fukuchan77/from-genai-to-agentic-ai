@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -1233,5 +1233,43 @@ describe("check-repo-rules CLI", () => {
 
 		expect(source).toContain("await runIfMain(import.meta.url, main);");
 		expect(source).not.toMatch(/process\.(argv|exitCode)/u);
+	});
+});
+
+// The M3 files whose control flow must be plain code. Each wave that adds one lists it here, so a
+// file that is renamed or never created fails this test instead of silently leaving the rule's scan
+// (003 W1 review F-17). The rule scans only the listed files that exist.
+const M3_WORKFLOW_FILES_NOW = [
+	"packages/ai-core/src/helpdesk/planner.ts",
+	"packages/ai-core/src/helpdesk/replanner.ts",
+	"packages/ai-core/src/helpdesk/helpdesk.ts",
+];
+
+describe("workflow-no-agent-loop: the real tree", () => {
+	const repoRoot = path.resolve(import.meta.dirname, "..");
+
+	function countTypeScriptFiles(directory) {
+		return readdirSync(path.join(repoRoot, directory), { recursive: true }).filter((name) =>
+			String(name).endsWith(".ts"),
+		).length;
+	}
+
+	test("the M3 files of this wave exist", () => {
+		for (const file of M3_WORKFLOW_FILES_NOW) {
+			expect(existsSync(path.join(repoRoot, file)), file).toBe(true);
+		}
+	});
+
+	test("scans every file of workflows/ and patterns/ and every M3 file listed above, and no other", async () => {
+		const expected =
+			countTypeScriptFiles("packages/ai-core/src/workflows") +
+			countTypeScriptFiles("packages/ai-core/src/patterns") +
+			M3_WORKFLOW_FILES_NOW.length;
+
+		const { reports } = await checkRepoRules({ root: repoRoot, only: ["workflow-no-agent-loop"] });
+
+		expect(reports).toHaveLength(1);
+		expect(reports[0].violations).toEqual([]);
+		expect(reports[0].fileCount).toBe(expected);
 	});
 });
