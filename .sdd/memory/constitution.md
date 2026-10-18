@@ -1,20 +1,19 @@
 <!--
 SYNC IMPACT REPORT
-Version Change: 1.0.1 → 1.0.2（PATCH: 明確化）
+Version Change: 1.0.2 → 1.1.0（MINOR: 原則の実質的な拡張）
 Modified Principles:
-  - 8. 事実は実測で確定する — 設計ドラフト（specs/drafts/）の削除に伴い、1.0.1 で設けた
-    「001 Req 7.4 の差分表に限りドラフトのモデル ID を書ける」例外を廃止した。モジュール解説の差分は、
-    カリキュラム確定版の差分記録（specs/curriculum/changes-from-drafts.md）と実測を基準にする。
-    規範の範囲は 1.0.0 と同じ（カタログ外のモデル ID をコードにも文書にも書かない）
+  - 1. ワークフローとエージェントを峻別する — 承認済みの spec が教材の対象として要求するマルチエージェント
+    構成（003 Req 4.1 の Supervisor + サブエージェント、Req 6.1 の合議）は、実測を採否の条件にしない
+    例外を追加した。代わりに、コスト上限（呼び出し回数、トークン予算、ラウンド数）の設計記録と、
+    単一エージェントとの比較の実測をモジュール解説に記録することを求める（003 plan の検証で決定）
 Added Sections:
   - none
 Removed Sections:
   - none
 Templates Status:
   ✅ ~/.claude/sdd/templates/specs/plan.md, spec.md, tasks.md - 変更不要
-  ✅ AGENTS.md - ドラフトの削除と確定版への参照を反映済み
-  ✅ specs/001-agentic-ai-platform/spec.md - Req 7.4 と Technical Constraints を改訂済み
-  ✅ specs/001-agentic-ai-platform/plan.md - C20 の check-model-ids から解説の例外を削除、C22 の必須節を改名済み
+  ✅ AGENTS.md - 変更不要（原則の要約に影響しない）
+  ✅ specs/003-domain-agents/plan.md - Constitution Compliance の原則 1 と参照版を v1.1.0 に更新済み
 Deferred Items:
   - TODO(EVALS_THRESHOLD): Capability / 回帰評価の合格しきい値、実行頻度、予算上限（設計フェーズで決定）
   - TODO(BRANCH_COVERAGE): 分岐カバレッジのしきい値（M1 実装後の実測ベースラインで決定）
@@ -44,7 +43,10 @@ MUST である。制御フローをコードが決める処理（ワークフロ
 - ツール入力は Zod の `inputSchema` で定義する。
 - LangChain / LangGraph の抽象を持ち込まない。移植で失われた機能は解説の対照表に記録する。
 - マルチエージェント構成は、単一エージェント + ツールで不足することを実測で示し、トークンコストの
-  増加に見合う根拠を設計に記録した場合に限り採用する。
+  増加に見合う根拠を設計に記録した場合に限り採用する。ただし、承認済みの spec が教材の対象として
+  そのパターンを要求している場合（003 Req 4.1 の Supervisor + サブエージェント、Req 6.1 の合議）は、
+  実測を採否の条件にしない。この場合は、コストの上限（呼び出し回数、トークン予算、ラウンド数）を
+  設計に記録し、単一エージェントとの比較を実測してモジュール解説に事実として記録する。
 
 **根拠**: 本カリキュラムの中心的な学習目標は「ワークフローとエージェントの峻別」である。実装が
 両者を混ぜると、教材そのものが誤った設計を教える。
@@ -250,6 +252,7 @@ Reciprocal Rank Fusion、可観測性は OpenTelemetry（OTLP）とする。
 | 1.0.0 | 2026-09-27 | 初版 | 001 spec の横断制約・NFR と要件レビューの決定から原則 1〜11 を制定。Additional Constraints / Governance を新設 |
 | 1.0.1 | 2026-09-27 | PATCH | 原則 8 に、001 Req 7.4 の差分表でのみドラフトのモデル ID を記載できる例外を明記（plan レビューで判明した Req 7.4 との衝突の解消） |
 | 1.0.2 | 2026-09-27 | PATCH | 設計ドラフトの削除に伴い、原則 8 のドラフトのモデル ID の例外（1.0.1）を廃止し、差分の基準をカリキュラム確定版の差分記録に改めた（001 Clarifications Session 2026-09-27 (3)）。規範の範囲は 1.0.0 と同じ |
+| 1.1.0 | 2026-10-16 | MINOR | 原則 1 に、承認済みの spec が教材の対象として要求するマルチエージェント構成（003 Req 4.1、6.1）は実測を採否の条件にせず、コスト上限の設計記録と、単一エージェントとの比較の実測を解説に記録することで足りる、という例外を追加（003 plan の `/sdd-validate-plan` で、plan と憲章の文言の食い違いを解消するため） |
 
 ### 未決事項（Deferred）
 
@@ -260,6 +263,6 @@ Reciprocal Rank Fusion、可観測性は OpenTelemetry（OTLP）とする。
 
 ---
 
-**Version**: 1.0.2 |
+**Version**: 1.1.0 |
 **Ratified**: 2026-09-27 |
-**Last amended**: 2026-09-27
+**Last amended**: 2026-10-16
