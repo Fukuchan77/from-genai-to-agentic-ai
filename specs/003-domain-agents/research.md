@@ -1,0 +1,311 @@
+# 003-domain-agents — Discovery & Research Log
+
+`/sdd-plan` で作成。設計に影響する調査、判断、リスクを記録する。各項目は日付と根拠（ファイル・URL・コマンド出力）付き。
+調査日: 2026-10-16（11:55 UTC 時点のレジストリを参照）。
+
+## Discovery type
+
+**New feature (full)**。外部依存（MCP サーバー、E2B サンドボックス、ローカルコンテナ、arXiv API、スプレッドシート解析）が多く、
+既存の `ai-core` にない領域（ツール接続、サンドボックス、チケット永続化）を含むため、フルディスカバリーを行った。
+
+## Investigations
+
+### I-1: ツールのエラー経路（C2、Req 1.3）
+
+- **Question**: 致命的なツールエラーで Run を停止理由 `error` にできるか。
+- **Findings**: `aci/define-tool.ts` の `failureFrom` は `ToolExecutionError` / `PlatformError` / その他の例外をすべて
+  `kind: "recoverable"` に変換する。`timeout` だけが別経路。`ToolFailureKind` の `fatal` は型にあるが生成箇所がない。
+  `executeWithGuards` は `catch` で例外を握りつぶして `ToolOutcome` を返すため、ツールの失敗は例外として Run へ伝わらず、
+  Run は `completed` で終わる。さらに `ai@7.0.137` の `executeToolCall` は、ツールの `execute` が投げた例外を捕捉して
+  `{ type: "tool-error" }` の出力に変換し（モデルにはテキストで返る）、ループを止めない。不正な入力も同じく `tool-error` になる。
+  したがって「例外を再送出して Run を止める」方式は成立しない。`finalise` は `abort === undefined && error !== undefined`
+  のときだけ `errored` とし、abort を error より優先するので、致命的エラーは Run 単位の経路で `finalise` に伝える必要がある。
+- **Evidence**: `packages/ai-core/src/aci/define-tool.ts:81-100`（`failureFrom`）、`:112-140`（`executeWithGuards`）、
+  `packages/ai-core/src/agents/guarded-agent.ts:249-273`（`finalise`）、`packages/ai-core/src/agents/stop-reason.ts`、
+  `node_modules/ai@7.0.137/dist/index.js` の `executeToolCall`（ツール例外の捕捉と `tool-error` 化）。
+
+### I-2: 既存の再利用資産（ACI、Agent、Ports）
+
+- **Findings**:
+  - `defineAciTool`（`risk` 必須、`inputSchema` は Zod）、`buildToolSet`、`GuardedToolSet`（ブランド型）、`assertRegistrable`（`read-only` 以外を拒否）。
+  - `createGuardedAgent`（`ToolLoopAgent` を作る唯一の場所）、`LoopLimits`、`AgentRunSummary`、`RunObserver`、`MAX_AGENT_TOOLS = 20`（`assertToolCount`）。
+  - `createStopConditionRecord`（実行ごとに作る停止条件の記録）。`deriveStopReason` の優先順位は abort → error → 停止条件。
+  - `patterns/role-based-cooperation.ts` は `agents/` を import できる唯一のパターンファイル。合議の基礎にする。
+  - `ports/http.ts`（`HttpFetcher`）は arXiv に流用できる。`ports/clock.ts` の `Clock` / `FakeClock` は 3 秒間隔制限とアイドル判定に使える。
+  - `rag/db/schema.ts` は drizzle + PGlite（gate）/ Postgres（hands-on）の二層構成。チケット表はこの基盤に載せる。
+- **Evidence**: `packages/ai-core/src/aci/{define-tool,tool-set,types,index}.ts`、`packages/ai-core/src/agents/{guarded-agent,stop-conditions}.ts`、
+  `packages/ai-core/src/ports/{clock,http}.ts`、`packages/ai-core/src/rag/db/schema.ts`。
+
+### I-3: 環境変数スキーマと機能の必要条件
+
+- **Findings**: `config/env-schema.ts` の `optionalString` で任意の鍵を受ける。`ENV_KEYS` は `Object.keys(envSchema.shape)` から作られるので、
+  新しい鍵は同じ方式で追加できる。`FEATURE_REQUIREMENTS` には `live-*`、`web-search`、`rerank` のみあり、GitHub、E2B、ローカルコンテナは未登録。
+- **Evidence**: `packages/ai-core/src/config/env-schema.ts:11-66`、`packages/ai-core/src/config/feature-requirements.ts`。
+
+### I-4: 既存ツールの記述規約（R9、Req 1.1、1.11、1.13）
+
+- **Findings**: `aci/tools/web-search.ts` は `*_TOOL_NAME` 定数、`description`、`risk: "read-only"` を持つ。説明文は日本語で「〜するときに使ってください」の形。
+  ツール名は `TOOL_NAME` 正規表現（英字始まり、64 字以内、英数字・`_`・`-`）。新ツールも同じ形式に揃える。
+  Req 1.11 の「いつ使うか / いつ使わないか」は説明文の必須要素として文言検査（テスト）で保証する。
+- **Evidence**: `packages/ai-core/src/aci/tools/web-search.ts:26-30`、`packages/ai-core/src/aci/tools/weather.ts:135`、`packages/ai-core/src/aci/define-tool.ts`（`assertValidDefinition`）。
+
+### I-5: arXiv API（R7、Req 4.3、4.7）
+
+- **Findings**（一次情報: arXiv User Manual と Terms of Use を取得。VERIFIED）:
+  - ToU: 1 リクエスト / 3 秒以上、接続は 1 本。制限は利用者の全マシンに跨る。同じ検索は 1 日 1 回以上取得しない。
+  - 応答は Atom 1.0 のみ（エラーも Atom）。文書化されたエラー状態は HTTP 400 のみ。429 / 503 / `Retry-After` は文書になし（UNVERIFIED）。
+  - `max_results` は 1 回 2000 件まで、総数 30000 件まで。`id` は `http://arxiv.org/abs/<id>vN` の形で、版番号 `vN` を除去する。
+  - ToU: メタデータの保存と共有は可。e-print（PDF）は自前サーバーから配信しない。arXiv の推奨を示唆しない。
+  - 解析: `fast-xml-parser` 5.11.2（2026-09-29 公開、MIT、依存 6、install script なし）。`processEntities` を無効にし、`isArray` で `entry` / `author` / `link` を配列化する。
+  - advisory: GHSA-8r6m-32jq-jx6q（修正 5.10.1）と GHSA-gh4j-gqv2-49f6（修正 5.7.0）は 5.11.2 で解消。2026 年の他の advisory の修正版は個別確認していない（UNVERIFIED）。
+- **Evidence**: https://info.arxiv.org/help/api/user-manual.html、https://info.arxiv.org/help/api/tou.html、`npm view fast-xml-parser time --json`。
+
+### I-6: スプレッドシートと CSV の解析（R6、Req 3.1、3.9）
+
+- **Findings**（レジストリと OSV で確認。VERIFIED）:
+  - `exceljs` 4.4.0: 2023-10-19 公開で長期間未更新。依存の木が古い（archiver 5、unzipper 0.10）。**採用しない**。
+  - `xlsx`（SheetJS）0.18.5: 2022-03-24 公開。ReDoS と prototype pollution の advisory に npm 上の修正版なし。**却下**。
+  - `read-excel-file` 9.3.12: 2026-10-07 公開。repo 規則（24 時間）は満たすが、advisory の網羅性を確認できず、`.xls` は読めない。**採用しない**（ホスト解析をしないため不要）。
+  - `csv-parse`: ホストでの解析は行わないため**不要**。
+  - 結論: **ホストで解析しない**。ホストは拡張子、20 MB 上限、マジックバイトの検査だけを行い、生バイトをサンドボックスへ渡して pandas / openpyxl（`.xls` は xlrd）で解析する。
+  - マジックバイト: xlsx / zip は `50 4B 03 04`、`.xls` は `D0 CF 11 E0 A1 B1 1A E1`、csv は NUL バイトなしかつ UTF-8 として妥当（UNVERIFIED、一般的な形式知識）。`.xlsx` と `.docx` は同じ PK ヘッダーを持つので、拡張子との一致を確認する。
+  - E2B のプリインストール済みライブラリは未確認（UNVERIFIED）。テンプレートで用意するか、起動時に `pip install openpyxl xlrd` するかを spike で決める。
+- **Evidence**: `registry.npmjs.org/<pkg>/latest`、`api.osv.dev`、`/tmp/sdd-003/research-data-ui.md` §1。
+
+### I-7: グラフと表の描画（R8、Req 3.5）
+
+- **Findings**（VERIFIED）:
+  - `recharts` 3.10.1: 2026-07-25 公開、MIT、React 19 の peer に対応。推移依存を含めて 11。直接の advisory はなし。クライアント専用（`"use client"`）。
+  - shadcn の `chart` は Recharts v3 の上に作られ、`pnpm dlx shadcn@latest add chart` でソースをコピーできる。テーマは `--chart-N` 変数、`accessibilityLayer` で a11y に対応。
+  - 結論: 本マイルストーンでは**描画ライブラリを追加しない**（新規依存 0）。画像は `<img src="data:image/png;base64,...">`（`alt` 必須、サイズ上限）、表は素の `<table>`（`caption`、`th scope`、行数上限と「N 件中 M 件」表示）。
+    サンドボックス由来の SVG / HTML は描画しない（`dangerouslySetInnerHTML` 禁止）。
+  - 対話的グラフが必要になった時点で `recharts` を追加する（ADR-2）。
+- **Evidence**: https://ui.shadcn.com/docs/components/chart、`/tmp/sdd-003/research-data-ui.md` §3。
+
+### I-8: リポジトリの依存規約（憲章原則 7、10）
+
+- **Findings**: `apps/web/package.json` は全依存を完全固定（`^` なし）。`pnpm-workspace.yaml` は `minimumReleaseAge: 1440`（**24 時間**の規則）、
+  `allowBuilds` は `@biomejs/biome: false` のみ。新規依存は計画書に理由とともに宣言する（憲章原則 10）。
+- **Evidence**: `apps/web/package.json`、`pnpm-workspace.yaml`。
+
+### I-9: MCP クライアント（R2、Req 1.7、1.8、1.10）
+
+- **Findings**（`/tmp/sdd-003/research-mcp-sandbox.md` §1。Context7 `/vercel/ai` と raw ソースで確認）:
+  - `@ai-sdk/mcp` の最新 2.0.77 は 2026-10-15T18:10Z 公開で、repo 規則（24 時間）に抵触する。**2.0.76（2026-10-15T03:22Z 公開）を採る**。
+  - peerDependencies は `zod ^3.25.76 || ^4.1.8` のみ。`ai` の peer はない。provider 4.0.28 と provider-utils 5.0.61 は `ai` 7.0.142 と同じ世代（`ai` 7.0.137 の依存は未取得、UNVERIFIED）。
+  - stdio は `Experimental_StdioMCPTransport`（`@ai-sdk/mcp/mcp-stdio`）。プロセスは `@ai-sdk/mcp` の内部（cross-spawn）が起動する。**本リポジトリのコードは `child_process` を import しない**。
+  - `client.tools({ schemas })` は**許可リスト**として働く。`schemas` に名前のないツールは読み込まれない（ソース確認）。既定の `'automatic'` は全ツールを読むので使わない。
+  - 注釈（`readOnlyHint` / `destructiveHint` / `idempotentHint` / `openWorldHint`）は `tool.metadata.annotations` に載る。サーバー提供のヒントで、信頼境界の外（ADR-7）。
+  - 注釈なしのツールの扱いは SDK の既定では決まらない。本計画で `destructive` と解釈する（004 Req 4.14）。
+  - `isError` の結果は例外ではなく戻り値として返る。接続断は保留中の呼び出しを `MCPClientError("Connection closed")` で拒否する。`close()` は冪等。
+  - **UNVERIFIED**: `ToolLoopAgent({ tools })` に MCP ツールを渡せるか（ドキュメントは `generateText` / `streamText` のみ）。spike S-2 で確認する。
+  - **UNVERIFIED**: `Experimental_StdioMCPTransport` の `env` / `cwd` オプション（型定義を確認する）。
+- **Evidence**: `registry.npmjs.org/@ai-sdk/mcp/latest`、`npm view @ai-sdk/mcp time --json`、https://raw.githubusercontent.com/vercel/ai/main/content/docs/03-ai-sdk-core/16-mcp-tools.mdx。
+
+### I-10: MCP サーバー SDK（R3、Req 1.7）
+
+- **Findings**（VERIFIED）:
+  - `@modelcontextprotocol/server` 2.3.1: 2026-10-05 公開、Apache-2.0、依存は `zod ^4.2.0` と `@modelcontextprotocol/core` のみ。README で「安定版の系列」とされる。stdio は `@modelcontextprotocol/server/stdio`。
+  - `@modelcontextprotocol/sdk` 1.32.1（v1）: 2026-10-05 公開、依存が重い（express、hono など）。**採用しない**。
+  - **UNVERIFIED**: v2 の `registerTool` が `annotations` を受けるか（型定義を確認する。spike S-3）。受けない場合は `tools/list` の応答を直接組み立てる。
+- **Evidence**: `npm view @modelcontextprotocol/server time --json`、https://raw.githubusercontent.com/modelcontextprotocol/typescript-sdk/main/README.md。
+
+### I-11: サンドボックス（R1、R4、R5、C1、Req 3.7、3.8）
+
+- **Findings**（VERIFIED、ただし記載の箇所は除く）:
+  - E2B: `@e2b/code-interpreter` 2.9.0（2026-10-13 公開、MIT、依存 `e2b ^2.56.0`、Node 22.19 以上）。鍵は `E2B_API_KEY`。
+    `Sandbox.create({ apiKey, timeoutMs })`、既定 5 分（Hobby 上限 1 時間）、`setTimeout`、`kill()`、`isRunning()`。
+    `runCode(code, { onStdout, onStderr, timeoutMs, requestTimeoutMs })`。結果は `execution.results[]`（`png` は base64、`text` / `json` / `chart`）、`execution.logs`、`execution.error`（`name` / `value` / `traceback`）。
+    ファイルは `sbx.files.write(path, buffer)`。
+    **UNVERIFIED**: `onResult` と `envs` の名前、`logs` の配列型、期限切れの専用エラー型、プリインストール済みライブラリ。spike S-4 で確認する。
+  - ローカルコンテナ（Docker Engine API）: `dockerode` は**採用しない**。`node:http` の `socketPath` で Unix ソケットに直接接続すると、依存ゼロで済む。
+    `NetworkMode: "none"`、`Memory`、`NanoCpus`、`ReadonlyRootfs`、`PidsLimit`、`CapDrop`、`SecurityOpt` は Engine API の仕様で確認（swagger）。
+    出力は多重化ストリーム（8 バイトのヘッダー `[type,0,0,0,size(u32 BE)]`、1 = stdout、2 = stderr）。
+    **UNVERIFIED**: 起動後の `PUT /containers/{id}/archive` による入力転送（ReadonlyRootfs と Tmpfs の組み合わせ）、macOS の既定ソケットパス（`~/.docker/run/docker.sock` は未確認、`DOCKER_HOST` を優先する）。spike S-5 で確認する。
+  - R1（`no-dynamic-eval` と stdio MCP）の解消: 本コードは `child_process` を import しない。stdio MCP の起動は `@ai-sdk/mcp` の内部が行い、起動するのは本リポジトリの信頼できるサーバー（固定コマンド）だけ。
+    サンドボックスは E2B の SDK か `node:http` で扱う。したがって**規則の例外は不要**（ADR-4）。
+- **Evidence**: `registry.npmjs.org/@e2b/code-interpreter/latest`、https://docs.e2b.dev/faq/sandbox-lifetime、https://docs.e2b.dev/quickstart/upload-download-files、
+  `https://raw.githubusercontent.com/moby/moby/master/api/swagger.yaml`、https://docs.docker.com/desktop/setup/install/mac-install/（ソケットの説明）。
+
+### I-12: 依存のリリース年齢（憲章原則 7）
+
+- **Findings**（`npm view <pkg> time --json`、2026-10-16 11:55Z 時点）:
+  | パッケージ | 採用版 | 公開時刻 | 経過 | 判定 |
+  |---|---|---|---|---|
+  | `@ai-sdk/mcp` | 2.0.76 | 2026-10-15 03:22Z | 約 32 時間 | ✅（2.0.77 は約 18 時間で ❌） |
+  | `@modelcontextprotocol/server` | 2.3.1 | 2026-10-05 11:52Z | 11 日 | ✅ |
+  | `@e2b/code-interpreter` | 2.9.0 | 2026-10-13 15:03Z | 3 日 | ✅ |
+  | `fast-xml-parser` | 5.11.2 | 2026-09-29 04:45Z | 17 日 | ✅ |
+  | `undici` | 8.12.2 | 2026-10-15 15:05Z | 約 21 時間 | ❌（本計画では不使用） |
+- **Evidence**: `npm view <pkg> time --json`。
+
+## Existing patterns to reuse
+
+| Pattern | Location | Why reuse |
+|---------|----------|-----------|
+| `defineAciTool` + 必須 `risk` | `packages/ai-core/src/aci/define-tool.ts` | 全ツールの統一入口。MCP 由来のツールも `risk` を付けて同じ型に変換する（C3） |
+| `buildToolSet` / `GuardedToolSet` / `assertRegistrable` | `packages/ai-core/src/aci/tool-set.ts` | 非 read-only の登録を型と実行時の両方で拒否する（Req 1.17） |
+| `createGuardedAgent`（唯一の `ToolLoopAgent` 生成点） | `packages/ai-core/src/agents/guarded-agent.ts` | 3 停止条件、停止理由、観測を再利用する |
+| `RunObserver` | `packages/ai-core/src/agents/guarded-agent.ts` | トレース、トークン内訳（C9）、Agent Inspector の記録に使う |
+| `STOP_REASONS` / `deriveStopReason` | `packages/ai-core/src/agents/stop-reason.ts` | 停止理由の閉じた語彙。`error` は致命的エラーのラッチ経路で到達する（ADR-5） |
+| `RoleCooperation` | `packages/ai-core/src/patterns/role-based-cooperation.ts` | マーケティングの合議の基礎（`agents/` を import できる唯一のパターン） |
+| `generateValidated` | `packages/ai-core/src/structured/` | 実行計画、Replanner、ペルソナ、判定の構造化出力と再生成 |
+| `HttpFetcher` | `packages/ai-core/src/ports/http.ts` | arXiv 取得。テストは fixture で差し替える |
+| `Clock` / `FakeClock` | `packages/ai-core/src/ports/clock.ts` | 3 秒間隔制限、サンドボックスのアイドル判定 |
+| drizzle + PGlite / Postgres | `packages/ai-core/src/rag/db/schema.ts`、`drizzle/` | チケットの永続化（R10）。マイグレーションは手書き SQL |
+| `loadPlatformConfig` / `envSchema` | `packages/ai-core/src/config/env-schema.ts` | 新しい鍵と設定値を同じ方式で追加する |
+| `FEATURE_REQUIREMENTS` | `packages/ai-core/src/config/feature-requirements.ts` | 新機能の必要条件（鍵、モード、コンテナ）を宣言する |
+| mock fixture（scenarios / cassettes / http） | `packages/ai-core/fixtures/` | 外部サービスの応答をテストで固定する |
+| `scripts/check-repo-rules.mjs` | `scripts/` | 規約の機械検査。新規則を追加する（ADR-4、ADR-7） |
+
+## External dependencies
+
+| Dependency | Version | Purpose | Verified |
+|------------|---------|---------|----------|
+| `@ai-sdk/mcp` | 2.0.76 | MCP クライアント（許可リスト、stdio、HTTP） | ✅ レジストリ・ソース。⚠️ `ToolLoopAgent` 連携は spike S-2 |
+| `@modelcontextprotocol/server` | 2.3.1 | 自作のファイル操作 MCP サーバー（Req 1.7） | ✅ レジストリ。⚠️ `annotations` は spike S-3 |
+| `@e2b/code-interpreter` | 2.9.0 | E2B サンドボックス（Req 3.1、3.8） | ✅ レジストリ・docs。⚠️ 型と期限切れエラーは spike S-4 |
+| `fast-xml-parser` | 5.11.2 | arXiv Atom の解析（Req 4.3） | ✅ レジストリ・OSV（2 件の修正版を確認） |
+| `recharts` | 3.10.1 | **本マイルストーンでは採用しない**（ADR-2） | — |
+| `dockerode` | 5.0.1 | **採用しない**（`node:http` の socketPath で代替、ADR-4） | — |
+| `exceljs` / `xlsx` / `read-excel-file` / `csv-parse` | — | **採用しない**（ADR-1） | ✅ レジストリ・OSV |
+| Docker Engine API | v1.47 | ローカルコンテナ（Req 3.8） | ✅ swagger。⚠️ 入力転送は spike S-5 |
+
+## Architecture decisions
+
+### ADR-1: 解析はホストで行わず、サンドボックスで行う（R6、Req 3.1、3.2、3.9）
+
+- **Context**: CSV / Excel は zip と XML を含み、展開攻撃、ReDoS、prototype pollution の影響を受ける。ホストは長寿命のサーバーである。
+  LLM が生成したコードを実行する場所はホストにできない（憲章原則 6）。
+- **Decision**: ホストは拡張子、20 MB 上限、マジックバイトの検査だけを行い、生バイトをサンドボックスへ渡す。解析は pandas / openpyxl（`.xls` は xlrd）で行う。
+  ホスト側のプレビューは行わず、プレビューもサンドボックスが返す。
+- **Alternatives**: `exceljs`（保守停止）、`xlsx`（修正版なしの advisory）、`read-excel-file`（advisory 未確認）、`csv-parse`（ホストで解析する理由がなくなる）。
+- **Consequences**: サンドボックスの可用性に依存する。E2B のプリインストール済みライブラリは未確認（S-4）。
+
+### ADR-2: グラフは画像、表は HTML の `<table>` で描画する（R8、Req 3.5）
+
+- **Context**: コア機能はグラフの対話操作を要求していない。描画ライブラリは依存を増やし、クライアントの負荷も上げる。
+- **Decision**: サンドボックスの PNG を `<img>` で表示する（`alt` 必須、サイズ上限、PNG マジックバイトの検査）。表は素の `<table>` で描画する。SVG と HTML は描画しない。
+- **Alternatives**: `recharts`（依存 1 と推移依存 11）、`chart.js`（Canvas で a11y と SSR に不利）。
+- **Consequences**: ホバーや凡例の切り替えはできない。必要になった時点で `recharts` を追加する。
+
+### ADR-3: arXiv は `HttpFetcher` と `fast-xml-parser` で取得・解析する（R7、Req 4.3、4.7）
+
+- **Context**: arXiv ToU は 3 秒 1 リクエストと単一接続を求め、制限は利用者の全マシンに跨る。
+- **Decision**: ai-core に直列キュー（3 秒間隔）と日単位のキャッシュを置く。プロセス内の制限は複数インスタンスでは守れないため、
+  本番の境界として 005 の「本番実装との境界」に従い、計画書で明記する。解析は `fast-xml-parser` 5.11.2（`processEntities` 無効、`isArray` 指定）。
+- **Alternatives**: 手書きの正規表現（ネストした tag、CDATA、複数行の summary に弱い）。OAI-PMH（一括取得向け、本マイルストーンの範囲外）。
+- **Consequences**: 検索の遅延が最大で数秒増える。テストは fixture で固定し、ネットワークを使わない。
+
+### ADR-4: `no-dynamic-eval` の例外を作らない（R1、C1、R5）
+
+- **Context**: `scripts/check-repo-rules.mjs` は `child_process` の import を全ワークスペースで禁じる。サンドボックスと stdio MCP はプロセス起動を要するように見える。
+- **Decision**: 本リポジトリのコードは `child_process` を import しない。
+  1. stdio MCP は `@ai-sdk/mcp` の `Experimental_StdioMCPTransport` に固定コマンドを渡し、起動は SDK 内部が行う（起動対象は本リポジトリのファイル操作サーバーだけ）。
+  2. E2B は SDK の HTTP で扱う。
+  3. ローカルコンテナは Docker Engine API を `node:http` の `socketPath` で叩く。`dockerode` は使わない（依存と監査面を増やさないため）。
+  規則の例外は作らないため、`no-dynamic-eval` は変更しない。
+- **Alternatives**: allow-list の例外（規則の穴になる）、`dockerode`（推移依存が大きい）、`undici` の socket（新規依存、24 時間規則に抵触する版がある）。
+- **Consequences**: 入力転送と多重化ストリームの処理を自前で書く。Docker の動作は spike S-5 で実機確認する。
+
+### ADR-5: 致命的ツールエラーは Run 単位のラッチで伝え、停止理由 `error` にする（C2、Req 1.3）
+
+- **Context**: 現在の `executeWithGuards` は全失敗を `recoverable` に変換するため、致命的エラーで Run を止められない。
+  AI SDK 7.0.137 はツールが投げた例外を `tool-error` 出力に変換してループを続けるので、例外の再送出では止まらない（I-1）。
+- **Decision**: `FatalToolError`（学習者に見せてよい短い文言だけを持つ）と、Run 単位の `FatalLatch`（最初の致命的エラーを 1 件だけ保持する）を導入する。
+  `createGuardedAgent` が Run ごとに `FatalLatch` を作って `ToolRuntime` 経由でツールラッパーへ渡す。`executeWithGuards` は `FatalToolError` を捕まえて
+  ラッチに記録し、内部の `AbortController` を abort して以降のステップを止め、モデルには安全な短い文言だけを `tool-error` として返す。
+  `finalise` はラッチを先に調べる。ラッチが立っていれば abort の種別にかかわらず `errored = true` とし、停止理由は既存の `deriveStopReason` で `error` になる
+  （呼び出し元の abort とタイムアウトの abort は従来どおり区別する）。停止理由の閉じた語彙は変えない。`ToolFailureKind` の `fatal` は戻り値として使わない。
+- **Alternatives**: `ToolOutcome` に `fatal` を載せて `ToolLoopAgent` の `stopWhen` で止める（ツール単位の判断を停止条件に載せると責務が混ざるため、第一案にしない）。
+  ただし、**`stopWhen` が Run 単位の `FatalLatch` の状態だけを読む条件**は、ツールの結果ではなく Run の状態を読むので責務は混ざらない。これを S-1 の退き方とする（下記）。
+  例外の再送出（SDK が握りつぶすため不成立）。
+- **Consequences**: `ToolRuntime` と `createGuardedAgent` の両方に小さな変更が入る（後方互換。ラッチがなければ従来どおり）。内部 abort が `abortCause()` の
+  `caller` に誤分類されないよう、ラッチの判定を `finalise` の先頭に置く。
+- **Verification**: 既存の `guarded-agent` テストに、致命的エラーで停止理由 `error` になるケース、呼び出し元の abort と競合したケース、
+  ラッチ後に追加のツール呼び出しが起きないケースを足す（テストファースト）。spike S-1 は、この out-of-band 経路が実際の SDK で次のステップを止めることの確認に使う。
+  **S-1 が失敗した場合**: ラッチの状態だけを読む停止条件（`latchTripped`）を `createStopConditionRecord` に加える。それでも止まらなければ `generateText` のツールループへ切り替え、本 ADR を改める。**S-1 の結果を research.md に追記するまで、C2 の実装タスクに着手しない。**
+
+### ADR-6: サンドボックスは提供者を起動時に選び、アイドルは Clock で数える（R10 系、Req 3.7、3.8）
+
+- **Context**: E2B のキーがあれば E2B、なければローカルコンテナ、どちらもなければ分析エージェントを無効にする（Req 3.8）。学習者が離れた時に破棄する必要がある（Req 3.7）。
+- **Decision**: `ports/sandbox` に `SandboxProvider` を定義し、E2B 実装、Docker 実装、`mock` の疑似実装を置く。選択は `lib/server/platform.ts` の 1 か所で行う。
+  セッションのアイドル判定は `Clock` を使う `sandbox/lifecycle.ts` が担い、既定 10 分で破棄する。E2B 側の `timeoutMs` は 15 分の安全網とする。
+- **Alternatives**: E2B の寿命だけに任せる（クライアント切断を検知できない）。
+- **Consequences**: 接続断の検知は Route Handler の `request.signal` に依存する。
+
+### ADR-7: MCP ツールのリスク区分は注釈から決め、注釈がなければ `destructive` とする（C3、Req 1.8、1.16、1.17）
+
+- **Context**: MCP ツールは `defineAciTool` を通らず、注釈はサーバーが提供する信頼できないヒントである。
+- **Decision**: `mcp/` のアダプターは `readOnlyHint === true` のものを `read-only`、`destructiveHint === true` または注釈なしのものを `destructive` とする。
+  `destructive` と `write` は登録しない（`buildToolSet` が拒否する）。許可リストは `schemas` に載せたツールだけにする。
+  `check-repo-rules` に「`@ai-sdk/mcp` を `mcp/` と `ports/` 以外から import しない」規則を追加する。
+- **Alternatives**: 注釈を信じずにすべて `read-only` とする（不採用、安全側に倒れない）。
+- **Consequences**: GitHub の書き込み系ツール（issue 作成など）は M3 では使えない。
+
+### ADR-8: 階層型リサーチは Agent-as-a-Tool の単一プロセスとし、サブエージェントの呼び出し数に上限を設ける（Req 4.1、4.4、4.8）
+
+- **Context**: 階層化は token 量を増やす。憲章は多エージェントに正当化の記録を求める（原則 1）。
+- **Decision**: `research/supervisor.ts` が `createGuardedAgent` で Supervisor を作り、3 つのサブエージェントを入力スキーマ付きのツールとして渡す。
+  サブエージェントは要約だけを返す（Req 4.4）。呼び出し数は実行ごとのカウンタで上限を設ける（Req 4.8）。
+  トークンは `agents/token-ledger.ts`（`RunObserver`）で役割別に集計する（C9、Req 4.10）。
+  多エージェントを採る理由: 検索、精読、市場評価の観点を分けて、各サブエージェントの文脈を小さく保つため。トークン増加は 4.10 の内訳で示す。
+- **Alternatives**: 単一エージェントに 3 つのツールを持たせる（文脈が膨らむ）、ワークフロー（観点の順序が固定されず、Supervisor の判断を学ぶ目的に合わない）。
+- **Consequences**: 共有トークン予算（002 CL-8）は、Run 全体の上限を Supervisor が子に分配する形で実装する（❓ 下記）。
+
+### ADR-9: 要件定義書とヘルプデスクの計画はワークフロー、個別の判断は構造化出力とする（憲章原則 1、Req 2、5）
+
+- **Context**: 計画の作成、実行、Replanner の判断は手順が固定されている。ツールを選んで行動するのではない。
+- **Decision**: ヘルプデスクの計画と Replanner は `generateValidated` で構造化出力を得て、実行は依存順の純粋なスケジューラが行う。
+  各タスクの実行だけを `createGuardedAgent`（ツールを使うため）で行う。要件のインタビューは固定の往復を行うワークフロー（`requirements/interview.ts`）とする。
+- **Alternatives**: 計画全体を 1 つの `ToolLoopAgent` にする（計画の不正検査と再生成の上限が Run の停止条件と混ざる）。
+- **Consequences**: `workflow-no-agent-loop` 規則（`workflows/` が `ToolLoopAgent` を import しない）に従うため、ワークフローに置くのは計画と判断の構造化呼び出しだけになる。
+
+### ADR-10: チケットの永続化は既存の rag の drizzle 基盤を使う（R10、Req 2.6、2.7）
+
+- **Context**: チケットの状態と最終回答を保存する必要がある。承認待ちの永続化と再開は 005 の範囲外。
+- **Decision**: `packages/ai-core/src/rag/db/schema.ts`（CL-23 の配置）に `helpdesk_tickets` と `helpdesk_plan_revisions` を定義し、手書き SQL のマイグレーションを `drizzle/0002_helpdesk.sql` に置く。
+  テストは PGlite（`*.db.test.ts`）、hands-on は Postgres。ナレッジ（FAQ・手順書）は既存の `rag` の取り込みを使う（Req 2.9）。
+- **Alternatives**: 新しい DB（ワークスペースを増やす）、ブラウザのストレージ（学習者の再読込みで消え、Req 2.6 を満たせない）。
+- **Consequences**: 単一の学習者を前提とし、認証と行の共有は扱わない（005 Req 1.3）。
+
+## Risks & open questions
+
+- ⚠️ `ToolLoopAgent` に MCP ツールを渡せるか未確認（I-9）— mitigation: spike S-2 で確認し、失敗時は `generateText` のツールループへ切り替える。
+- ⚠️ `registerTool` の `annotations` が v2 にあるか未確認（I-10）— mitigation: spike S-3。なければ `tools/list` を直接組み立てる。
+- ⚠️ AI SDK はツールの例外を `tool-error` に変換して続行する（ADR-5、確認済み）— mitigation: 例外ではなく Run 単位のラッチと内部 abort で止める。ラッチ後にループが確実に止まることは spike S-1 で確認する。
+- ⚠️ Docker の入力転送（ReadonlyRootfs と Tmpfs）と多重化ストリームは未確認（I-11）— mitigation: spike S-5。失敗時はローカルコンテナを必須にせず、Req 3.8 の無効化経路へ落とす。
+- ⚠️ E2B の型（`onResult`、`logs`）と期限切れエラーが未確認（I-11）— mitigation: spike S-4。
+- ⚠️ arXiv の 429 / 503 と `Retry-After` が未確認（I-5）— mitigation: 指数待機を実装し、fixture で固定する。
+- ⚠️ MCP の注釈はサーバーが提供する信頼できないヒント（ADR-7）— mitigation: 注釈がない、または `destructive` のものは登録しない。
+- ⚠️ arXiv のレート制限が複数インスタンスで跨る（I-5）— mitigation: 本番の境界に明記する（005）。
+- ❓ 致命的エラーの分類（Req 1.3 の「許可されない操作」）と、パス検査（Req 1.5）の拒否の扱い。Req 1.5 は「エラーを返す」と書くため回復可能として扱うが、Req 1.3 との整合は人が確認する — to resolve in: 人の確認（CL）。
+- ❓ E2B の `result.chart` の形式と `results[].png` の有無 — to resolve in: spike S-4。
+- ❓ 共有トークン予算（002 CL-8）を Supervisor の子エージェントへ分配する方式 — to resolve in: Plan（ADR-8 の詳細）。
+- ❓ チケットの永続化を M3 でどこまで行うか（Req 2.6 / 2.7）— to resolve in: 人の確認（CL）。
+- ❓ 専用のテストサフィックス（`*.sandbox.test.ts`、`mise run test:sandbox`）を追加するか — to resolve in: 人の確認（CL）。
+
+## Spike items (before W1)
+
+| ID | Question | Method | Blocks |
+|----|----------|--------|--------|
+| S-1 | ツール内でラッチを立てて内部 abort した後、`ToolLoopAgent` が次のステップへ進まず、`finalise` が `error` を返すか（`generate` と `stream` の両方） | 最小のツールと mock モデルで確認 | ADR-5、C2 |
+| S-2 | `ToolLoopAgent({ tools })` に `client.tools({ schemas })` の結果を渡せるか | `@ai-sdk/mcp` 2.0.76 で最小の stdio サーバーを接続 | C3、Req 1.8 |
+| S-3 | `@modelcontextprotocol/server` 2.3.1 の `registerTool` が `annotations` を受けるか | `.d.ts` の確認 | Req 1.16 |
+| S-4 | E2B の `runCode` の型、`onResult`、`logs`、期限切れ、プリインストール | 型定義の確認と実機の 1 回の実行（hands-on の鍵） | Req 3.1、3.5 |
+| S-5 | Docker の create / archive / exec / logs の流れと macOS のソケットパス | 実機の Docker Desktop で `node:http` から確認 | Req 3.8 |
+| S-6 | GitHub の公式ホスト型 MCP のエンドポイントと、各ツールの `readOnlyHint` 注釈の有無（読み取り専用の許可リストに載せられるツール） | `GITHUB_TOKEN` で `@ai-sdk/mcp` の HTTP トランスポートから `tools/list` を 1 回呼ぶ（hands-on の鍵） | Req 1.9、1.16 |
+
+## ツールチェーンの版の更新（2026-10-18、憲章 原則 8）
+
+M3 の着手前に、Node.js と pnpm を M3 着手時点の最新安定版へ上げた。版の方針は M1 と同じで、下限指定ではなく、実装時点の最新安定版を完全一致で固定する（`docs/modules/1-1-dev-environment.md` の「版の方針」）。
+
+| ツール | 旧 | 新 | 公開日（UTC） | 根拠 |
+|---|---|---|---|---|
+| Node.js | 26.10.0 | 26.12.0 | 2026-10-14 | `https://nodejs.org/dist/index.json`。26.11.0（2026-10-07）と 26.12.0 は、どちらも `security: false`（セキュリティ修正の版ではない）。公開から 24 時間以上たっている |
+| pnpm | 12.6.0 | 12.13.0 | 2026-10-13T08:26:30Z | `pnpm view pnpm@12.13.0 time`。公開から 24 時間以上たっている |
+
+- **揃えた箇所**: `mise.toml` の `[tools]`、ルートの `package.json` の `packageManager`（`pnpm@12.13.0`）と `engines`、`AGENTS.md`。pnpm 12 は `packageManager` の版に切り替えて動くため、`mise.toml` だけを上げると `mise exec -- pnpm --version` は 12.6.0 のままになることを実測で確かめた（揃えた後は 12.13.0）。
+- **lockfile**: `pnpm install` で変わったのは、`pnpm-lock.yaml` の先頭の文書の `packageManagerDependencies`（`pnpm` と `@pnpm/exe.*` が 12.6.0 から 12.13.0 に変わった）だけである。通常の依存の解決は変わっていない。`pnpm install --frozen-lockfile` は成功した。
+- **TypeScript 6.x への後退**: 無い。
+- **検証**（2026-10-18、Node 26.12.0 / pnpm 12.13.0）: `pnpm install --frozen-lockfile` が成功した。`mise run gate` が終了コード 0 で成功し、所要時間は 40.9 秒（`real`）だった。テストの件数は、ルート 352 件（失敗 0、うち 1 件は意図した失敗のテスト）、`@platform/ai-core` 1,732 件（スキップ 4 件）、`@platform/eval-suite` 7 件（スキップ 8 件。`local` 専用のテスト）、`web` 733 件で、`docs:check` は 8 文書・110 件のテスト参照を確かめた。CI の `ci-status` と `test:e2e`（3 エンジン）は、この記録の時点では未実行である。
