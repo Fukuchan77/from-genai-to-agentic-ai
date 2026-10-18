@@ -9,7 +9,12 @@ import path from "node:path";
 import { pipeline, type Readable, type Transform } from "node:stream";
 import { createBrotliDecompress, createUnzip } from "node:zlib";
 import type { ToolRuntime } from "@platform/ai-core/aci";
-import { type EnvSource, loadPlatformConfig, type PlatformConfig } from "@platform/ai-core/config";
+import {
+	DEFAULT_SANDBOX,
+	type EnvSource,
+	loadPlatformConfig,
+	type PlatformConfig,
+} from "@platform/ai-core/config";
 import { PlatformError } from "@platform/ai-core/errors";
 import { createTicketStore, type TicketStore } from "@platform/ai-core/helpdesk";
 import {
@@ -51,6 +56,7 @@ import {
 	createYoutubeiTranscriptSource,
 	type HttpFetcher,
 	type RerankProvider,
+	type SandboxProvider,
 	systemClock,
 	type TranscriptSource,
 	type WebSearchProvider,
@@ -61,6 +67,15 @@ import {
 	createPostgresDatabase,
 	type RagDatabaseHandle,
 } from "@platform/ai-core/rag";
+import {
+	createE2bProvider,
+	createLocalDockerProvider,
+	createMockSandboxProvider,
+	createSandboxRegistry,
+	probeDockerEnvironment,
+	type SandboxRegistry,
+	selectSandboxProvider,
+} from "@platform/ai-core/sandbox";
 import {
 	ARTICLE_FETCH_LIMITS,
 	isBlockedHostname,
@@ -647,4 +662,154 @@ export async function getHelpdeskStore(
 ): Promise<TicketStore> {
 	const [platform, handle] = await Promise.all([getPlatform(), getKnowledgeBase(factories)]);
 	return createTicketStore(handle.db, { clock: platform.clock });
+}
+
+// --- Sandbox (plan C13, Req 3.7, 3.8, 3.10) ---
+
+/**
+ * Where generated code runs, chosen when first asked. `mock` uses the pseudo provider; elsewhere the
+ * E2B key comes first, then a local container, and with neither the analysis is disabled with the
+ * reason and what to set up (Req 3.8).
+ */
+export type SandboxSetup =
+	| {
+			readonly kind: "e2b" | "docker" | "mock";
+			readonly provider: SandboxProvider;
+			/** One sandbox per learner session, closed on release or after ten idle minutes. */
+			readonly registry: SandboxRegistry;
+			/** Stops the idle sweep. */
+			readonly stop: () => void;
+	  }
+	| { readonly kind: "disabled"; readonly reason: string; readonly guidance: string };
+
+export interface SandboxDeps {
+	readonly probe: typeof probeDockerEnvironment;
+	readonly createE2b: typeof createE2bProvider;
+	readonly createDocker: typeof createLocalDockerProvider;
+	readonly createMock: typeof createMockSandboxProvider;
+	/** How often idle sandboxes are swept. `null` starts no timer (tests). */
+	readonly sweepIntervalMs: number | null;
+}
+
+const DEFAULT_SANDBOX_DEPS: SandboxDeps = {
+	probe: probeDockerEnvironment,
+	createE2b: createE2bProvider,
+	createDocker: createLocalDockerProvider,
+	createMock: createMockSandboxProvider,
+	sweepIntervalMs: 60_000,
+};
+
+const NO_DOCKER = { reachable: false, imagePresent: false } as const;
+
+function startSweep(registry: SandboxRegistry, intervalMs: number | null): () => void {
+	if (intervalMs === null) return () => undefined;
+	const timer = setInterval(() => {
+		// A failed sweep is tried again at the next tick; it must not stop the timer.
+		registry.sweep().catch(() => undefined);
+	}, intervalMs);
+	// The sweep must not keep the process alive on its own.
+	timer.unref?.();
+	return () => clearInterval(timer);
+}
+
+/** Builds the sandbox setup for this platform. Never throws for a missing key or a missing Docker. */
+export async function createSandboxSetup(
+	platform: Pick<Platform, "mode" | "config" | "clock">,
+	deps: SandboxDeps = DEFAULT_SANDBOX_DEPS,
+): Promise<SandboxSetup> {
+	const { config } = platform;
+	let kind: "e2b" | "docker" | "mock";
+	let provider: SandboxProvider;
+
+	if (platform.mode === "mock") {
+		kind = "mock";
+		provider = deps.createMock();
+	} else {
+		const e2bKey = config.credentials.e2b;
+		// With a key Docker is not consulted, so no socket is touched for nothing.
+		const docker = e2bKey
+			? NO_DOCKER
+			: await deps.probe({ env: { DOCKER_HOST: config.docker.host }, image: config.docker.image });
+		const selection = selectSandboxProvider({
+			env: { E2B_API_KEY: e2bKey, DOCKER_SANDBOX_IMAGE: config.docker.image },
+			dockerProbe: docker,
+		});
+		if (selection.kind === "disabled") return selection;
+		kind = selection.kind;
+		provider =
+			selection.kind === "e2b"
+				? deps.createE2b({ apiKey: e2bKey })
+				: deps.createDocker({
+						environment: docker,
+						image: config.docker.image,
+						clock: platform.clock,
+						onWarning: (message) => console.warn(message),
+					});
+	}
+
+	const registry = createSandboxRegistry({
+		provider,
+		clock: platform.clock,
+		idleTimeoutMs: DEFAULT_SANDBOX.idleTimeoutMs,
+		maxSessions: DEFAULT_SANDBOX.maxSessions,
+	});
+	return { kind, provider, registry, stop: startSweep(registry, deps.sweepIntervalMs) };
+}
+
+const SANDBOX_KEY = Symbol.for("from-genai-to-agentic-ai.sandbox");
+
+type SandboxHolder = { [SANDBOX_KEY]?: Promise<SandboxSetup> };
+
+function stopSetup(setup: SandboxSetup | undefined): void {
+	if (setup && setup.kind !== "disabled") setup.stop();
+}
+
+/**
+ * The shared sandbox setup, kept on `globalThis` (a Route Handler can be a separate bundle and dev
+ * reloads modules, so a module variable would hold a second registry and a second timer: a session
+ * made by one route could not be released by another). An enabled setup is built once. A disabled
+ * one is not kept, so starting Docker or setting a key takes effect on the next request.
+ */
+export function getSandboxSelection(
+	deps: SandboxDeps = DEFAULT_SANDBOX_DEPS,
+): Promise<SandboxSetup> {
+	const holder = globalThis as SandboxHolder;
+	const existing = holder[SANDBOX_KEY];
+	if (existing) return existing;
+	const created = getPlatform().then((platform) => createSandboxSetup(platform, deps));
+	holder[SANDBOX_KEY] = created;
+	created.then(
+		(setup) => {
+			if (setup.kind === "disabled" && holder[SANDBOX_KEY] === created) delete holder[SANDBOX_KEY];
+		},
+		() => {
+			if (holder[SANDBOX_KEY] === created) delete holder[SANDBOX_KEY];
+		},
+	);
+	return created;
+}
+
+/**
+ * Forgets the shared setup: the idle sweep stops, every session is closed, and the next request
+ * chooses again. Used when the sandbox turned out to be gone after it had been chosen (Docker
+ * stopped, for one), so the status shows the truth and the guidance, not a stale `docker`.
+ */
+export async function invalidateSandboxSelection(): Promise<void> {
+	const holder = globalThis as SandboxHolder;
+	const previous = holder[SANDBOX_KEY];
+	delete holder[SANDBOX_KEY];
+	if (!previous) return;
+	const setup = await previous.catch(() => undefined);
+	if (!setup || setup.kind === "disabled") return;
+	setup.stop();
+	await setup.registry.closeAll();
+}
+
+/** Test seam: installs `setup` as the shared one (stopping the previous sweep), or clears it. */
+export function setSandboxForTesting(setup: SandboxSetup | undefined): void {
+	const holder = globalThis as SandboxHolder;
+	const previous = holder[SANDBOX_KEY];
+	if (previous) void previous.then(stopSetup, () => undefined);
+	if (setup) holder[SANDBOX_KEY] = Promise.resolve(setup);
+	else delete holder[SANDBOX_KEY];
 }

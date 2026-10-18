@@ -93,6 +93,51 @@ describe("toErrorResponse", () => {
 		});
 	});
 
+	it("keeps the guidance of a provider-unavailable error, which is fixed text about what to set up", async () => {
+		const guidance =
+			"E2B_API_KEY を設定するか、Docker を起動して `mise run sandbox:build` を実行してください。";
+
+		const response = toErrorResponse(
+			new PlatformError("provider-unavailable", "分析を使えません。", { guidance, apiKey: SECRET }),
+		);
+
+		const text = await response.text();
+		expect(JSON.parse(text)).toEqual({
+			error: { code: "provider-unavailable", message: "分析を使えません。", details: { guidance } },
+		});
+		expect(text).not.toContain(SECRET);
+	});
+
+	it.each([
+		["a non-string guidance", { guidance: { nested: SECRET } }],
+		["an empty guidance", { guidance: "" }],
+		["a guidance over 500 characters", { guidance: "あ".repeat(501) }],
+	])("drops %s of a provider-unavailable error", async (_label, details) => {
+		const text = await toErrorResponse(
+			new PlatformError("provider-unavailable", "x", details),
+		).text();
+
+		expect(JSON.parse(text)).toEqual({ error: { code: "provider-unavailable", message: "x" } });
+	});
+
+	it("keeps a guidance of exactly 500 characters", async () => {
+		const guidance = "あ".repeat(500);
+
+		const text = await toErrorResponse(
+			new PlatformError("provider-unavailable", "x", { guidance }),
+		).text();
+
+		expect(JSON.parse(text).error.details).toEqual({ guidance });
+	});
+
+	it("does not pass guidance on for any other code", async () => {
+		const text = await toErrorResponse(
+			new PlatformError("output-invalid", "x", { guidance: "do not show" }),
+		).text();
+
+		expect(text).not.toContain("do not show");
+	});
+
 	it.each([
 		["a reason with unsafe characters", { reason: `bad ${SECRET}` }],
 		["a non-string reason", { reason: { nested: SECRET } }],

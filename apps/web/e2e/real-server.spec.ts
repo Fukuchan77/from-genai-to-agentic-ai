@@ -5,6 +5,7 @@ import { expect, type Page, test } from "@playwright/test";
 // text itself; importing it keeps the spec in step with the corpus.
 import { M2_1_SAMPLE_QUESTIONS } from "../../../packages/ai-core/fixtures/scenarios/m2-1";
 import { M3_1_SAMPLE_TASKS } from "../../../packages/ai-core/fixtures/scenarios/m3-1";
+import { M3_3_SAMPLE_INSTRUCTIONS } from "../../../packages/ai-core/fixtures/scenarios/m3-3";
 // A pure module (no vitest import), unlike the `@platform/ai-core/testing` index.
 import { buildTextPdf } from "../../../packages/ai-core/src/testing/pdf-builder";
 import { fillUntilEnabled } from "./support/form";
@@ -323,4 +324,123 @@ test("mcp: the comparison runs both ways through the real route", async ({ reque
 	expect(body.lowLevel.steps).toBe(3);
 	expect(body.comparison.steps).toBe(1);
 	expect(body.comparison.ratio).toBeLessThan(1);
+});
+
+// Module 3-3 (plan C13, risk R-1): `@e2b/code-interpreter` must survive the Turbopack build (the
+// platform imports the E2B provider, which loads the SDK only when a key is set), multipart bodies
+// are parsed by the real runtime, and the sandbox registry must be ONE registry for the whole
+// process even though each Route Handler is its own bundle: a session made by `/api/analysis` is
+// closed by `DELETE /api/analysis/sessions/[id]`. Vitest runs every route in one module graph, so
+// only this spec can catch the registry being duplicated per bundle.
+
+function analysisForm(options: {
+	sessionId: string;
+	instruction?: string;
+	name?: string;
+	bytes?: Buffer;
+}) {
+	return {
+		file: {
+			name: options.name ?? "sales.csv",
+			mimeType: "text/csv",
+			buffer:
+				options.bytes ??
+				Buffer.from("date,region,product,units,sales\n2026-01-08,東京,ノート,100,40000\n"),
+		},
+		instruction: options.instruction ?? M3_3_SAMPLE_INSTRUCTIONS.success,
+		sessionId: options.sessionId,
+	};
+}
+
+test("analysis: the status route reports the pseudo sandbox in mock mode", async ({ request }) => {
+	const response = await request.get("/api/analysis/status");
+
+	expect(response.status()).toBe(200);
+	const body = await response.json();
+	expect(body.sandbox).toEqual({ kind: "mock" });
+	expect(body.upload).toEqual({ maxBytes: 20 * 1024 * 1024, accepts: [".csv", ".xlsx", ".xls"] });
+});
+
+test("analysis: a CSV is analysed through the real route with a figure, a table and the result", async ({
+	request,
+}) => {
+	const response = await request.post("/api/analysis", {
+		multipart: analysisForm({ sessionId: crypto.randomUUID() }),
+	});
+
+	expect(response.status()).toBe(200);
+	const text = await response.text();
+	expect(text).toContain('"type":"data-analysis-attempt"');
+	expect(text).toContain('"type":"data-analysis-figure"');
+	expect(text).toContain('"alt":"Monthly sales bar chart"');
+	expect(text).toContain('"type":"data-analysis-table"');
+	expect(text).toContain('"status":"succeeded"');
+});
+
+test("analysis: a failing run is fixed and the limit stops a run that never succeeds", async ({
+	request,
+}) => {
+	const fixed = await request.post("/api/analysis", {
+		multipart: analysisForm({
+			sessionId: crypto.randomUUID(),
+			instruction: M3_3_SAMPLE_INSTRUCTIONS.fixed,
+		}),
+	});
+	const limited = await request.post("/api/analysis", {
+		multipart: analysisForm({
+			sessionId: crypto.randomUUID(),
+			instruction: M3_3_SAMPLE_INSTRUCTIONS.attemptLimit,
+		}),
+	});
+
+	const fixedText = await fixed.text();
+	expect(fixedText).toContain('"errorSummary":"KeyError: \'revenue\'"');
+	expect(fixedText).toContain('"status":"succeeded","attempts":2,"fixes":1');
+	const limitedText = await limited.text();
+	expect(limitedText).toContain('"status":"attempt-limit","attempts":4,"fixes":3');
+});
+
+test("analysis: a session made by /api/analysis is closed by DELETE from another route", async ({
+	request,
+}) => {
+	const sessionId = crypto.randomUUID();
+	const made = await request.post("/api/analysis", { multipart: analysisForm({ sessionId }) });
+	await made.text();
+
+	const first = await request.delete(`/api/analysis/sessions/${sessionId}`);
+	const second = await request.delete(`/api/analysis/sessions/${sessionId}`);
+
+	expect(first.status()).toBe(204);
+	// The header tells that a sandbox was really closed: the registry the DELETE bundle sees is the
+	// one the POST bundle put the sandbox in.
+	expect(first.headers()["x-analysis-session"]).toBe("released");
+	expect(second.status()).toBe(204);
+	expect(second.headers()["x-analysis-session"]).toBe("absent");
+});
+
+test("analysis: files that cannot be analysed are refused by the real route before any sandbox", async ({
+	request,
+}) => {
+	const wrongKind = await request.post("/api/analysis", {
+		multipart: analysisForm({ sessionId: crypto.randomUUID(), name: "notes.txt" }),
+	});
+	const disguised = await request.post("/api/analysis", {
+		multipart: analysisForm({
+			sessionId: crypto.randomUUID(),
+			name: "image.csv",
+			bytes: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13]),
+		}),
+	});
+	const tooBig = await request.post("/api/analysis", {
+		multipart: analysisForm({
+			sessionId: crypto.randomUUID(),
+			name: "big.csv",
+			bytes: Buffer.alloc(20 * 1024 * 1024 + 1, 0x61),
+		}),
+	});
+
+	expect(wrongKind.status()).toBe(400);
+	expect(disguised.status()).toBe(400);
+	expect(tooBig.status()).toBe(413);
+	expect((await tooBig.json()).error.code).toBe("payload-too-large");
 });

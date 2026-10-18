@@ -3,11 +3,18 @@ import { access } from "node:fs/promises";
 import path from "node:path";
 import { Readable } from "node:stream";
 import { gzipSync } from "node:zlib";
+import { DEFAULT_SANDBOX } from "@platform/ai-core/config";
 import type { McpRegistry, McpServerConfig } from "@platform/ai-core/mcp";
 import { defaultRerankModel, ModelSelectionError } from "@platform/ai-core/models";
-import type { HttpFetcher, TranscriptSource, WebSearchProvider } from "@platform/ai-core/ports";
+import type {
+	HttpFetcher,
+	SandboxProvider,
+	TranscriptSource,
+	WebSearchProvider,
+} from "@platform/ai-core/ports";
 import { createFakeClock, createNodeHttpFetcher } from "@platform/ai-core/ports";
 import { KnowledgeBaseUnavailableError, type RagDatabaseHandle } from "@platform/ai-core/rag";
+import { createMockSandboxProvider } from "@platform/ai-core/sandbox";
 import { ARTICLE_FETCH_LIMITS, SourceFetchError } from "@platform/ai-core/summarize";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -19,13 +26,17 @@ import {
 	getKnowledgeBase,
 	getMcpRegistry,
 	getPlatform,
+	getSandboxSelection,
 	type HttpRequestFunction,
+	invalidateSandboxSelection,
 	type KnowledgeBaseFactories,
 	mcpServerConfigs,
 	resolveKnowledgeEmbedding,
+	type SandboxDeps,
 	setKnowledgeBaseForTesting,
 	setMcpRegistryForTesting,
 	setPlatformForTesting,
+	setSandboxForTesting,
 } from "./platform";
 
 const MOCK_ENV = { VITEST: "1", AI_TEST_RUN_MODE: "mock" } as const;
@@ -908,6 +919,318 @@ describe("getHelpdeskStore (plan C13, Req 2.6, 2.7)", () => {
 		} finally {
 			setKnowledgeBaseForTesting(undefined);
 			setPlatformForTesting(undefined);
+		}
+	});
+});
+
+describe("getSandboxSelection (plan C13, Req 3.7, 3.8, 3.10)", () => {
+	const E2B_ENV = { ...LOCAL_ENV, E2B_API_KEY: "changeme-e2b" } as const;
+	const READY = { reachable: true, imagePresent: true } as const;
+	const DOWN = { reachable: false, imagePresent: false } as const;
+
+	function fakeDeps(overrides: Partial<SandboxDeps> = {}) {
+		const created: string[] = [];
+		const deps: SandboxDeps = {
+			probe: vi.fn(async () => DOWN),
+			createE2b: vi.fn((params) => {
+				created.push(`e2b:${params.apiKey}`);
+				return {
+					...createMockSandboxProvider(),
+					kind: "e2b" as const,
+				} as unknown as SandboxProvider;
+			}),
+			createDocker: vi.fn((params) => {
+				created.push(`docker:${params.image}`);
+				return {
+					...createMockSandboxProvider(),
+					kind: "docker" as const,
+				} as unknown as SandboxProvider;
+			}),
+			createMock: vi.fn(() => {
+				created.push("mock");
+				return createMockSandboxProvider();
+			}),
+			sweepIntervalMs: null,
+			...overrides,
+		};
+		return { deps, created };
+	}
+
+	async function withPlatform(env: Record<string, string>, clock = createFakeClock(1_000)) {
+		setPlatformForTesting(await createPlatform({ env, clock }));
+		setSandboxForTesting(undefined);
+		return clock;
+	}
+
+	function cleanup() {
+		setSandboxForTesting(undefined);
+		setPlatformForTesting(undefined);
+	}
+
+	it("uses the pseudo provider in mock mode, without looking at Docker", async () => {
+		await withPlatform(MOCK_ENV);
+		const { deps, created } = fakeDeps();
+		try {
+			const setup = await getSandboxSelection(deps);
+
+			expect(setup.kind).toBe("mock");
+			if (setup.kind === "disabled") throw new Error("expected an enabled setup");
+			expect(setup.provider.kind).toBe("mock");
+			expect(created).toEqual(["mock"]);
+			expect(deps.probe).not.toHaveBeenCalled();
+		} finally {
+			cleanup();
+		}
+	});
+
+	it("prefers E2B when a key is set, and does not probe Docker", async () => {
+		await withPlatform(E2B_ENV);
+		const { deps, created } = fakeDeps({ probe: vi.fn(async () => READY) });
+		try {
+			const setup = await getSandboxSelection(deps);
+
+			expect(setup.kind).toBe("e2b");
+			expect(created).toEqual(["e2b:changeme-e2b"]);
+			expect(deps.probe).not.toHaveBeenCalled();
+		} finally {
+			cleanup();
+		}
+	});
+
+	it("uses the local container when there is no key and Docker has the image", async () => {
+		await withPlatform({
+			...LOCAL_ENV,
+			DOCKER_HOST: "unix:///custom/engine.sock",
+			DOCKER_SANDBOX_IMAGE: "my-sandbox:1",
+		});
+		const { deps, created } = fakeDeps({ probe: vi.fn(async () => READY) });
+		try {
+			const setup = await getSandboxSelection(deps);
+
+			expect(setup.kind).toBe("docker");
+			expect(created).toEqual(["docker:my-sandbox:1"]);
+			expect(deps.probe).toHaveBeenCalledWith(
+				expect.objectContaining({
+					image: "my-sandbox:1",
+					env: { DOCKER_HOST: "unix:///custom/engine.sock" },
+				}),
+			);
+			expect(deps.createDocker).toHaveBeenCalledWith(
+				expect.objectContaining({ environment: READY }),
+			);
+		} finally {
+			cleanup();
+		}
+	});
+
+	it("is disabled with the reason and the guidance when neither a key nor a container is available", async () => {
+		await withPlatform(LOCAL_ENV);
+		const { deps, created } = fakeDeps();
+		try {
+			const setup = await getSandboxSelection(deps);
+
+			expect(setup.kind).toBe("disabled");
+			if (setup.kind !== "disabled") throw new Error("expected disabled");
+			expect(setup.reason).toContain("E2B_API_KEY");
+			expect(setup.guidance).toContain("E2B_API_KEY");
+			expect(setup.guidance).toContain("mise run sandbox:build");
+			expect(created).toEqual([]);
+		} finally {
+			cleanup();
+		}
+	});
+
+	it("looks again each time while disabled, so starting Docker takes effect without a restart", async () => {
+		await withPlatform(LOCAL_ENV);
+		let ready = false;
+		const { deps } = fakeDeps({ probe: vi.fn(async () => (ready ? READY : DOWN)) });
+		try {
+			expect((await getSandboxSelection(deps)).kind).toBe("disabled");
+			ready = true;
+			expect((await getSandboxSelection(deps)).kind).toBe("docker");
+			expect(deps.probe).toHaveBeenCalledTimes(2);
+		} finally {
+			cleanup();
+		}
+	});
+
+	it("builds an enabled setup once and shares it, even between concurrent callers", async () => {
+		await withPlatform(MOCK_ENV);
+		const { deps, created } = fakeDeps();
+		try {
+			const [first, second] = await Promise.all([
+				getSandboxSelection(deps),
+				getSandboxSelection(deps),
+			]);
+			const third = await getSandboxSelection(deps);
+
+			expect(second).toBe(first);
+			expect(third).toBe(first);
+			expect(created).toEqual(["mock"]);
+		} finally {
+			cleanup();
+		}
+	});
+
+	it("gives the registry the platform clock and the ten-minute idle timeout", async () => {
+		const clock = await withPlatform(MOCK_ENV);
+		const { deps } = fakeDeps();
+		try {
+			const setup = await getSandboxSelection(deps);
+			if (setup.kind === "disabled") throw new Error("expected an enabled setup");
+			(await setup.registry.acquire("s1")).done();
+
+			clock.advanceBy(DEFAULT_SANDBOX.idleTimeoutMs);
+			expect(await setup.registry.sweep()).toEqual([]);
+			clock.advanceBy(1);
+			expect(await setup.registry.sweep()).toEqual(["s1"]);
+		} finally {
+			cleanup();
+		}
+	});
+
+	describe("the idle sweep", () => {
+		it("sweeps on a timer, and stops when the setup is replaced", async () => {
+			vi.useFakeTimers();
+			try {
+				const clock = await withPlatform(MOCK_ENV);
+				const { deps } = fakeDeps({ sweepIntervalMs: 1_000 });
+				const setup = await getSandboxSelection(deps);
+				if (setup.kind === "disabled") throw new Error("expected an enabled setup");
+				const lease = await setup.registry.acquire("s1");
+				lease.done();
+				const sweep = vi.spyOn(setup.registry, "sweep");
+
+				clock.advanceBy(DEFAULT_SANDBOX.idleTimeoutMs + 1);
+				await vi.advanceTimersByTimeAsync(1_000);
+				expect(sweep).toHaveBeenCalledTimes(1);
+				expect(await lease.session.isAlive()).toBe(false);
+
+				setSandboxForTesting(undefined);
+				await vi.advanceTimersByTimeAsync(5_000);
+				expect(sweep).toHaveBeenCalledTimes(1);
+			} finally {
+				vi.useRealTimers();
+				cleanup();
+			}
+		});
+
+		it("keeps sweeping after a sweep fails", async () => {
+			vi.useFakeTimers();
+			try {
+				await withPlatform(MOCK_ENV);
+				const { deps } = fakeDeps({ sweepIntervalMs: 1_000 });
+				const setup = await getSandboxSelection(deps);
+				if (setup.kind === "disabled") throw new Error("expected an enabled setup");
+				const failure = Promise.reject(new Error("boom"));
+				// The test itself handles it at once, so Node does not report it before the timer
+				// fires; the spy below then counts only the handlers the code under test adds.
+				failure.catch(() => undefined);
+				const handled = vi.spyOn(failure, "catch");
+				const sweep = vi.spyOn(setup.registry, "sweep").mockReturnValue(failure);
+
+				await vi.advanceTimersByTimeAsync(3_000);
+
+				expect(sweep).toHaveBeenCalledTimes(3);
+				// Each failed sweep is caught, not left as an unhandled rejection.
+				expect(handled).toHaveBeenCalledTimes(3);
+			} finally {
+				vi.useRealTimers();
+				cleanup();
+			}
+		});
+	});
+
+	it("does not keep a failed build, so the next request tries again", async () => {
+		await withPlatform(MOCK_ENV);
+		let attempts = 0;
+		const { deps } = fakeDeps({
+			createMock: vi.fn(() => {
+				attempts += 1;
+				if (attempts === 1) throw new Error("first attempt fails");
+				return createMockSandboxProvider();
+			}),
+		});
+		try {
+			await expect(getSandboxSelection(deps)).rejects.toThrow("first attempt fails");
+
+			expect((await getSandboxSelection(deps)).kind).toBe("mock");
+			expect(attempts).toBe(2);
+		} finally {
+			cleanup();
+		}
+	});
+
+	it("caps the sandboxes alive at once at the configured number", async () => {
+		await withPlatform(MOCK_ENV);
+		const { deps } = fakeDeps();
+		try {
+			const setup = await getSandboxSelection(deps);
+			if (setup.kind === "disabled") throw new Error("expected an enabled setup");
+			const leases = [];
+			for (let index = 0; index < DEFAULT_SANDBOX.maxSessions; index += 1) {
+				leases.push(await setup.registry.acquire(`session-${index}`));
+			}
+
+			await expect(setup.registry.acquire("one-too-many")).rejects.toMatchObject({
+				code: "provider-unavailable",
+			});
+			leases[0]?.done();
+			await expect(setup.registry.acquire("now-there-is-room")).resolves.toBeDefined();
+		} finally {
+			cleanup();
+		}
+	});
+
+	describe("invalidateSandboxSelection", () => {
+		it("closes every session, stops the sweep, and makes the next request choose again", async () => {
+			vi.useFakeTimers();
+			try {
+				await withPlatform(MOCK_ENV);
+				const { deps, created } = fakeDeps({ sweepIntervalMs: 1_000 });
+				const setup = await getSandboxSelection(deps);
+				if (setup.kind === "disabled") throw new Error("expected an enabled setup");
+				const lease = await setup.registry.acquire("s1");
+				const sweep = vi.spyOn(setup.registry, "sweep");
+
+				await invalidateSandboxSelection();
+				await vi.advanceTimersByTimeAsync(5_000);
+
+				expect(await lease.session.isAlive()).toBe(false);
+				expect(sweep).not.toHaveBeenCalled();
+				const next = await getSandboxSelection(deps);
+				expect(next).not.toBe(setup);
+				expect(created).toEqual(["mock", "mock"]);
+			} finally {
+				vi.useRealTimers();
+				cleanup();
+			}
+		});
+
+		it("is harmless when nothing has been chosen yet, or the choice was disabled", async () => {
+			await withPlatform(MOCK_ENV);
+			try {
+				await expect(invalidateSandboxSelection()).resolves.toBeUndefined();
+				setSandboxForTesting({ kind: "disabled", reason: "r", guidance: "g" });
+				await expect(invalidateSandboxSelection()).resolves.toBeUndefined();
+			} finally {
+				cleanup();
+			}
+		});
+	});
+
+	it("can be replaced for a test and cleared", async () => {
+		await withPlatform(MOCK_ENV);
+		const provider = createMockSandboxProvider();
+		const installed = { kind: "disabled", reason: "r", guidance: "g" } as const;
+		try {
+			setSandboxForTesting(installed);
+			expect(await getSandboxSelection(fakeDeps().deps)).toBe(installed);
+			setSandboxForTesting(undefined);
+			expect((await getSandboxSelection(fakeDeps().deps)).kind).toBe("mock");
+			void provider;
+		} finally {
+			cleanup();
 		}
 	});
 });

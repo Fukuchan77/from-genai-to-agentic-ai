@@ -55,6 +55,8 @@ export class GuardError extends Error {
 export interface PublicErrorDetails {
 	readonly reason?: string;
 	readonly status?: number;
+	/** What to set up, for a `provider-unavailable` error (for example a disabled sandbox). Fixed text. */
+	readonly guidance?: string;
 }
 
 export interface PublicError {
@@ -99,6 +101,24 @@ function invalidRequestDetails(
 		: undefined;
 }
 
+const MAX_GUIDANCE_CHARACTERS = 500;
+
+/**
+ * A `provider-unavailable` error may carry `guidance`: the fixed sentence that tells the learner
+ * what to set up (Req 3.8). It is built by the platform from names of settings and tasks, never from
+ * an error's own text.
+ */
+function unavailableDetails(
+	details: Readonly<Record<string, unknown>>,
+): PublicErrorDetails | undefined {
+	const { guidance } = details;
+	return typeof guidance === "string" &&
+		guidance.length > 0 &&
+		[...guidance].length <= MAX_GUIDANCE_CHARACTERS
+		? { guidance }
+		: undefined;
+}
+
 /** The browser-safe view of any thrown value. */
 export function toPublicError(error: unknown): PublicError {
 	if (error instanceof GuardError) return { code: error.code, message: error.message };
@@ -108,7 +128,9 @@ export function toPublicError(error: unknown): PublicError {
 				? publicDetails(error.details)
 				: error.code === "invalid-request"
 					? invalidRequestDetails(error.details)
-					: undefined;
+					: error.code === "provider-unavailable"
+						? unavailableDetails(error.details)
+						: undefined;
 		return {
 			code: error.code,
 			message: error.message,
