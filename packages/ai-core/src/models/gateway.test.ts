@@ -8,6 +8,7 @@ import {
 	M2_4_SAMPLE_TASKS,
 	M2_CORPUS_TEXT,
 	M3_1_SAMPLE_TASKS,
+	M3_2_SAMPLE_INQUIRIES,
 } from "../mock";
 import type { RecordingStore } from "../mock/recording";
 import { createFakeClock } from "../ports/clock";
@@ -168,6 +169,22 @@ describe("createModelGateway resolve (mock)", () => {
 			},
 		});
 		expect(first.toolCalls.map((call) => call.toolName)).toEqual(["listFiles"]);
+	});
+
+	it("answers the M3-2 help-desk plan scenario with the fixed plan, in dependency order", async () => {
+		const gateway = createModelGateway({ config: configFor({}) });
+		const chat = await gateway.resolve({ purpose: "chat" });
+
+		const planned = await generateText({
+			model: chat.model,
+			prompt: `次の問い合わせを解決する実行計画を作ってください。\n\n<knowledge>\n- VPN 接続手順\n</knowledge>\n\n<inquiry>\n${M3_2_SAMPLE_INQUIRIES.resolved}\n</inquiry>`,
+		});
+
+		const plan = JSON.parse(planned.text) as { tasks: { id: string; dependsOn: string[] }[] };
+		expect(plan.tasks.map((task) => [task.id, task.dependsOn])).toEqual([
+			["t1", []],
+			["t2", ["t1"]],
+		]);
 	});
 
 	it("binds a separate mock model per purpose and uses injected scenarios", async () => {

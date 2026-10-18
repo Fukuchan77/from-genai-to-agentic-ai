@@ -1,4 +1,5 @@
 import { M3_1_SCENARIOS } from "../../fixtures/scenarios/m3-1";
+import { M3_2_SCENARIOS } from "../../fixtures/scenarios/m3-2";
 import type { ScenarioDefinition } from "./scenario";
 
 /**
@@ -6,7 +7,10 @@ import type { ScenarioDefinition } from "./scenario";
  * here (3-1 in W2 … 3-6 in W6) and updates the expected counts in `m3-scenarios.test.ts`, whose
  * detectors keep the list unambiguous.
  */
-export const M3_SCENARIOS: readonly ScenarioDefinition[] = Object.freeze([...M3_1_SCENARIOS]);
+export const M3_SCENARIOS: readonly ScenarioDefinition[] = Object.freeze([
+	...M3_1_SCENARIOS,
+	...M3_2_SCENARIOS,
+]);
 
 export { M1_2_SCENARIOS } from "../../fixtures/scenarios/m1-2";
 export { M1_3_SCENARIOS } from "../../fixtures/scenarios/m1-3";
@@ -19,6 +23,7 @@ export { M2_2_SCENARIOS } from "../../fixtures/scenarios/m2-2";
 export { M2_3_SAMPLE_TASKS, M2_3_SCENARIOS } from "../../fixtures/scenarios/m2-3";
 export { M2_4_SAMPLE_TASKS, M2_4_SCENARIOS } from "../../fixtures/scenarios/m2-4";
 export { M3_1_SAMPLE_TASKS, M3_1_SCENARIOS } from "../../fixtures/scenarios/m3-1";
+export { M3_2_SAMPLE_INQUIRIES, M3_2_SCENARIOS } from "../../fixtures/scenarios/m3-2";
 export { type Cassette, type CassetteStore, createCassetteStore } from "./cassette-store";
 export { createDeterministicEmbeddingModel } from "./deterministic-embedding";
 export {
