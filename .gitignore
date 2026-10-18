@@ -164,3 +164,7 @@ packages/ai-core/fixtures/cassettes/**/*.tmp
 # Learner documents for the RAG knowledge base (only the README is tracked)
 knowledge/*
 !knowledge/README.md
+
+# Learner files for the file-operation tools and the MCP server (only the README is tracked)
+workspace/*
+!workspace/README.md
