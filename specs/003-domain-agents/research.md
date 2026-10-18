@@ -309,3 +309,89 @@ M3 の着手前に、Node.js と pnpm を M3 着手時点の最新安定版へ�
 - **lockfile**: `pnpm install` で変わったのは、`pnpm-lock.yaml` の先頭の文書の `packageManagerDependencies`（`pnpm` と `@pnpm/exe.*` が 12.6.0 から 12.13.0 に変わった）だけである。通常の依存の解決は変わっていない。`pnpm install --frozen-lockfile` は成功した。
 - **TypeScript 6.x への後退**: 無い。
 - **検証**（2026-10-18、Node 26.12.0 / pnpm 12.13.0）: `pnpm install --frozen-lockfile` が成功した。`mise run gate` が終了コード 0 で成功し、所要時間は 40.9 秒（`real`）だった。テストの件数は、ルート 352 件（失敗 0、うち 1 件は意図した失敗のテスト）、`@platform/ai-core` 1,732 件（スキップ 4 件）、`@platform/eval-suite` 7 件（スキップ 8 件。`local` 専用のテスト）、`web` 733 件で、`docs:check` は 8 文書・110 件のテスト参照を確かめた。CI の `ci-status` と `test:e2e`（3 エンジン）は、この記録の時点では未実行である。
+
+## spike の実測（W1）
+
+実験のコードはスクラッチパッドに置き、リポジトリへはコミットしていない（結果を固定するテストは tasks 3.3 と 8.4 が持つ）。環境は Node 26.12.0、`ai` 7.0.137、`zod` 4.6.5、`MockLanguageModelV4`（`ai/test`）。
+
+### S-1: ラッチによる停止と停止理由（2026-10-18、実測）
+
+**実験の手順**: 1 ステップに 2 回のツール呼び出しを返す mock モデルと、実行されると「ラッチを立てる（`latch.error` に値を入れる）」ツールを用意し、`ToolLoopAgent` を `generate` と `stream` で動かした。モデルは毎ステップ同じ呼び出しを返し続けるので、止まらなければ `isStepCount(10)` まで進む。止め方を 3 通り比べた: (a) ラッチを立てると同時に内部の `AbortController` を abort する（`abortSignal` を `generate` / `stream` に渡す）、(b) `stopWhen` に「ラッチが立っているか」だけを読む条件を足す、(c) 両方。
+
+| 止め方 | `generate` | `stream`（`fullStream`） | UI ストリーム（`createAgentUIStream`） |
+|---|---|---|---|
+| (a) abort のみ | 拒否される（`Error: fatal-latch`、abort の理由）。モデル呼び出し 1 回、ツール実行 2 回 | `abort` パートで終わる。`finish` も `onEnd` も `onError` も呼ばれない。ツールの結果パートが出ない | チャンクは `abort` で終わり、`finish` が無い。`messageMetadata` は `part.type === "abort"` で呼ばれるが、`finish` ではないので `run` を載せられない |
+| (b) `stopWhen` のみ | 正常に解決する（`steps` 1、`finishReason` は `tool-calls`）。モデル呼び出し 1 回 | `finish-step` → `finish` で正常に終わり、`onEnd` が 1 回呼ばれる。モデル呼び出し 1 回 | `tool-output-available` → `finish-step` → `finish` で終わる。`messageMetadata` が `finish` で呼ばれる。モデル呼び出し 1 回 |
+| (c) 両方 | (a) と同じ（abort が先に効いて拒否される） | (a) と同じ | — |
+
+- **同じステップの残りのツールは止まらない**: どの方法でも、同じステップに 2 件あったツール呼び出しは 2 件とも実行された（`toolExecutions=2`）。ラッチが立った後の実行を止めるのは `buildToolSet` の配線（task 3.2）であり、AI SDK のループではない。3.2 のテストが「ラッチ後は本体が呼ばれない」を実行回数で固定する。
+- **結論**: `ToolLoopAgent` は、ラッチ + 内部 abort でも止まる（次のステップへ進まない）が、`stream` と UI ストリームでは `abort` で終わり、`finish` と `onEnd` が来ない。学習者向けの文言を `finish` の `messageMetadata`（`run` サマリ）に載せる M1 の経路が使えなくなる。`generate` は拒否されるため、呼び出し側が `error` の分類を別に持つ必要が出る。
+- **採用する退き方**: plan の退き方（S-1 の行）のとおり、**`stopWhen` に `FatalLatch` の状態だけを読む条件を加える**。内部 `AbortController` の abort はラッチでは行わない（abort は呼び出し元の signal と `maxDurationMs` のタイムアウトだけが起こす）。`generateText` のツールループへ切り替える必要はない（ADR-5 は改めない）。これにより `generate` / `stream` / UI ストリームのいずれも正常終了の経路（`onEnd`、`finish`）を通り、`finalise` の先頭でラッチを判定して停止理由 `error` を返せる。
+  - `finalise` の判定順は「ラッチ → 呼び出し元 / タイムアウトの abort → 一般のエラー → 停止条件」とする（ラッチが立っていれば、直後に abort が重なっても `error`）。
+  - ラッチの条件は `stopWhen` の配列の末尾に足す。ステップ数・トークン・時間の停止条件の記録（`createRunStopConditions` の `record`）には混ぜない（責務を分ける）。
+  - 3.3 のテストは、`generate` と `stream` の両方で、ラッチが立ったステップの次にモデルが呼ばれないこと（モデル呼び出し回数）と、停止理由が `error` であることを固定する。
+
+### CL-2: 入力検証の失敗の文言（2026-10-18、実測）
+
+- **既定の挙動**: 入力が Zod スキーマに違反すると、AI SDK は `tool-error` を返し、モデルには `AI_InvalidToolInputError: Invalid input for tool <name>: AI_TypeValidationError: Type validation failed: Value: {...}. Error message: [ { "expected": "number", "code": "invalid_type", "path": ["count"], "message": "Invalid input: expected number, received string" } ]` の形（`output.type === "error-text"`）で見える。Zod の違反一覧の JSON がそのまま入り、期待する型と例が分かりにくい。
+- **差し替えの経路（可）**: ツールの `inputSchema` を `jsonSchema(z.toJSONSchema(schema), { validate })` で包み、`validate` が失敗時に `{ success: false, error: new Error(<修正ガイド>) }` を返すと、モデルに見える文言は `AI_InvalidToolInputError: Invalid input for tool <name>: AI_TypeValidationError: Type validation failed: Value: {...}. Error message: Error: <修正ガイド>` になる。つまり、修正ガイドの全文はモデルに届くが、`Invalid input for tool …` の前置きと入力値の再掲は AI SDK が付けるため消せない。実験は 2 ステップ（`isStepCount(2)`）で、各ステップが `tool-error` を 1 件返した（計 2 件）。
+- **採用**: CL-2 は「可」。`aci/input-guide.ts` の `formatInputGuide` が修正ガイドを作り、`define-tool.ts`（task 4.7）が `inputSchema` を上記の `jsonSchema` + `validate` で包む。前置きが残ることを `define-tool.test.ts` で固定する（修正ガイドが含まれること）。AI SDK が付ける前置きを完全に消す経路（`experimental_repairToolCall` で `null` を返すなど）は採らない。入力値の再掲に秘密が入る可能性は、ツールの入力が学習者のデータであることから許容する（ログには出さない、`tech.md` の Logging の規約）。
+- **JSON Schema 化の注意**: `z.toJSONSchema` は M1 の `inputSchema`（Zod）の全フィールドの `.describe()` を `description` に写す。task 4.7 のテストで、描画された JSON Schema にフィールド説明が残ることを確かめる。
+
+### S-6: GitHub の公式ホスト型 MCP（2026-10-18、未実測。文書による）
+
+- **実測の状態**: `GITHUB_TOKEN` が無い環境のため、`tools/list` を呼べていない。以下は公式の文書（`github/github-mcp-server` の `docs/remote-server.md` と `README.md`）の記述で、ハンズオンで確かめるまで確定しない。トークンの値はこの文書に書かない。
+- **エンドポイント**: `https://api.githubcopilot.com/mcp/`（HTTP）。読み取り専用への絞り込みは、ヘッダ `X-MCP-Readonly`（空、`false`、`f`、`no`、`n`、`0`、`off` 以外は真）か、URL の末尾に `/readonly` を付ける方法が文書にある。認証ヘッダの形式は当該ページに書かれていない（`Authorization: Bearer <token>` を想定し、ハンズオンで確かめる）。
+- **ツール名（README に見えた範囲）**: `issue_read`、`list_issues`（入力は `owner`、`repo`（必須）、`state`、`labels`、`perPage`、`after` など）、`search_issues`、`pull_request_read`、`list_pull_requests`、`search_pull_requests`、`get_file_contents`（`X-MCP-Tools` の例に出る）。書き込みのツール（`create_branch`、`create_or_update_file`、`issue_write`、`create_pull_request`、`merge_pull_request` など）も同じサーバーにある。`search_code`、`list_commits` の入力は見えなかった。
+- **注釈**: `readOnlyHint` の記述は文書に見つからなかった。**注釈が無いツールは `destructive` として扱い登録しない**（ADR-7）ので、実機で注釈が付いていなければ、許可リストのツールは 0 件になる。
+- **退き方（plan の記載どおり）**: 既定の許可リストは、文書にある読み取り専用のツール名 `get_file_contents`、`issue_read`、`list_issues`、`pull_request_read`、`search_issues` から始め、`McpServerConfig.descriptions` の上書き（CL-25）を CL-18 の形式で書く。入力スキーマは `list_issues` 以外が未確認のため、上書きの文言は `checkJsonSchemaDescription` を通る範囲（プロパティ名を説明文に含める）で書き、ハンズオンで入力名を確かめて直す。許可リストに載るツールが 0 件のとき、GitHub の接続は「接続できるが何も登録されない」ことを解説に書く。
+- **許可リストに載せられる読み取り専用ツールの件数**: 未実測（候補 5 件。注釈が付いているかは未確認）。
+
+### S-4: E2B のサンドボックス（2026-10-18、未実測。文書による）
+
+- **実測の状態**: `E2B_API_KEY` が無い環境で、`@e2b/code-interpreter` はまだ入れていない（`pnpm install` が拒否された。1.2 を見る）。型定義は読めていない。以下は E2B の公式文書の記述で、偽 SDK の形（17.4）を決めるための仮の根拠である。W4 の 17.4 の前に、依存を入れたうえで `.d.ts` と突き合わせる。
+- **`runCode`**: `runCode(code: string, opts?: RunCodeOpts): Promise<Execution>`。`RunCodeOpts` は `envs`、`onStdout` / `onStderr`（`OutputMessage`）、`onResult`（`Result`）、`onError`（`ExecutionError`）、`timeoutMs`（既定 60,000）、`requestTimeoutMs`（既定 30,000）、`language`、`context`。`Execution` の形（`logs.stdout`、`logs.stderr`、`error`、`results`）は、今回読んだページには無かった（未確認）。
+- **作成と期限**: `Sandbox.create({ ... })` の `timeoutMs`、`apiKey` は未確認。期限切れ後の挙動（`isRunning` の戻り、実行時の例外の種類）は未確認。
+- **事前投入のライブラリ**: 文書のページは一覧を動的に描画しており、`pandas`、`matplotlib`、`openpyxl` が入っているかは読めなかった。`e2b-dev/code-interpreter` の `template/requirements.txt` が一次情報。CL-19 のとおり、`show_figure` / `show_table` の補助関数はコードの先頭で投入するので、ライブラリが無い場合の `ImportError` は分析エージェントの修正ループが扱う。
+- **外向き通信の既定（CL-21）**: 文書に「Every sandbox has outbound access to the internet by default.」とある。`Sandbox.create({ allowInternetAccess: false })`（Python は `allow_internet_access=False`）で無効にでき、これは `network.denyOut: ["0.0.0.0/0"]` と同じで、起動後は `updateNetwork` で切り替えられる。したがって **E2B の既定は外向き通信が可能**（文書による。実測は未）。CL-21 により、`tasks.md` の「004 への引き継ぎ事項」と解説の「確認できていないこと」に記録する。M3 は `runPython` を `read-only` のままにするが、17.4 で `allowInternetAccess: false` を既定にできるかを検討する（Docker の `NetworkMode: none` と揃う。ただし `pip install` などが必要な場合に使えなくなる）。
+
+### S-5: Docker Engine API と画像の版（2026-10-18、未実測）
+
+- **Docker**: この環境には Docker が無い（`docker info` が失敗し、`~/.docker/run/docker.sock` も `/var/run/docker.sock` も存在しない。`DOCKER_HOST` は未設定）。Engine API の流れ（create → archive で入力を配置 → start → wait → logs → delete）と macOS のソケットの探索は**未実測**である。Req 3.8 のとおり、コンテナ提供者を必須にせず、E2B の鍵もコンテナも無いときは分析エージェントを無効にして案内する経路へ落ちる前提で W4 を進める。実機での確認は 17.8、39.3（人が行う）に残る。
+- **Python 側の版（CL-20、`pypi.org` の JSON より。公開日は実測、画像のビルドは未実施）**:
+
+| パッケージ | 版 | 公開日（UTC） | `requires_python` |
+|---|---|---|---|
+| pandas | 3.0.6 | 2026-09-17 | >=3.11 |
+| openpyxl | 3.1.5 | 2024-06-28 | >=3.8 |
+| xlrd | 2.0.2 | 2025-06-14 | 古い Python も可（2.x は `.xls` のみ読める） |
+| matplotlib | 3.11.2 | 2026-09-11 | >=3.11 |
+
+  いずれも公開から 24 時間以上たっている（憲章 原則 7）。pandas と matplotlib が Python 3.11 以上を要するので、ベース画像は Python 3.11 以上にする。ベース画像のタグと、各パッケージの依存（numpy など）の固定は、Docker のある環境で `Dockerfile` をビルドする 17.8 で確定する（今は固定していない）。`.xls`（xlrd）は xlrd 2.x の制約により `.xlsx` を読めないので、`.xlsx` は openpyxl で読む。
+
+## gate の所要時間
+
+| 時点 | 結果 | 所要時間 | 備考 |
+|---|---|---|---|
+| W1（2026-10-18、依存 4 件の追加前） | `mise run gate` が終了コード 0（ルート 399、`@platform/ai-core` 1,884（スキップ 4）、`@platform/eval-suite` 7（スキップ 8）、`web` 733） | `real` 31.3 秒 | `env -u NODE_ENV`。5 分以内。`mise run test:mutation` は 86.71 点（閾値 70）、9 分 3 秒（gate の外）。依存 4 件の追加後に再実行して終了コード 0（件数は同じ）。`pnpm audit` は 0 件、`allowBuilds` の警告なし |
+
+### S-2・S-3: MCP クライアントと自作サーバー（2026-10-18、実測）
+
+依存 4 件を入れた後（`@ai-sdk/mcp` 2.0.76、`@modelcontextprotocol/server` 2.3.1。`pnpm install` 成功、`pnpm audit` 0 件、`allowBuilds` の警告なし）、スクラッチパッドのスクリプトを一時的に `packages/ai-core/` に置いて実行し、削除した。
+
+- **自作サーバーの起動（CL-3）**: TypeScript のサーバー（`McpServer` + `StdioServerTransport`（`@modelcontextprotocol/server/stdio`）、`registerTool` に Zod の `z.object` を渡す形）を、`Experimental_StdioMCPTransport`（`@ai-sdk/mcp/mcp-stdio`）の `command: process.execPath`、`args: ["./server.ts"]` で、`tsx` なしの Node 26.12 の型除去だけで起動できた。**CL-3 は可**。
+- **`ToolLoopAgent` への受け渡し（S-2）**: `client.tools()` の戻り（`readFile` など）を `ToolLoopAgent` の `tools` に渡して、`generate` が 2 ステップで完了し、ツール結果が `{ content: [{type:"text", text}], isError: false }` で返った。`client.tools({ schemas })` の `schemas` 指定は、この実験では使っていない（`automatic`）。
+- **エラーの伝達（CL-24）**: 失敗を `{ isError: true, content, structuredContent: {kind, code}, _meta: {"agentic-ai/error": {kind, code}} }` で返すと、クライアントの `execute` の戻りに `_meta`、`structuredContent`、`isError: true` がすべてそのまま届いた。`adaptMcpTool` で `tools/call` を自前で呼ぶ退き方は不要。
+- **注釈（S-3）**: `registerTool` の `config.annotations`（`ToolAnnotations`）を受け、クライアントの `tools/list` に `readOnlyHint: true`、`destructiveHint: true` として載った。注釈の無いツールは `annotations` が無い。`client.tools()` の各ツールの `_meta` にも `annotations` が入る（`McpToolAnnotations`）。ADR-7 のとおり、注釈の無いツールは `destructive` として登録しない。
+- **入力スキーマ**: Zod の `.describe()` は `tools/list` の `inputSchema.properties.<name>.description` に写った（`checkJsonSchemaDescription` の入力）。
+
+### S-4（追記）: `@e2b/code-interpreter` 2.9.0 の型（`.d.ts` を読んだ。実機の実行は未）
+
+- `Execution { results: Result[]; logs: { stdout: string[]; stderr: string[] }; error?: ExecutionError | undefined }`、`ExecutionError { name; value; traceback }`。`Sandbox.runCode(code, opts?)` の `RunCodeOpts` に `onStdout`、`onStderr`（`OutputMessage`）、`onResult`、`onError`、`timeoutMs`、`envs`、`language`、`context`。したがって偽 SDK の形は `runCode` → `{ logs: { stdout: string[], stderr: string[] }, error?: { name, value, traceback }, results: [] }` とし、ポートの `SandboxRunResult`（`stdout: string`、`stderr: string`、`error?: { name, message, traceback }`）へは `logs.stdout.join("")`、`value → message` で写す。
+- `allowInternetAccess?: boolean` が `e2b` パッケージの型に存在する（作成時のオプション）。文書の「既定で外向き通信が可能」と一致する。実機で外向きの通信が通るかは未実測。
+
+### 訂正（W1 のレビュー後、2026-10-18、追記）
+
+- **CL-2 の実装**: 上の「CL-2」の節は `jsonSchema(z.toJSONSchema(schema), { validate })` と書いたが、採用した形は `jsonSchema(() => zodSchema(schema).jsonSchema, { validate })`（`ai` の `zodSchema`）である。生の `z.toJSONSchema` は `io: "input"`、`target: "draft-7"`、`additionalProperties` の補正を持たず、モデルに送る JSON Schema とカセットのキーが変わるため、AI SDK 自身の変換を使う。
+- **S-1 の「同じステップの残りのツール」**: AI SDK のループは止めない。同じステップの呼び出しは同時に始まるため、`buildToolSet` は、ラッチがあるときだけツール呼び出しを 1 件ずつ実行し、ラッチが立った後に始まる呼び出しを拒否する（並行性を手放す）。2 件を同時に呼ぶテストが固定する。
+- **説明文の変更とカセット**: 「カセットのキーが変わらない」は入力スキーマについてである。M1 の 6 ツールの説明文を CL-18 の形式に改めたため、ツールを含むリクエストのキーは変わる。既存のシナリオはキーを使わず述語で照合するので影響はなく、M1・M2 のカセットでツール定義を含むものは gate で全件通っている。

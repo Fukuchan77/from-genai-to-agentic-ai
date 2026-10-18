@@ -210,7 +210,7 @@ flowchart TD
   - `FatalLatch`: `trip(error: FatalToolError): void`、`readonly error: FatalToolError | undefined`。最初の 1 件だけを保持し、後続は無視する。
   - `classifyToolError(error: unknown): { kind: "recoverable"; summary: string; nextAction: string } | { kind: "fatal"; error: FatalToolError }`。生のスタックトレースを含めない。
   - `ToolRuntime` に任意の `fatal: FatalLatch` を足す（省略時は M1 と同じ挙動）。
-- **Owns**: 分類の規則、学習者向け文言の形式（許可ルートを含む文言を含む）、ラッチの 1 件保持。`agents/guarded-agent.ts` のラッチ経路（Run ごとのラッチの生成、内部 `AbortController` による停止、`finalise` の先頭での判定）と、そのテスト。
+- **Owns**: 分類の規則、学習者向け文言の形式（許可ルートを含む文言を含む）、ラッチの 1 件保持。`aci/define-tool.ts` のラッチを立てる処理（`defineAciTool` が投げられたエラーを結果に変換するため、ここでしか分類できない）、`aci/tool-set.ts` のラッチ後の拒否（ラッチがあるときはツール呼び出しを 1 件ずつ実行し、同じステップの残りも拒否する）、`buildToolSet` が `runtime.fatal` を記録して `fatalLatchOf(tools)` で返す経路。`agents/guarded-agent.ts` のラッチ経路（ツールセットのラッチの取得、使用済みのラッチの拒否、`stopWhen` にラッチの状態だけを読む条件を足す、`finalise` の先頭での判定）と、そのテスト。停止は内部 `AbortController` ではなく `stopWhen` で行う（spike S-1。abort は `stream` の `finish` と `onEnd` を落とす）。呼び出し側はラッチを `buildToolSet` の `runtime.fatal` に渡すだけでよい。
 - **Does NOT own**: 停止理由の語彙（`STOP_REASONS` は変えない。`error` は既存の `deriveStopReason` の分岐で到達する）。`ToolFailureKind` の `fatal` を戻り値として使うこと（使わない）。UI の表示（C14）。
 - **Requirements**: 1.3、1.5、3.4（`attempt-limit` の停止）
 
@@ -225,7 +225,7 @@ flowchart TD
   - `ShortIdIndex<T>`: `assign(items: readonly T[]): readonly { index: number; label: string }[]`、`resolve(index: number): T | undefined`。0 始まりの索引と名称を使い、UUID を使わない（Req 1.13）。
   - `createThinkTool({ enabled: boolean }): AciTool | undefined`: 思考の内容を保持せず、呼び出しを記録して確認の文言を返す。無効なら `undefined`（Req 1.14）。
   - `compareApproaches({ highLevel: RunMetrics; lowLevel: RunMetrics }): { steps: number; tokens: number; ratio: number }`（`aci/high-level-compare.ts`）。計測値を受け取るだけで、実行はしない（Req 1.12）。
-- **Owns**: 説明文の形式と検査、修正ガイドの文面、切り詰めの規則、索引 ID の割り当て、思考用ツールの定義、比較の計算。M1 の 5 ツール（`aci/tools/`）の説明文を CL-18 の形式へ改める。
+- **Owns**: 説明文の形式と検査、修正ガイドの文面、切り詰めの規則、索引 ID の割り当て、思考用ツールの定義、比較の計算。M1 の 6 ツール（`aci/tools/`）の説明文を CL-18 の形式へ改める。`AciTool` に Zod の `inputSchema` を公開する（`aci/types.ts`）。`defineAciTool` は AI SDK 自身の JSON Schema（`zodSchema`）を保ったまま、検証失敗の文言だけを修正ガイドに差し替える。説明文の形式を必須にしたことで壊れる既存のテスト定義は `describeTool` で直す（`patterns/role-based-cooperation.test.ts` と `aci/tools/calculator.test.ts` を含む。tasks.md の Boundary の例外）。
 - **Does NOT own**: ツールの実行とガードの配線（C2 が所有する `aci/tool-set.ts`）。ツール数の上限（既存の `buildToolSet` と `MAX_AGENT_TOOLS` を再利用する）。MCP 由来のツールの説明文の上書きの文言（C5 の `McpServerConfig.descriptions` が持つ。C3 は形式の検査だけを行う、CL-25）。
 - **Requirements**: 1.1、1.2、1.6、1.11、1.12（比較）、1.13、1.14
 
@@ -392,7 +392,7 @@ flowchart TD
 
 - **Responsibility**: 新しい境界を機械的に守らせる規則、タスクの入口、評価テストの配置、3-1〜3-6 の解説とステアリングの更新を担う。
 - **Public interface**:
-  - `scripts/check-repo-rules.mjs`: 規則 `mcp-import-scope`（`@ai-sdk/mcp` は `mcp/` と `ports/` だけ）、`sandbox-import-scope`（`@e2b/code-interpreter` は `sandbox/e2b.ts` だけ、`node:http` の Docker 接続は `sandbox/docker/` だけ）を足す。`RULE_NAMES` は 13 になる（ADR-4、ADR-7）。
+  - `scripts/check-repo-rules.mjs`: 規則 `mcp-import-scope`（`@ai-sdk/mcp` は `mcp/` だけ。`ports/` には置かない）、`sandbox-import-scope`（`@e2b/code-interpreter` は `sandbox/e2b.ts` だけ、`node:http` の Docker 接続は `sandbox/docker/` だけ）を足す。`RULE_NAMES` は 13 になる（ADR-4、ADR-7）。
   - `scripts/check-docs.mjs`: `REQUIRED_TOPICS` に `3-1`〜`3-6` を足す。
   - `scripts/seed-samples.ts`（`mise run seed:samples`）: `seedHelpdesk` と `seedMarketing` を呼ぶ入口（Node 26 の型除去で直接起動する、CL-3）。
   - `mise.toml`: `sandbox:build`（`docker/sandbox/Dockerfile` から画像を作る）、`test:container`（`*.container.test.ts`）、`seed:samples` を足す。`client-bundle` のセンチネルに `E2B_API_KEY` と `GITHUB_TOKEN` を足す。
@@ -847,6 +847,8 @@ DB に保存しない型は Zod のスキーマを正とし、型は `z.infer` �
 | `scripts/check-repo-rules.test.mjs` | Modify | 新しい 2 規則の違反例・許可例・走査 0 件のテスト | C16 |
 | `scripts/check-docs.mjs` | Modify | `REQUIRED_TOPICS` に `3-1`〜`3-6` を足す | C16 |
 | `scripts/check-docs.test.mjs` | Modify | 新しい必須トピックのテスト | C16 |
+| `scripts/check-client-bundle.mjs` | Modify | 秘密の名前に `TOKEN` を単語として加える（`GITHUB_TOKEN` を検査対象にする。`AGENT_MAX_TOTAL_TOKENS` は対象外） | C16 |
+| `packages/ai-core/src/testing/tool-description.ts` | Create | `describeTool`（CL-18 の形式を満たすテスト用の説明文。`testing/index.ts` から再エクスポート） | C3 |
 | `scripts/check-client-bundle.test.mjs` | Modify | 新しいセンチネル変数がバンドルに出ないことのテストを足す | C16 |
 | `scripts/seed-samples.ts` | Create | `seedHelpdesk` と `seedMarketing` を呼ぶ入口（`mise run seed:samples`。Node の型除去で直接起動する） | C16 |
 | `docs/modules/3-1-aci-and-mcp.md` | Create | モジュール 3-1 の解説（ACI 設計、MCP、リスク区分、致命的エラー。本番ではどう作るか） | C16 |

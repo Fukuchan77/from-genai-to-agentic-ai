@@ -43,6 +43,12 @@
   (3) M1 の `aci/tools/*.test.ts` のうち、説明文の形式の変更（4.6）で壊れる既存テスト（4.6 の RED で特定する）。
   (4) `packages/ai-core/src/rag/db/client.pg.test.ts`: plan の Test Strategy が「`0002`、`0003` を既存の `runMigrations` で適用する 1 ケースを足す」と
   定めるが File Structure Plan に載っていない記載漏れである。M2 の既存ファイルへ 1 ケースを足すだけに限る（13.1、26.2）。
+  (5) W1 の実装で判明した境界外の変更（2026-10-18 に事後承認して記録。敵対的レビュー W1 F-8）。各サブタスクの `_Boundary:_` に明記した。
+  `aci/define-tool.ts` のラッチを立てる処理（3.2。`executeWithGuards` が投げられたエラーを結果に変換するため、`tool-set.ts` からは分類できない）、
+  `scripts/check-client-bundle.mjs` の `SECRET_NAME`（6.3。`GITHUB_TOKEN` が秘密名として検出されない実在の穴）、
+  `testing/tool-description.ts` と `testing/index.ts`（4.7。登録時の説明文検査を通す `describeTool`）、
+  `patterns/role-based-cooperation.test.ts`（4.7。使い捨てのツールの説明文）、`aci/types.ts` の `inputSchema`（4.7）、
+  `docs/modules/1-2-ai-sdk-core-and-tools.md`（4.6。スニペットを CL-18 の形式にする）。
 - **共有ファイルの編集者**（波をまたぐファイルは、列挙したタスクだけが編集し、記載の順に行う。各タスクは前のタスクの完了後に行う。この順序が波をまたぐ依存になるため、W2〜W6 は並行せず、W2 → W3 → W4 → W5 → W6 の順に進める）。
   - `packages/ai-core/package.json`: 1.2 だけ（依存 4 件と `exports` の 8 サブパス。参照先の `index.ts` は各領域の最後のタスクが作る）。
   - `mise.toml`: 6.3（`test:container`、センチネル）→ 11.2（`check:repo-rules --only` に `mcp-import-scope`）→ 13.4（`seed:samples`）→ 17.8（`sandbox:build`）→ 20.2（`check:repo-rules --only` に `sandbox-import-scope`）（この順）。
@@ -118,8 +124,9 @@ gate の各段は「走査 0 件で失敗」するため、検査対象がまだ
 plan CL-21 の定めにより、次を記録する。解説（`docs/modules/3-3-data-analysis-agent.md` の「確認できていないこと」）にも同じ内容を書く（40.3）。
 
 - **E2B のサンドボックスの外向き通信**: `runPython`（`risk: "read-only"`）はサンドボックスの中だけで作用するが、E2B の外向き通信の既定が許可なら、
-  サンドボックス内のコードが学習者のデータを外部へ送れる。実測は spike S-4（1.5）で行い、結果を research.md に追記する。許可であれば、
-  004 Req 4（承認ゲート）で `runPython` のリスク区分とネットワーク制限を再検討する。Docker は `NetworkMode: none` のため該当しない。
+  サンドボックス内のコードが学習者のデータを外部へ送れる。**S-4（1.5）の結果: E2B の文書は「既定で外向き通信が可能」と述べる**
+  （`allowInternetAccess: false` で無効にできる。キーが無く実測は未。`research.md` の S-4 の節）。004 Req 4（承認ゲート）で `runPython` のリスク区分と
+  ネットワーク制限を再検討する。Docker は `NetworkMode: none` のため該当しない。
 - **外部コンテンツの汚染状態**（CL-10）: M3 は取り込みの記録口（5.2）だけを置く。判定と遮断は 004 Req 4.8 で実装する。
 - **MCP の注釈は信頼しない前提**（ADR-7）: 注釈のないツールは `destructive` として登録しない。004 の承認ゲートが `risk` を入力にする。
 
@@ -152,37 +159,38 @@ _Depends:_ none
 _Requirements:_ 1.2, 1.3, 1.7, 1.8, 1.9, 3.1, 3.2, 3.8
 _Traces:_ REQ-001, REQ-003, C1, C2, C5, C6, S-1〜S-6
 
-- [ ] 1.1 S-1: ラッチ + 内部 `AbortController` で `ToolLoopAgent` が止まり、停止理由が `error` になること（`generate` と `stream` の両方）を、AI SDK v7 の最小の実験で確かめる。あわせて CL-2（入力検証の失敗が `tool-error` として返るときの文言を、Zod の違反一覧から作る形式へ差し替えられるか）を確かめる。結果と採用する退き方（`stopWhen` にラッチの状態だけを読む条件を加える、`generateText` のツールループへ切り替える）を research.md に追記する。結果を追記するまで 3.x に着手しない
+- [x] 1.1 S-1: ラッチ + 内部 `AbortController` で `ToolLoopAgent` が止まり、停止理由が `error` になること（`generate` と `stream` の両方）を、AI SDK v7 の最小の実験で確かめる。あわせて CL-2（入力検証の失敗が `tool-error` として返るときの文言を、Zod の違反一覧から作る形式へ差し替えられるか）を確かめる。結果と採用する退き方（`stopWhen` にラッチの状態だけを読む条件を加える、`generateText` のツールループへ切り替える）を research.md に追記する。結果を追記するまで 3.x に着手しない
   _Boundary:_ `specs/003-domain-agents/research.md`
   _Depends:_ none
   _Requirements:_ 1.2, 1.3
   _Traces:_ REQ-001, C2, C3, S-1
   _Verify:_ research.md に S-1 の節（実験の手順、`generate` / `stream` それぞれの停止理由、CL-2 の可否、採用する退き方）があり、数値と挙動は実測である
-- [ ] 1.2 (P) `packages/ai-core/package.json`: plan「依存の宣言」の 4 件（`@ai-sdk/mcp` 2.0.76、`@modelcontextprotocol/server` 2.3.1、`@e2b/code-interpreter` 2.9.0、`fast-xml-parser` 5.11.2）を完全一致で足し、`exports` に `./files`、`./mcp`、`./sandbox`、`./analysis`、`./research`、`./helpdesk`、`./requirements`、`./marketing`（`./src/<領域>/index.ts`）を足す。`pnpm install` で `pnpm-lock.yaml` を更新し、`pnpm audit` が 0 件であることと `allowBuilds` の警告が出ないことを確かめる。警告が出た依存だけ `pnpm-workspace.yaml` に理由付きで追記する（出なければ変更しない）。各依存の公開が 24 時間以上前であることを `pnpm view <name>@<version> time` で確認する（憲章 原則 7。`@ai-sdk/mcp` が 2.0.76 である根拠は plan に記録済み）
+- [x] 1.2 (P) `packages/ai-core/package.json`: plan「依存の宣言」の 4 件（`@ai-sdk/mcp` 2.0.76、`@modelcontextprotocol/server` 2.3.1、`@e2b/code-interpreter` 2.9.0、`fast-xml-parser` 5.11.2）を完全一致で足し、`exports` に `./files`、`./mcp`、`./sandbox`、`./analysis`、`./research`、`./helpdesk`、`./requirements`、`./marketing`（`./src/<領域>/index.ts`）を足す。`pnpm install` で `pnpm-lock.yaml` を更新し、`pnpm audit` が 0 件であることと `allowBuilds` の警告が出ないことを確かめる。警告が出た依存だけ `pnpm-workspace.yaml` に理由付きで追記する（出なければ変更しない）。各依存の公開が 24 時間以上前であることを `pnpm view <name>@<version> time` で確認する（憲章 原則 7。`@ai-sdk/mcp` が 2.0.76 である根拠は plan に記録済み）
   _Boundary:_ `packages/ai-core/package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`
   _Depends:_ none
   _Requirements:_ 1.7, 1.8, 1.9, 3.1, 4.3
   _Traces:_ REQ-001, REQ-003, REQ-004, C1
   _Verify:_ `mise run setup`（`--frozen-lockfile`）が成功し、`pnpm audit` が 0 件、`mise run gate` が成功する。`exports` の参照先の `index.ts` は後続の各領域の最後のタスクが作るので、それまで import されない（`mise run typecheck` に影響しない）ことを確認する
-- [ ] 1.3 S-2・S-3: (S-2) `ToolLoopAgent` に `client.tools({ schemas })` の戻り値を渡せること、自作サーバーを `command: process.execPath` と Node 26 の型除去（`erasableSyntaxOnly`）で直接起動できること（CL-3）。あわせて、ツール結果の `isError` と `_meta["agentic-ai/error"]`（無ければ `structuredContent`）がクライアントの `execute` の戻りまで届くこと（CL-24）。(S-3) `registerTool` が `annotations`（`readOnlyHint` など）を受け、クライアントの `tools/list` に載ること。結果と退き方（`adaptMcpTool` で AI SDK のツールへ包み直す、`tools/list` の応答を自前で組み立てる）を research.md に追記する
+- [x] 1.3 S-2・S-3: (S-2) `ToolLoopAgent` に `client.tools({ schemas })` の戻り値を渡せること、自作サーバーを `command: process.execPath` と Node 26 の型除去（`erasableSyntaxOnly`）で直接起動できること（CL-3）。あわせて、ツール結果の `isError` と `_meta["agentic-ai/error"]`（無ければ `structuredContent`）がクライアントの `execute` の戻りまで届くこと（CL-24）。(S-3) `registerTool` が `annotations`（`readOnlyHint` など）を受け、クライアントの `tools/list` に載ること。結果と退き方（`adaptMcpTool` で AI SDK のツールへ包み直す、`tools/list` の応答を自前で組み立てる）を research.md に追記する
   _Boundary:_ `specs/003-domain-agents/research.md`
   _Depends:_ 1.1, 1.2
   _Requirements:_ 1.7, 1.8, 1.16
   _Traces:_ REQ-001, C4, C5, S-2, S-3, CL-3
   _Verify:_ research.md に S-2・S-3 の節があり、実際に起動した自作サーバーのツール一覧と注釈を含む。型除去で起動できない場合は CL-3 を改める案を併記する
-- [ ] 1.4 S-6: GitHub の公式ホスト型 MCP（HTTP、`Authorization` ヘッダ）のエンドポイントと、各ツールの `readOnlyHint` 注釈、既定の許可リストに載せる読み取り専用ツールの名前と入力スキーマ（説明文の上書きの対象、CL-25）を確かめる。`GITHUB_TOKEN`（読み取り専用）が無い環境では「未実測」と記録し、ドキュメント上のエンドポイントと、注釈が無いツールは `destructive` のため登録されないこと（ADR-7）を根拠に退き方を書く。トークンの値は research.md に書かない
+- [x] 1.4 S-6: GitHub の公式ホスト型 MCP（HTTP、`Authorization` ヘッダ）のエンドポイントと、各ツールの `readOnlyHint` 注釈、既定の許可リストに載せる読み取り専用ツールの名前と入力スキーマ（説明文の上書きの対象、CL-25）を確かめる。`GITHUB_TOKEN`（読み取り専用）が無い環境では「未実測」と記録し、ドキュメント上のエンドポイントと、注釈が無いツールは `destructive` のため登録されないこと（ADR-7）を根拠に退き方を書く。トークンの値は research.md に書かない
   _Boundary:_ `specs/003-domain-agents/research.md`
   _Depends:_ 1.3
   _Requirements:_ 1.9, 1.17
   _Traces:_ REQ-001, C5, S-6, CL-4, CL-25
   _Verify:_ research.md に S-6 の節があり、許可リストに載せられる読み取り専用ツールの件数（実測または未実測）が書かれている。トークンの値が含まれない
-- [ ] 1.5 S-4: E2B の `@e2b/code-interpreter` の型（`runCode` の戻り、`onStdout` / `onStderr`、期限切れ、事前投入のライブラリ）と、**サンドボックスの外向き通信の既定**を確かめる。`E2B_API_KEY` が無い環境では「未実測」と記録し、ドキュメントと型定義を根拠に偽 SDK の形（17.4）を決める。外向き通信が可能なら、CL-21 のとおり「004 への引き継ぎ事項」（本ファイルの同名の節）に実測結果を反映する
+- [x] 1.5 S-4: E2B の `@e2b/code-interpreter` の型（`runCode` の戻り、`onStdout` / `onStderr`、期限切れ、事前投入のライブラリ）と、**サンドボックスの外向き通信の既定**を確かめる。`E2B_API_KEY` が無い環境では「未実測」と記録し、ドキュメントと型定義を根拠に偽 SDK の形（17.4）を決める。外向き通信が可能なら、CL-21 のとおり「004 への引き継ぎ事項」（本ファイルの同名の節）に実測結果を反映する
   _Boundary:_ `specs/003-domain-agents/research.md`
   _Depends:_ 1.4
   _Requirements:_ 3.1, 3.2, 3.8
   _Traces:_ REQ-003, C6, S-4, CL-21
   _Verify:_ research.md に S-4 の節があり、偽 SDK の形（メソッド名と戻り値）と外向き通信の既定（実測または未実測）が書かれている
-- [ ] 1.6 S-5: Docker Engine API の流れ（create → archive で入力を配置 → start → wait → logs → delete）と macOS のソケットパス（`DOCKER_HOST`、`~/.docker/run/docker.sock`、`/var/run/docker.sock`）を `node:http` の `socketPath` で確かめる。Docker が無い環境では「未実測」と記録し、Req 3.8 の無効化経路へ落ちる前提を明記する。画像（pandas、openpyxl、xlrd、matplotlib）の Python 側の版を公開日 24 時間以上で選び、CL-20 のとおり版を research.md に固定する
+  _状態（2026-10-18）:_ 型は `.d.ts` で確認した。外向き通信の既定は E2B の文書による（実機は未）
+- [x] 1.6 S-5: Docker Engine API の流れ（create → archive で入力を配置 → start → wait → logs → delete）と macOS のソケットパス（`DOCKER_HOST`、`~/.docker/run/docker.sock`、`/var/run/docker.sock`）を `node:http` の `socketPath` で確かめる。Docker が無い環境では「未実測」と記録し、Req 3.8 の無効化経路へ落ちる前提を明記する。画像（pandas、openpyxl、xlrd、matplotlib）の Python 側の版を公開日 24 時間以上で選び、CL-20 のとおり版を research.md に固定する
   _Boundary:_ `specs/003-domain-agents/research.md`
   _Depends:_ 1.5
   _Requirements:_ 3.1, 3.2, 3.8
@@ -190,6 +198,10 @@ _Traces:_ REQ-001, REQ-003, C1, C2, C5, C6, S-1〜S-6
   _Verify:_ research.md に S-5 の節があり、API の呼び出し順、ソケットの探索結果、Python 側の版（公開日付き）が書かれている
 
 ### Implementation Notes
+
+- `pnpm install` は最初に自動モードの分類器に拒否された（「Untrusted Code Integration」）。利用者が許可した後に 1.2 → 1.3 → 1.5 を行った（`pnpm audit` 0 件、`allowBuilds` の警告なし）。
+- S-1 の実測で、plan が主経路にした「ラッチ + 内部 abort」は `stream` の `finish` と `onEnd` を落とすと分かった。plan の退き方（`stopWhen` にラッチの状態だけを読む条件）を主経路に採った。`research.md`「spike の実測（W1）」。
+- S-4、S-5、S-6 は鍵と Docker が無い環境のため文書による記録（未実測）で、外向き通信の既定は E2B の文書で「可能」だった（004 への引き継ぎ事項に反映済み）。
 
 ---
 
@@ -203,18 +215,21 @@ _Depends:_ none
 _Requirements:_ 1.7, 1.8, 1.9, 1.15, 2.4, 2.10, 3.7, 3.8, 3.9, 4.7, 4.8, 4.10, 5.1, 5.5, 6.2
 _Traces:_ REQ-001, REQ-002, REQ-003, REQ-004, REQ-005, REQ-006, C1
 
-- [ ] 2.1 (P) `config/`: `DEFAULT_TOOLS`（`maxToolsPerAgent` 20、`conciseMaxCharacters` 1,000、`thinkEnabled` true。`MAX_AGENT_TOOLS` は M1 の定数を再利用）、`DEFAULT_HELPDESK`、`DEFAULT_SANDBOX`、`DEFAULT_ANALYSIS`、`DEFAULT_ARXIV`、`DEFAULT_RESEARCH`、`DEFAULT_INTERVIEW`、`DEFAULT_COUNCIL` を plan「設定値」の値で足す。`E2B_API_KEY`、`GITHUB_TOKEN`、`MCP_FS_ROOT`、`DOCKER_HOST`、`DOCKER_SANDBOX_IMAGE`（すべて任意）を `env-schema.ts` と `.env.example`（キー名と説明だけ。鍵なしで動く範囲を含む）に、機能 `e2b-sandbox` → `E2B_API_KEY`、`github-mcp` → `GITHUB_TOKEN` を `feature-requirements.ts` に、`PlatformConfig.credentials.e2b`・`credentials.github` と `mcpFsRoot`、`docker`（`DOCKER_HOST`、画像名）を `load.ts` に足し、`index.ts` から再エクスポートする（Docker は環境変数ではなくソケットの疎通で判定するため機能表に入れない）+ `env-schema.test.ts`・`feature-requirements.test.ts`・`load.test.ts` に、任意変数の受理、機能と変数の対応（既存の「全機能が 1 件以上・全変数がスキーマに存在」の不変条件を保つ）、既定値と上書き、`credentials.e2b` / `credentials.github` の有無を先に足す
+- [x] 2.1 (P) `config/`: `DEFAULT_TOOLS`（`maxToolsPerAgent` 20、`conciseMaxCharacters` 1,000、`thinkEnabled` true。`MAX_AGENT_TOOLS` は M1 の定数を再利用）、`DEFAULT_HELPDESK`、`DEFAULT_SANDBOX`、`DEFAULT_ANALYSIS`、`DEFAULT_ARXIV`、`DEFAULT_RESEARCH`、`DEFAULT_INTERVIEW`、`DEFAULT_COUNCIL` を plan「設定値」の値で足す。`E2B_API_KEY`、`GITHUB_TOKEN`、`MCP_FS_ROOT`、`DOCKER_HOST`、`DOCKER_SANDBOX_IMAGE`（すべて任意）を `env-schema.ts` と `.env.example`（キー名と説明だけ。鍵なしで動く範囲を含む）に、機能 `e2b-sandbox` → `E2B_API_KEY`、`github-mcp` → `GITHUB_TOKEN` を `feature-requirements.ts` に、`PlatformConfig.credentials.e2b`・`credentials.github` と `mcpFsRoot`、`docker`（`DOCKER_HOST`、画像名）を `load.ts` に足し、`index.ts` から再エクスポートする（Docker は環境変数ではなくソケットの疎通で判定するため機能表に入れない）+ `env-schema.test.ts`・`feature-requirements.test.ts`・`load.test.ts` に、任意変数の受理、機能と変数の対応（既存の「全機能が 1 件以上・全変数がスキーマに存在」の不変条件を保つ）、既定値と上書き、`credentials.e2b` / `credentials.github` の有無を先に足す
   _Boundary:_ `packages/ai-core/src/config/defaults.ts`, `packages/ai-core/src/config/env-schema.ts`, `packages/ai-core/src/config/feature-requirements.ts`, `packages/ai-core/src/config/load.ts`, `packages/ai-core/src/config/index.ts`, `packages/ai-core/src/config/env-schema.test.ts`, `packages/ai-core/src/config/feature-requirements.test.ts`, `packages/ai-core/src/config/load.test.ts`, `.env.example`
   _Depends:_ none
   _Requirements:_ 1.7, 1.8, 1.9, 1.15, 2.4, 2.10, 3.7, 3.8, 3.9, 4.7, 4.8, 4.10, 5.1, 5.5, 6.2
   _Traces:_ REQ-001, REQ-002, REQ-003, REQ-004, REQ-005, REQ-006, C1
-- [ ] 2.2 `models/gateway.ts`: `credentialSecrets` に `E2B_API_KEY` と `GITHUB_TOKEN` を足し、録画の秘匿の対象にする（M2 の `COHERE_API_KEY` と同じ扱い）+ `gateway.test.ts` に、秘匿の対象が増えたこと（cassette に両方の値が現れない）のテストを先に足す。`mock` の既定シナリオへの M3 の追加は、シナリオを作る各タスク（10.1 ほか）が行う
+- [x] 2.2 `models/gateway.ts`: `credentialSecrets` に `E2B_API_KEY` と `GITHUB_TOKEN` を足し、録画の秘匿の対象にする（M2 の `COHERE_API_KEY` と同じ扱い）+ `gateway.test.ts` に、秘匿の対象が増えたこと（cassette に両方の値が現れない）のテストを先に足す。`mock` の既定シナリオへの M3 の追加は、シナリオを作る各タスク（10.1 ほか）が行う
   _Boundary:_ `packages/ai-core/src/models/gateway.ts`, `packages/ai-core/src/models/gateway.test.ts`
   _Depends:_ 2.1
   _Requirements:_ 1.9, 3.8
   _Traces:_ REQ-001, REQ-003, C1
 
 ### Implementation Notes
+
+- `DEFAULT_TOOLS.maxToolsPerAgent` は `config` が `agents` を import できないためリテラルの 20 で、`MAX_AGENT_TOOLS` と同じ値であることをテストが固定する。
+- 定数 `DEFAULT_MCP_FS_ROOT` を計画の一覧に無い追加として `config/defaults.ts` に置いた（M2 の `DEFAULT_DATABASE` と同じ扱い）。
 
 ---
 
@@ -227,23 +242,27 @@ _Depends:_ 1.1
 _Requirements:_ 1.3, 1.5, 3.4
 _Traces:_ REQ-001, REQ-003, C2, ADR-5
 
-- [ ] 3.1 `aci/fatal.ts`: `FatalToolError`（`code`: `auth-failed` / `config-missing` / `not-allowed` / `attempt-limit`、学習者に見せてよい `learnerMessage`）、`FatalLatch`（最初の 1 件だけを保持し、後続を無視）、`classifyToolError`（回復可能は要約と次の修正アクション、致命的は `FatalToolError`。スタックトレースを含めない）を作る。`aci/types.ts` の `ToolRuntime` に任意の `fatal: FatalLatch` を足す（省略時は M1 と同じ）。`aci/index.ts` から `FatalToolError`・`FatalLatch`・`classifyToolError` を再エクスポートする + `fatal.test.ts` に、最初の 1 件だけの保持、タイムアウトと一時的な失敗が回復可能、認証失敗・許可外の操作が致命的、文言にスタックトレースが出ないことを先に書く
+- [x] 3.1 `aci/fatal.ts`: `FatalToolError`（`code`: `auth-failed` / `config-missing` / `not-allowed` / `attempt-limit`、学習者に見せてよい `learnerMessage`）、`FatalLatch`（最初の 1 件だけを保持し、後続を無視）、`classifyToolError`（回復可能は要約と次の修正アクション、致命的は `FatalToolError`。スタックトレースを含めない）を作る。`aci/types.ts` の `ToolRuntime` に任意の `fatal: FatalLatch` を足す（省略時は M1 と同じ）。`aci/index.ts` から `FatalToolError`・`FatalLatch`・`classifyToolError` を再エクスポートする + `fatal.test.ts` に、最初の 1 件だけの保持、タイムアウトと一時的な失敗が回復可能、認証失敗・許可外の操作が致命的、文言にスタックトレースが出ないことを先に書く
   _Boundary:_ `packages/ai-core/src/aci/fatal.ts`, `packages/ai-core/src/aci/fatal.test.ts`, `packages/ai-core/src/aci/types.ts`, `packages/ai-core/src/aci/index.ts`
   _Depends:_ 1.1
   _Requirements:_ 1.3, 1.5
   _Traces:_ REQ-001, C2, ADR-5, CL-1
-- [ ] 3.2 `aci/tool-set.ts`: 実行時のラッチの配線を足す。ツールが `FatalToolError` を投げたらラッチに載せ、ラッチが立った後のツール実行（同じステップの残りを含む）は本体を実行せず拒否する。回復可能なエラーは `classifyToolError` の要約と次の修正アクションを結果として返す + `tool-set.test.ts` に、ラッチが立った後の次のツール呼び出しが**実行されない**こと（実行回数のカウンタを検査）、回復可能なエラーが要約を返して続行すること、`fatal` を渡さない場合に M1 と同じ挙動であることを先に足す
-  _Boundary:_ `packages/ai-core/src/aci/tool-set.ts`, `packages/ai-core/src/aci/tool-set.test.ts`
+- [x] 3.2 `aci/tool-set.ts`: 実行時のラッチの配線を足す。ツールが `FatalToolError` を投げたらラッチに載せ、ラッチが立った後のツール実行（同じステップの残りを含む）は本体を実行せず拒否する。回復可能なエラーは `classifyToolError` の要約と次の修正アクションを結果として返す + `tool-set.test.ts` に、ラッチが立った後の次のツール呼び出しが**実行されない**こと（実行回数のカウンタを検査）、回復可能なエラーが要約を返して続行すること、`fatal` を渡さない場合に M1 と同じ挙動であることを先に足す
+  _Boundary:_ `packages/ai-core/src/aci/tool-set.ts`, `packages/ai-core/src/aci/tool-set.test.ts`, `packages/ai-core/src/aci/define-tool.ts`（例外 (5)：ラッチを立てる処理だけ）
   _Depends:_ 3.1
   _Requirements:_ 1.3
   _Traces:_ REQ-001, C2
-- [ ] 3.3 `agents/guarded-agent.ts`: Run ごとのラッチの生成、内部 `AbortController` による停止、`finalise` の先頭でのラッチの判定（停止理由 `error`）を足す。1.1 の結果が退き方を示す場合は、それに従う。`STOP_REASONS` は変えない + `guarded-agent.test.ts` に、`generate` と `stream` の両方で、致命的エラーの後に停止理由が `error` になり、学習者向けの文言が `finish` 相当の結果に載ること、`attempt-limit` が同じ経路で止まること、ラッチが立たない Run の挙動が変わらないことを先に書く
+- [x] 3.3 `agents/guarded-agent.ts`: Run ごとのラッチの生成、内部 `AbortController` による停止、`finalise` の先頭でのラッチの判定（停止理由 `error`）を足す。1.1 の結果が退き方を示す場合は、それに従う。`STOP_REASONS` は変えない + `guarded-agent.test.ts` に、`generate` と `stream` の両方で、致命的エラーの後に停止理由が `error` になり、学習者向けの文言が `finish` 相当の結果に載ること、`attempt-limit` が同じ経路で止まること、ラッチが立たない Run の挙動が変わらないことを先に書く
   _Boundary:_ `packages/ai-core/src/agents/guarded-agent.ts`, `packages/ai-core/src/agents/guarded-agent.test.ts`
   _Depends:_ 3.2
   _Requirements:_ 1.3, 3.4
   _Traces:_ REQ-001, REQ-003, C2, S-1
 
 ### Implementation Notes
+
+- 計画は配線を `aci/tool-set.ts` に置いたが、`defineAciTool` が投げられたエラーを結果に変換するため、ラッチを立てる処理は `define-tool.ts` に置いた（Boundary の逸脱。`do.md` に記録）。`tool-set.ts` は「ラッチ後の拒否」だけを持つ。
+- ラッチは呼び出し側が作り、`buildToolSet` の `runtime.fatal` と `createGuardedAgent` の `fatal` の両方に同じ実体を渡す。渡し忘れを型で防ぐ仕組みは無い（15.2 の組み立てで 1 か所に集める）。
+- 1 ステップの複数ツール呼び出しは同時に始まるため、すでに始まった兄弟の呼び出しは止められない。拒否されるのはラッチの後に始まる呼び出しだけ。
 
 ---
 
@@ -256,43 +275,43 @@ _Depends:_ 1.1, 3.1
 _Requirements:_ 1.1, 1.2, 1.6, 1.11, 1.12, 1.13, 1.14, 1.16
 _Traces:_ REQ-001, C3
 
-- [ ] 4.1 (P) `aci/description-check.ts`: `checkDescription(description, inputSchema)` が、見出し行（`使うとき:`、`使わないとき:`、`例:`）の欠落と、入力スキーマの全フィールドの `.describe()` の欠落を `DescriptionIssue[]` で返す（CL-16、CL-18）。MCP 由来のツール用に、同じ見出し行の規則を共有する `checkJsonSchemaDescription(description, inputSchema)`（JSON Schema の全プロパティに `description` がある、またはプロパティ名が説明文に現れる）を作る（CL-25） + `description-check.test.ts` に、見出し行ごとの欠落、`.describe()` の欠落（ネストしたフィールドを含む）、すべて満たす説明文が空の結果を返すこと、`checkJsonSchemaDescription` で `description` もなく名前も説明文に無いプロパティの検出を先に書く
+- [x] 4.1 (P) `aci/description-check.ts`: `checkDescription(description, inputSchema)` が、見出し行（`使うとき:`、`使わないとき:`、`例:`）の欠落と、入力スキーマの全フィールドの `.describe()` の欠落を `DescriptionIssue[]` で返す（CL-16、CL-18）。MCP 由来のツール用に、同じ見出し行の規則を共有する `checkJsonSchemaDescription(description, inputSchema)`（JSON Schema の全プロパティに `description` がある、またはプロパティ名が説明文に現れる）を作る（CL-25） + `description-check.test.ts` に、見出し行ごとの欠落、`.describe()` の欠落（ネストしたフィールドを含む）、すべて満たす説明文が空の結果を返すこと、`checkJsonSchemaDescription` で `description` もなく名前も説明文に無いプロパティの検出を先に書く
   _Boundary:_ `packages/ai-core/src/aci/description-check.ts`, `packages/ai-core/src/aci/description-check.test.ts`
   _Depends:_ none
   _Requirements:_ 1.1, 1.11
   _Traces:_ REQ-001, C3, CL-16, CL-18, CL-25
-- [ ] 4.2 (P) `aci/input-guide.ts`: `formatInputGuide(error, inputSchema)` が、違反したパラメータ名、期待する型、例を含む修正ガイドを作る。1.1 の結果（CL-2）が示す差し替えの経路に合わせる + `input-guide.test.ts` に、必須フィールドの欠落、型の不一致、列挙値の違反、複数の違反が一覧になることを先に書く
+- [x] 4.2 (P) `aci/input-guide.ts`: `formatInputGuide(error, inputSchema)` が、違反したパラメータ名、期待する型、例を含む修正ガイドを作る。1.1 の結果（CL-2）が示す差し替えの経路に合わせる + `input-guide.test.ts` に、必須フィールドの欠落、型の不一致、列挙値の違反、複数の違反が一覧になることを先に書く
   _Boundary:_ `packages/ai-core/src/aci/input-guide.ts`, `packages/ai-core/src/aci/input-guide.test.ts`
   _Depends:_ 1.1
   _Requirements:_ 1.2
   _Traces:_ REQ-001, C3, CL-2
-- [ ] 4.3 (P) `aci/response-format.ts`: `applyResponseFormat(text, { format, maxCharacters, fullTextHint })` が、`concise` で上限を超えた場合に切り詰めて全文の取得方法を付け、`detailed` は切り詰めない + `response-format.test.ts` に、上限ちょうど・+1 文字の境界、`detailed` の無加工、全文の案内が付くことを先に書く
+- [x] 4.3 (P) `aci/response-format.ts`: `applyResponseFormat(text, { format, maxCharacters, fullTextHint })` が、`concise` で上限を超えた場合に切り詰めて全文の取得方法を付け、`detailed` は切り詰めない + `response-format.test.ts` に、上限ちょうど・+1 文字の境界、`detailed` の無加工、全文の案内が付くことを先に書く
   _Boundary:_ `packages/ai-core/src/aci/response-format.ts`, `packages/ai-core/src/aci/response-format.test.ts`
   _Depends:_ none
   _Requirements:_ 1.6
   _Traces:_ REQ-001, C3
-- [ ] 4.4 `aci/short-id.ts` と `aci/think-tool.ts`: `ShortIdIndex<T>`（`assign` が 0 始まりの索引と名称を返し、`resolve` が範囲外で `undefined`。UUID を使わない）と、`createThinkTool({ enabled })`（内容を保持せず、呼び出しを記録して確認の文言を返す。無効なら `undefined`。説明文は 4.1 の検査を通る形式）を作る + `short-id.test.ts`・`think-tool.test.ts` に、範囲外と未割り当ての `resolve`、出力に UUID の形が現れないこと、思考ツールが内容を保持しないこと、有効・無効の切り替え、説明文が `checkDescription` を通ることを先に書く
+- [x] 4.4 `aci/short-id.ts` と `aci/think-tool.ts`: `ShortIdIndex<T>`（`assign` が 0 始まりの索引と名称を返し、`resolve` が範囲外で `undefined`。UUID を使わない）と、`createThinkTool({ enabled })`（内容を保持せず、呼び出しを記録して確認の文言を返す。無効なら `undefined`。説明文は 4.1 の検査を通る形式）を作る + `short-id.test.ts`・`think-tool.test.ts` に、範囲外と未割り当ての `resolve`、出力に UUID の形が現れないこと、思考ツールが内容を保持しないこと、有効・無効の切り替え、説明文が `checkDescription` を通ることを先に書く
   _Boundary:_ `packages/ai-core/src/aci/short-id.ts`, `packages/ai-core/src/aci/short-id.test.ts`, `packages/ai-core/src/aci/think-tool.ts`, `packages/ai-core/src/aci/think-tool.test.ts`
   _Depends:_ 4.1
   _Requirements:_ 1.13, 1.14
   _Traces:_ REQ-001, C3
-- [ ] 4.5 (P) `aci/high-level-compare.ts`: `compareApproaches({ highLevel, lowLevel })` が、計測値（ステップ数とトークン数）を受け取って差と比率を返す（実行はしない）+ `high-level-compare.test.ts` に、比率の計算、ゼロ除算の扱い（低レベルが 0 のとき比率を計算しない）、片方が失敗した計測のときに比率を計算しないことを先に書く
+- [x] 4.5 (P) `aci/high-level-compare.ts`: `compareApproaches({ highLevel, lowLevel })` が、計測値（ステップ数とトークン数）を受け取って差と比率を返す（実行はしない）+ `high-level-compare.test.ts` に、比率の計算、ゼロ除算の扱い（低レベルが 0 のとき比率を計算しない）、片方が失敗した計測のときに比率を計算しないことを先に書く
   _Boundary:_ `packages/ai-core/src/aci/high-level-compare.ts`, `packages/ai-core/src/aci/high-level-compare.test.ts`
   _Depends:_ none
   _Requirements:_ 1.12
   _Traces:_ REQ-001, C3
-- [ ] 4.6 M1 のツールの説明文の改訂: `aci/tools/{calculator,currency,current-time,weather,web-search,search-knowledge-base}.ts` の説明文を CL-18 の形式（用途の 1 文 + `使うとき:`、`使わないとき:`、`例:`）に改め、全入力フィールドに `.describe()` を付ける。M1・M2 の既存テストが説明文を固定している場合は、RED で特定して最小限に更新する（`aci/tools/*.test.ts`。Boundary の例外 (3)）。ツールの挙動は変えない
-  _Boundary:_ `packages/ai-core/src/aci/tools/*.ts`
+- [x] 4.6 M1 のツールの説明文の改訂: `aci/tools/{calculator,currency,current-time,weather,web-search,search-knowledge-base}.ts` の説明文を CL-18 の形式（用途の 1 文 + `使うとき:`、`使わないとき:`、`例:`）に改め、全入力フィールドに `.describe()` を付ける。M1・M2 の既存テストが説明文を固定している場合は、RED で特定して最小限に更新する（`aci/tools/*.test.ts`。Boundary の例外 (3)）。ツールの挙動は変えない
+  _Boundary:_ `packages/ai-core/src/aci/tools/*.ts`, `docs/modules/1-2-ai-sdk-core-and-tools.md`（例外 (5)：スニペットの説明文だけ）
   _Depends:_ 4.1
   _Requirements:_ 1.1, 1.11
   _Traces:_ REQ-001, C3, CL-18
   _Verify:_ 6 ツールすべてが `checkDescription` の空の結果を返すことを、4.7 の `define-tool.test.ts` と `mise run test` で確認する。`mise run gate` が成功する
-- [ ] 4.7 `aci/define-tool.ts`: 登録時に `checkDescription` を呼んで違反をエラーにし、入力検証の失敗の文言を `formatInputGuide` に差し替える（1.1 の結果に従う）+ `define-tool.test.ts` に、見出し行の欠落で登録が失敗すること、検証に失敗した入力でツール本体が実行されず修正ガイドが返ること、`risk` が必須のままであることを先に足す
-  _Boundary:_ `packages/ai-core/src/aci/define-tool.ts`, `packages/ai-core/src/aci/define-tool.test.ts`
+- [x] 4.7 `aci/define-tool.ts`: 登録時に `checkDescription` を呼んで違反をエラーにし、入力検証の失敗の文言を `formatInputGuide` に差し替える（1.1 の結果に従う）+ `define-tool.test.ts` に、見出し行の欠落で登録が失敗すること、検証に失敗した入力でツール本体が実行されず修正ガイドが返ること、`risk` が必須のままであることを先に足す
+  _Boundary:_ `packages/ai-core/src/aci/define-tool.ts`, `packages/ai-core/src/aci/define-tool.test.ts`, `packages/ai-core/src/aci/types.ts`（`inputSchema`）, `packages/ai-core/src/testing/tool-description.ts`, `packages/ai-core/src/testing/index.ts`, `packages/ai-core/src/patterns/role-based-cooperation.test.ts`（例外 (5)）
   _Depends:_ 4.1, 4.2, 4.6
   _Requirements:_ 1.1, 1.2, 1.11, 1.16
   _Traces:_ REQ-001, C3
-- [ ] 4.8 `aci/index.ts`: C3 の公開 API（`checkDescription`、`formatInputGuide`、`applyResponseFormat`、`ShortIdIndex`、`createThinkTool`、`compareApproaches`）を再エクスポートする
+- [x] 4.8 `aci/index.ts`: C3 の公開 API（`checkDescription`、`formatInputGuide`、`applyResponseFormat`、`ShortIdIndex`、`createThinkTool`、`compareApproaches`）を再エクスポートする
   _Boundary:_ `packages/ai-core/src/aci/index.ts`
   _Depends:_ 3.1, 4.3, 4.4, 4.5, 4.7
   _Requirements:_ 1.1, 1.2, 1.6, 1.12, 1.13, 1.14
@@ -300,6 +319,10 @@ _Traces:_ REQ-001, C3
   _Verify:_ `mise run typecheck` と `mise run gate` が成功し、`@platform/ai-core/aci` から上記の API を import できる
 
 ### Implementation Notes
+
+- 入力検証の修正ガイドは、AI SDK 自身の JSON Schema（`zodSchema`）をそのまま使い、`validate` だけを差し替えた。リクエストの JSON Schema は変わらないので、既存のカセットのキーは動かない。AI SDK が付ける `Invalid input for tool <name>:` の前置きは残る。
+- `defineAciTool` が説明文を検査するようになったため、既存テストのツール定義が壊れた。`testing/describeTool` を足して直した（`guarded-agent.test.ts` ほか。既存テストの変更として `do.md` に列挙）。
+- `AciTool` に Zod の `inputSchema` を公開した。004 のツール定義の読み取りと、`checkDescription` の入力に使える。
 
 ---
 
@@ -312,18 +335,20 @@ _Depends:_ none
 _Requirements:_ 4.9, 4.10
 _Traces:_ REQ-004, C9, CL-10
 
-- [ ] 5.1 (P) `agents/token-ledger.ts`: `TokenLedger` の `record(role, usage)` と `breakdown()`（役割別と合計）を作る。使用量が取れない役割は `unknown` とし、合計は取れた分だけで計算する + `token-ledger.test.ts` に、役割別の内訳の合計が全体と一致すること、同じ役割への複数回の記録、使用量が取れない役割が合計に推測値を足さないことを先に書く
+- [x] 5.1 (P) `agents/token-ledger.ts`: `TokenLedger` の `record(role, usage)` と `breakdown()`（役割別と合計）を作る。使用量が取れない役割は `unknown` とし、合計は取れた分だけで計算する + `token-ledger.test.ts` に、役割別の内訳の合計が全体と一致すること、同じ役割への複数回の記録、使用量が取れない役割が合計に推測値を足さないことを先に書く
   _Boundary:_ `packages/ai-core/src/agents/token-ledger.ts`, `packages/ai-core/src/agents/token-ledger.test.ts`
   _Depends:_ none
   _Requirements:_ 4.10
   _Traces:_ REQ-004, C9
-- [ ] 5.2 `agents/observer.ts`: 外部コンテンツの取り込みの記録口（種別と出所だけ。内容を保持しない。CL-10）と、イベントへの `agent` 名の付与を、既存の `RunObserver` の契約を変えずに任意の引数として足す。`agents/index.ts` から `TokenLedger` と記録口を再エクスポートする + `observer.test.ts` に、`agent` 名が付くこと、記録口が種別と出所だけを受け取ること、未指定のとき M1 の挙動が変わらないことを先に足す
+- [x] 5.2 `agents/observer.ts`: 外部コンテンツの取り込みの記録口（種別と出所だけ。内容を保持しない。CL-10）と、イベントへの `agent` 名の付与を、既存の `RunObserver` の契約を変えずに任意の引数として足す。`agents/index.ts` から `TokenLedger` と記録口を再エクスポートする + `observer.test.ts` に、`agent` 名が付くこと、記録口が種別と出所だけを受け取ること、未指定のとき M1 の挙動が変わらないことを先に足す
   _Boundary:_ `packages/ai-core/src/agents/observer.ts`, `packages/ai-core/src/agents/observer.test.ts`, `packages/ai-core/src/agents/index.ts`
   _Depends:_ 5.1
   _Requirements:_ 4.9, 4.10
   _Traces:_ REQ-004, C9, CL-10
 
 ### Implementation Notes
+
+- `agents/observer.ts` は計画が「Modify」と書いたが存在せず（`RunObserver` は `guarded-agent.ts` にある）、新規に作った。`RunObserver` の契約は変えず、`createNamedObserver` で包む形にした。
 
 ---
 
@@ -336,24 +361,24 @@ _Depends:_ none
 _Requirements:_ 1.16, 1.17, 3.1, 3.2, 3.10
 _Traces:_ REQ-001, REQ-003, C6, C15, C16
 
-- [ ] 6.1 (P) `ports/sandbox.ts`: `SandboxProvider`（`kind`、`create`）、`SandboxSession`（`writeFile`、`runPython`、`isAlive`、`close`）、`SandboxRunResult` の型を、実装を持たずに定義する。`ports/index.ts` から再エクスポートする
+- [x] 6.1 (P) `ports/sandbox.ts`: `SandboxProvider`（`kind`、`create`）、`SandboxSession`（`writeFile`、`runPython`、`isAlive`、`close`）、`SandboxRunResult` の型を、実装を持たずに定義する。`ports/index.ts` から再エクスポートする
   _Boundary:_ `packages/ai-core/src/ports/sandbox.ts`, `packages/ai-core/src/ports/index.ts`
   _Depends:_ none
   _Requirements:_ 3.1, 3.2, 3.10
   _Traces:_ REQ-003, C6
   _Verify:_ `mise run typecheck` と `mise run gate` が成功し、`@platform/ai-core/ports` から型を import できる。E2B と Docker の型がポートに現れない
-- [ ] 6.2 (P) `scripts/check-repo-rules.mjs`: 規則 `mcp-import-scope`（`@ai-sdk/mcp` は `mcp/` だけが import する）、`sandbox-import-scope`（`@e2b/code-interpreter` は `sandbox/e2b.ts` だけ、`node:http` による Docker 接続は `sandbox/docker/` だけ）を足し、`workflow-no-agent-loop` の対象に `helpdesk/planner.ts`、`helpdesk/replanner.ts`、`helpdesk/helpdesk.ts`、`requirements/interview.ts`、`requirements/personas.ts`、`marketing/council.ts`、`marketing/moderator.ts`、`marketing/profile.ts`、`marketing/recommend.ts` を足す（`RULE_NAMES` は 13 になる）。対象ファイルがまだ無い間は、存在するものだけを走査する。新しい 2 規則は走査 0 件で失敗する + `check-repo-rules.test.mjs` に、各規則の違反例（`ToolLoopAgent` を import する `planner.ts` を含む）・許可例・走査 0 件の失敗を先に足す。`mise.toml` の `--only` へは足さない（11.2、20.2）
+- [x] 6.2 (P) `scripts/check-repo-rules.mjs`: 規則 `mcp-import-scope`（`@ai-sdk/mcp` は `mcp/` だけが import する）、`sandbox-import-scope`（`@e2b/code-interpreter` は `sandbox/e2b.ts` だけ、`node:http` による Docker 接続は `sandbox/docker/` だけ）を足し、`workflow-no-agent-loop` の対象に `helpdesk/planner.ts`、`helpdesk/replanner.ts`、`helpdesk/helpdesk.ts`、`requirements/interview.ts`、`requirements/personas.ts`、`marketing/council.ts`、`marketing/moderator.ts`、`marketing/profile.ts`、`marketing/recommend.ts` を足す（`RULE_NAMES` は 13 になる）。対象ファイルがまだ無い間は、存在するものだけを走査する。新しい 2 規則は走査 0 件で失敗する + `check-repo-rules.test.mjs` に、各規則の違反例（`ToolLoopAgent` を import する `planner.ts` を含む）・許可例・走査 0 件の失敗を先に足す。`mise.toml` の `--only` へは足さない（11.2、20.2）
   _Boundary:_ `scripts/check-repo-rules.mjs`, `scripts/check-repo-rules.test.mjs`
   _Depends:_ none
   _Requirements:_ 1.16, 1.17, 3.2
   _Traces:_ REQ-001, REQ-003, C16, ADR-4, ADR-7, ADR-9
-- [ ] 6.3 (P) `packages/ai-core/vitest.config.ts` に、`*.container.test.*` を `gate` から除外するスイート `container` を足し（`*.pg.test.*` と同じ方式）、`mise.toml` にタスク `test:container`（`*.container.test.ts`）を足し、`check:client-bundle` のセンチネルに `E2B_API_KEY` と `GITHUB_TOKEN` を環境変数と `--sentinel` の両方に同じ値で足す + `scripts/check-client-bundle.test.mjs` に、新しいセンチネル変数がバンドルに出ないことのテストを先に足す。コンテナのテストが 0 件の間は `test:container` が `--passWithNoTests` 相当で成功する
-  _Boundary:_ `packages/ai-core/vitest.config.ts`, `mise.toml`, `scripts/check-client-bundle.test.mjs`
+- [x] 6.3 (P) `packages/ai-core/vitest.config.ts` に、`*.container.test.*` を `gate` から除外するスイート `container` を足し（`*.pg.test.*` と同じ方式）、`mise.toml` にタスク `test:container`（`*.container.test.ts`）を足し、`check:client-bundle` のセンチネルに `E2B_API_KEY` と `GITHUB_TOKEN` を環境変数と `--sentinel` の両方に同じ値で足す + `scripts/check-client-bundle.test.mjs` に、新しいセンチネル変数がバンドルに出ないことのテストを先に足す。コンテナのテストが 0 件の間は `test:container` が `--passWithNoTests` 相当で成功する
+  _Boundary:_ `packages/ai-core/vitest.config.ts`, `mise.toml`, `scripts/check-client-bundle.test.mjs`, `scripts/check-client-bundle.mjs`（例外 (5)：`SECRET_NAME` だけ）
   _Depends:_ none
   _Requirements:_ 3.2
   _Traces:_ REQ-003, C16, CL-9
   _Verify:_ `mise tasks validate` が成功し、`mise run test:container` が（Docker の有無に関わらず）0 件で成功する。`mise run gate` が `*.container.test.ts` を実行しないことを、ダミーのファイルで確認して削除する。センチネルが環境変数と `--sentinel` の両方に同じ値で入っている
-- [ ] 6.4 (P) `mock/index.ts` に M3 のシナリオの集約（初期は空）を足し、`mock/m3-scenarios.test.ts` に、同じ入力（`purpose` と `lastUserTextIncludes`）に複数のシナリオが一致しないことの検出器と、すべての `fixture:` マーカーが解決できることの検査を作る。検出器自身のテストは合成した曖昧なシナリオで先に書き、集約が空のうちは実集合の検査が空振りにならないよう、期待する件数を各波のシナリオのタスクが更新する形にする
+- [x] 6.4 (P) `mock/index.ts` に M3 のシナリオの集約（初期は空）を足し、`mock/m3-scenarios.test.ts` に、同じ入力（`purpose` と `lastUserTextIncludes`）に複数のシナリオが一致しないことの検出器と、すべての `fixture:` マーカーが解決できることの検査を作る。検出器自身のテストは合成した曖昧なシナリオで先に書き、集約が空のうちは実集合の検査が空振りにならないよう、期待する件数を各波のシナリオのタスクが更新する形にする
   _Boundary:_ `packages/ai-core/src/mock/index.ts`, `packages/ai-core/src/mock/m3-scenarios.test.ts`
   _Depends:_ none
   _Requirements:_ 3.10
@@ -361,6 +386,10 @@ _Traces:_ REQ-001, REQ-003, C6, C15, C16
   _Verify:_ 合成した曖昧なシナリオで検出器のテストが落ちること（RED）を確認してから、実集合の検査が成功する。`mise run gate` が成功する
 
 ### Implementation Notes
+
+- `test:container` は `@platform/ai-core` だけで動かす（他のワークスペースの Vitest 設定は `container` を知らない）。ホスト側のネットワーク遮断（`tooling/vitest/network-guard.ts`）は unix ソケットを止めるので、最初のコンテナのテスト（17.x）の前に、`container` スイートでの許可を足す必要がある（W4 の作業。Boundary の確認が要る）。
+- 6.3 のセンチネルのテストで、`GITHUB_TOKEN` が `check-client-bundle` の秘密の名前に入っていないことが分かり、`TOKEN` を単語として一致させる形にした（`AGENT_MAX_TOTAL_TOKENS` は対象外）。
+- 新しい 2 規則は `tokenize` がテンプレート文字列の本文を保持しないため、テンプレート内の `docker.sock` は検出できない（`socketPath` の識別子で補う）。
 
 ---
 
@@ -373,13 +402,13 @@ _Depends:_ 2.2, 3.3, 4.8, 5.2, 6.1, 6.2, 6.3, 6.4
 _Requirements:_ 1.1, 1.3, 1.11
 _Traces:_ REQ-001, C16
 
-- [ ] 7.1 `stryker.config.mjs`: ミューテーション対象に `aci/description-check.ts` を足す（M3 の純関数は各波の締めで足す）
+- [x] 7.1 `stryker.config.mjs`: ミューテーション対象に `aci/description-check.ts` を足す（M3 の純関数は各波の締めで足す）
   _Boundary:_ `stryker.config.mjs`
   _Depends:_ 4.1
   _Requirements:_ 1.1, 1.11
   _Traces:_ REQ-001, C16
   _Verify:_ `mise run test:mutation` の対象に含まれ、閾値 70 を満たす
-- [ ] 7.2 W1 の gate を実測して記録する。`mise run gate` の成功を引用し、所要時間を research.md の「gate の所要時間」に追記する（5 分以内。超える兆候があればファイルの統合を検討する）。`pnpm audit` が 0 件、`allowBuilds` の警告なしを再確認する
+- [x] 7.2 W1 の gate を実測して記録する。`mise run gate` の成功を引用し、所要時間を research.md の「gate の所要時間」に追記する（5 分以内。超える兆候があればファイルの統合を検討する）。`pnpm audit` が 0 件、`allowBuilds` の警告なしを再確認する
   _Boundary:_ `specs/003-domain-agents/research.md`
   _Depends:_ 7.1
   _Requirements:_ 1.3
