@@ -1,4 +1,5 @@
 export { createFakeClock } from "../ports/clock";
+export { describeContainer } from "./container-only";
 export { describeLocal, itLocal } from "./local-only";
 export {
 	createObjectModel,

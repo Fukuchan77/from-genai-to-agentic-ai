@@ -646,6 +646,15 @@ const SCOPED_IMPORT_EXTENSIONS = new Set([".ts", ".tsx", ".mts", ".cts", ".js", 
 const E2B_PACKAGE = "@e2b/code-interpreter";
 const E2B_ALLOWED_FILE = "packages/ai-core/src/sandbox/e2b.ts";
 const DOCKER_ALLOWED_DIRECTORY = "packages/ai-core/src/sandbox/docker/";
+// The test support of the container suite names the sockets it lets the tests reach, or reads the
+// probe's result; it opens no connection. Exactly these files, not their directories: any other
+// file, test or not, is held to the rule.
+const DOCKER_TEST_SUPPORT = new Set([
+	"tooling/vitest/network-guard.ts",
+	"tooling/vitest/setup-hermetic.test.ts",
+	"packages/ai-core/src/testing/container-only.ts",
+	"packages/ai-core/src/testing/container-only.test.ts",
+]);
 const AGENT_LOOP_ALLOWED_FILES = new Set([
 	"packages/ai-core/src/patterns/role-based-cooperation.ts",
 ]);
@@ -1257,6 +1266,7 @@ const runners = {
 				}
 			}
 			if (file.relativePath.startsWith(DOCKER_ALLOWED_DIRECTORY)) continue;
+			if (DOCKER_TEST_SUPPORT.has(file.relativePath)) continue;
 			// Approximation (plan C16): `node:http` reaches the Docker Engine through a unix socket, so
 			// the `socketPath` option and the socket file names mark a Docker connection. A path built
 			// at run time or a raw `node:net` connection is not detected.

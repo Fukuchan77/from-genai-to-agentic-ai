@@ -1141,6 +1141,37 @@ describe("sandbox-import-scope", () => {
 		});
 	});
 
+	test("allows the test support that opens the Docker socket to the container suite", async () => {
+		// The hermetic guard names the sockets it lets the container suite reach, and the skip helper
+		// reads the probe's result; neither opens a connection. Other test files are still held to the rule.
+		const root = await fixture({
+			"tooling/vitest/network-guard.ts":
+				'const paths = ["/var/run/docker.sock"];\nexport { paths };\n',
+			"tooling/vitest/setup-hermetic.test.ts":
+				'const sock = "/var/run/docker.sock";\nexport { sock };\n',
+			"packages/ai-core/src/testing/container-only.ts": "export const s = result.socketPath;\n",
+			"packages/ai-core/src/testing/container-only.test.ts":
+				'export const s = { socketPath: "/s.sock" };\n',
+		});
+		await expect(run(root, "sandbox-import-scope")).resolves.toMatchObject({
+			reports: [{ rule: "sandbox-import-scope", fileCount: 4, violations: [] }],
+		});
+	});
+
+	test("still flags the socket in other tooling and testing files", async () => {
+		await expectViolation(
+			"sandbox-import-scope",
+			{
+				"tooling/vitest/global-setup-local.ts": 'const sock = "/var/run/docker.sock";\n',
+				"tooling/vitest/network-guard.test.ts": 'const sock = "/var/run/docker.sock";\n',
+				"packages/ai-core/src/testing/local-only.ts": "export const s = agent.socketPath;\n",
+				"packages/ai-core/src/testing/container-only-extra.ts":
+					"export const s = agent.socketPath;\n",
+			},
+			DOCKER_MESSAGE,
+		);
+	});
+
 	test("does not flag node:http used without a Docker socket", async () => {
 		const root = await fixture({
 			"packages/ai-core/src/ports/http.ts": 'import http from "node:http";\nexport { http };\n',

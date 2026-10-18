@@ -1,0 +1,20 @@
+# Pinned Python dependencies of the analysis sandbox image (003 CL-20, research S-5).
+# The four direct packages are pandas, openpyxl, xlrd and matplotlib; the rest are what they pull
+# in, frozen from a clean `pip install` on python:3.13-slim (2026-10-18). Every version was
+# published at least 24 hours before it was pinned (constitution principle 7; the newest, pillow
+# 13.0.0, was 1.6 days old). Update by re-freezing and re-checking the upload dates.
+contourpy==1.4.0
+cycler==0.12.1
+et_xmlfile==2.0.0
+fonttools==4.67.0
+kiwisolver==1.5.1
+matplotlib==3.11.2
+numpy==2.5.4
+openpyxl==3.1.5
+packaging==26.3
+pandas==3.0.6
+pillow==13.0.0
+pyparsing==3.3.3
+python-dateutil==2.9.0.post0
+six==1.17.0
+xlrd==2.0.2

@@ -133,6 +133,7 @@ describe("envSchema", () => {
 			cpus: 1,
 			pidsLimit: 128,
 			image: "agentic-ai-sandbox:local",
+			maxSessions: 8,
 		});
 		expect(DEFAULT_ANALYSIS).toEqual({
 			maxFixAttempts: 3,

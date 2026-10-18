@@ -77,6 +77,8 @@ export const DEFAULT_SANDBOX = Object.freeze({
 	cpus: 1,
 	pidsLimit: 128,
 	image: "agentic-ai-sandbox:local",
+	/** Sandboxes alive at once; a new session over this evicts the idle one used longest ago. */
+	maxSessions: 8,
 });
 
 export const DEFAULT_ANALYSIS = Object.freeze({

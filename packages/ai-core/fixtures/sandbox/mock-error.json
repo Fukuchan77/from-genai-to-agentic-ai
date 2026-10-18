@@ -1,0 +1,9 @@
+{
+	"stdout": "loading data\n",
+	"stderr": "Traceback (most recent call last):\n  File \"<stdin>\", line 3, in <module>\nKeyError: 'revenue'\n",
+	"error": {
+		"name": "KeyError",
+		"message": "'revenue'",
+		"traceback": "Traceback (most recent call last):\n  File \"<stdin>\", line 3, in <module>\nKeyError: 'revenue'"
+	}
+}

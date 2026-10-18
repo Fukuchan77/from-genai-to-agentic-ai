@@ -6,6 +6,8 @@ export const FATAL_ERROR_CODES = [
 	"config-missing",
 	"not-allowed",
 	"attempt-limit",
+	// The sandbox that runs the learner's code is gone (closed, expired, Docker stopped): no retry helps.
+	"sandbox-unavailable",
 ] as const;
 export type FatalErrorCode = (typeof FATAL_ERROR_CODES)[number];
 

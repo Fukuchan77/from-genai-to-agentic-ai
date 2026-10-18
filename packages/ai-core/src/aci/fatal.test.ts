@@ -14,12 +14,13 @@ describe("FatalToolError", () => {
 		expect(error.message).toBe("fatal tool error: not-allowed");
 	});
 
-	it("publishes the four codes of the plan", () => {
+	it("publishes the codes of the plan, and sandbox-unavailable added in W4", () => {
 		expect(FATAL_ERROR_CODES).toEqual([
 			"auth-failed",
 			"config-missing",
 			"not-allowed",
 			"attempt-limit",
+			"sandbox-unavailable",
 		]);
 	});
 });
