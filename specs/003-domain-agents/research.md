@@ -375,6 +375,8 @@ M3 の着手前に、Node.js と pnpm を M3 着手時点の最新安定版へ�
 |---|---|---|---|
 | W1（2026-10-18、依存 4 件の追加前） | `mise run gate` が終了コード 0（ルート 399、`@platform/ai-core` 1,884（スキップ 4）、`@platform/eval-suite` 7（スキップ 8）、`web` 733） | `real` 31.3 秒 | `env -u NODE_ENV`。5 分以内。`mise run test:mutation` は 86.71 点（閾値 70）、9 分 3 秒（gate の外）。依存 4 件の追加後に再実行して終了コード 0（件数は同じ）。`pnpm audit` は 0 件、`allowBuilds` の警告なし |
 | W2（2026-10-18） | `mise run gate` が終了コード 0（ルート 410、`@platform/ai-core` 2,107（スキップ 4）、`@platform/eval-suite` 7（スキップ 8）、`web` 771、`Docs: 8 module documents, 110 test references verified`、`mcp-import-scope: scanned 426 FILES`） | `real` 約 37 秒 | `env -u NODE_ENV`。`GITHUB_TOKEN` なしで成功（`mock` は GitHub に接続しない）。`mise run test:mutation` は 86.71→86.61 点（閾値 70。`files/path.ts` 77.78、`mcp/risk.ts` 100） |
+| W3（2026-10-18） | `mise run gate` が終了コード 0（ルート 412、`@platform/ai-core` 2,341（スキップ 4）、`web` 830） | `real` 41.0 秒 | `env -u NODE_ENV`。W2 の締めから約 +4 秒 |
+| W4（2026-10-18） | `mise run gate` が終了コード 0（ルート 419（1 件は期待された失敗）、`@platform/ai-core` 2,778（スキップ 4）、`@platform/eval-suite` 7（スキップ 8）、`web` 959、`Docs: 8 module documents, 110 test references verified`、`sandbox-import-scope: scanned 511 FILES`、型検査の対象は ai-core 332・web 155 ファイル） | `real` 53.5 秒（レビューの修正後。修正前は 45.3 秒） | `env -u NODE_ENV`。W3 の締めから約 +4〜12 秒。Docker なし・鍵なしで成功し、`*.container.test.ts` は実行されない。`test:container`（実 Docker）は 17 件で約 20 秒（画像がある場合）。3 エンジンの E2E は 393 件で 1.8 分 |
 
 ### S-2・S-3: MCP クライアントと自作サーバー（2026-10-18、実測）
 
@@ -429,3 +431,35 @@ M3 の着手前に、Node.js と pnpm を M3 着手時点の最新安定版へ�
 - **mock の埋め込みは疑似乱数で、既定の類似度（0.5）では検索が常に空になる**。ヘルプデスクは根拠（`sources`）が無いとき `escalated` にするため、`mock` のルートは `minSimilarity: -1`（上位 k 件をそのまま返す）で検索する。`local` / `live` は既定のままである。
 - **シナリオの曖昧さ**: M2 の Agentic RAG のターン（`stepIndex: 1` と `toolResultFor: "searchKnowledgeBase"` だけで一致）は、同じツールを使うヘルプデスクのタスクの応答にも一致してしまう。`mock/m3-scenarios.test.ts` の検出器が見つけ、M2 側に質問文の条件を足して解消した。以後、`searchKnowledgeBase` を使う M3 のシナリオは、ユーザー文の条件を必ず持つ。
 - **Node の型除去でスクリプトを起動する**: ai-core のソースは拡張子なしで相互に import するため、`scripts/seed-samples.ts` は `module.registerHooks` の resolve フック（`.ts`、`/index.ts` を補う）を自分で登録してから動的 import する。`tsx` は不要（CL-3）。Node 26.12 で確認した。
+
+## W4 の実測: Docker サンドボックス（S-5、17.6〜17.8、2026-10-18、実測）
+
+Rancher Desktop の Docker Engine **29.5.3**（API 1.54、aarch64）で、Engine API を直接（`node:http` + `socketPath`）叩いて確かめた。使ったコンテナは `rancher/mirrored-library-busybox:1.37.0`（ネットワーク不要）。
+
+- **ソケット**: Rancher Desktop のソケットは `~/.rd/docker.sock` で、plan の探索先（`DOCKER_HOST`、`~/.docker/run/docker.sock`、`/var/run/docker.sock`）のどれにも無い。`docker context` の `rancher-desktop` が指すだけである。したがって Rancher Desktop では `DOCKER_HOST=unix://$HOME/.rd/docker.sock` を設定する（探索先は plan のまま変えていない）。
+- **入力の転送（plan の想定が外れた）**: 読み取り専用ルート（`ReadonlyRootfs`）のコンテナへ `PUT /containers/{id}/archive` で入力を置く方法を 4 通り試した。
+
+  | `/work` の作り方 | 起動前の archive | 起動後の archive | 結果 |
+  |---|---|---|---|
+  | `Tmpfs`（`--tmpfs`） | 403 `container rootfs is marked read-only` | 同左 | **不可** |
+  | `--mount type=tmpfs` | 200 | 200 | 不可。置いたファイルは tmpfs のマウントの下に入り、コンテナからは見えない |
+  | tmpfs 裏打ちの `local` ボリューム（`size=1m`） | 200 | — | 不可。同様に見えない（サイズ上限と `uid=` は効く） |
+  | **匿名ボリューム**（`Mounts: [{ Type: "volume", Target: "/work" }]`） | **200** | — | **可**。起動後に `cat /work/in.txt` で読めた |
+
+  plan C6 の「tmpfs の `/work`」と、17.6 の「起動後の archive」の想定は成り立たない。**採用: `/work` は匿名ボリューム、`/tmp` は tmpfs（`rw,noexec,nosuid,size=64m`）、入力は起動前に archive で置く**（create → archive → start → wait → logs → delete）。匿名ボリュームは root 所有（755）で、非 root のコードは `/work` に書けない（書けるのは `/tmp` の 64 MiB だけ）ため、ディスクを埋められない。ボリュームは `DELETE …?force=1&v=1` で一緒に消える（コンテナテストが、実行の前後で未使用ボリュームの数が増えないことを確かめる）。
+- **コンテナの扱い**: 実行ごとに使い捨てのコンテナを作る。セッションは入力ファイルをメモリに持ち、実行のたびにそのコンテナへ置き直す（状態は実行間で引き継がれず、ファイルだけが残る）。実行の終わりに必ずコンテナを削除する（`finally`、失敗は 2 回まで再試行し、残ったものは `onWarning` で通知して `close` で再度削除する）。
+- **API の版**: `v1.44`（Docker 25〜29 が対応する最古の版）に固定した。plan の v1.47 は Docker 27 以降を要する。
+- **画像**: `python:3.13-slim` を**ダイジェストで固定**（`sha256:70729b46…`、Python 3.13.16、2026-10-06 作成）。`pip install` の解決結果を `docker/sandbox/requirements.txt` に全件固定した（pandas 3.0.6、openpyxl 3.1.5、xlrd 2.0.2、matplotlib 3.11.2 と、numpy 2.5.4、pillow 13.0.0 など依存 11 件）。全件の公開から 24 時間以上たっている（最も新しい pillow 13.0.0 で 1.6 日、fonttools 4.67.0 が 4.0 日、numpy 2.5.4 が 7.7 日。PyPI の `upload_time` を実測）。日本語のグラフ用に `fonts-ipafont-gothic` を apt で入れた（`IPAGothic` を matplotlib が見つけることを確認）。`mise run sandbox:build` は 15 秒（ベース画像取得後）、画像は 395 MB（aarch64）。
+- **コンテナテスト**: `mise run test:container`（`DOCKER_HOST=unix://$HOME/.rd/docker.sock`）で 14 件が成功、約 15 秒。実コンテナの中から、ネットワーク（接続と名前解決の両方）が使えないこと、ルートが読み取り専用で `/work` にも書けず `/tmp` だけ書けること、uid 10001・`CapEff` と `CapBnd` が 0・`NoNewPrivs` 1、プロセス数の上限（`pidsLimit: 16` で 64 個の起動が失敗）、メモリ上限（128 MiB で 512 MiB の確保が `Killed`）、タイムアウトで強制削除されること、1 MB の出力、バイナリの入力が壊れないこと、実行ごと・セッション終了後にコンテナが残らないことを観測した。
+- 未確認: x86_64 の Linux と Docker Desktop（macOS）の既定ソケットパス（`~/.docker/run/docker.sock`）での動作。E2B の実機（キーが無い）。
+
+
+## W4 の実サーバー確認（R-1、20.1、2026-10-18、実測）
+
+`mise` の Node 26.12、`next build`（Next.js 16.4.0、Turbopack）と `next start -p 3100`（`AI_RUN_MODE=mock`）で、`apps/web/e2e/real-server.spec.ts` の `analysis:` の 5 ケースを chromium で実行した（`pnpm exec playwright test e2e/real-server.spec.ts --project=chromium -g "analysis:"`、5 件成功）。
+
+- **`serverExternalPackages` に足した集合は空**。`@e2b/code-interpreter` は Turbopack のバンドルに入ったままビルドと実行が通った（E2B の SDK のソースが `.next/server` のチャンクに含まれることを確認した）。`next.config.ts` は変えていない（理由を書けない追加はしない）。キーの無い `mock` では SDK を読み込まない（`createE2bProvider` が最初の `create` で遅延読み込みする）ため、バンドル後の SDK が E2B の API を呼べるかは未確認（キーが要る。ハンズオン）。代わりに、単体テスト（`e2b.test.ts`）が、実 SDK がプロセスで読み込まれ、`Sandbox.create` が E2B の API へ接続しようとするところまで進むこと（テストの遮断で止まる）を確かめている。
+- **確認した内容**: `/api/analysis/status` が疑似サンドボックス（`{ kind: "mock" }`）と上限（20 MiB、`.csv` / `.xlsx` / `.xls`）を返す。`multipart/form-data` の本文を実ランタイムで解析し、`/api/analysis` が疑似提供者で完走する（試行、`alt` 付きの図、表、`succeeded`）。エラーの修正（`KeyError` の後で成功、`fixes: 1`）と `attempt-limit`（`attempts: 4`、`fixes: 3`）。`.txt` と PNG を `.csv` に偽装したファイルは 400、20 MiB + 1 バイトは 413。
+- **ルートをまたいだセッションの共有**: `/api/analysis` が作ったセッションを `DELETE /api/analysis/sessions/[id]` が実際に閉じる（応答ヘッダー `x-analysis-session: released`。もう一度で `absent`）。`/api/analysis` と `/api/analysis/sessions/[id]` は別のバンドルになりえるが、レジストリは `globalThis` の 1 つのホルダーにあるため共有される。204 に本文は無いので、閉じたかどうかをヘッダーで返すようにした（W4 で足した）。
+- **最初の実行は失敗した**: Playwright が `m3-3.ts`（シナリオ）を Node のネイティブ ESM で読み、そこから `sandbox/mock.ts` が import する JSON（`mock-success.json`）に到達して `needs an import attribute of "type: json"` で落ちた。Vitest とバンドラーは気にしない。シナリオが使う定数 `MOCK_ERROR_MARKER` を JSON を読まない `sandbox/mock-marker.ts` に分けて解消した（`analysis/scenarios.test.ts` が、シナリオが `mock.ts` を import しないことを守る）。M3-1 のシナリオが `mcp/chat` を import しても問題なかったのは、そこに JSON が無いからである。
+- 未確認: `next dev`（Turbopack の開発モード）での同じ流れ、firefox / webkit での同じ 5 ケース（W4 の締めの `mise run test:e2e` で 3 エンジン全体を実行する）。

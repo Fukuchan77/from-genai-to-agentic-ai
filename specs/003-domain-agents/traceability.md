@@ -89,16 +89,16 @@ ID 規約は `tasks.md` の「ID 対応表」を参照する（この spec の p
 
 | Requirement | Design | Task | Test | Commit |
 |---|---|---|---|---|
-| 3.1 | C6, C7, C13 | T-1.2, T-1.5, T-1.6, T-6.1, T-17.4, T-17.7, T-17.8, T-18.4, T-19.6, T-20.1, T-35.5, T-39.2, T-40.3, T-40.7, T-40.8 | research.md S-4 (D), research.md S-5 (D) | ee815d5, 077c51e |
-| 3.2 | C6, C16 | T-1.5, T-1.6, T-6.1, T-6.2, T-6.3, T-17.4, T-17.5, T-17.6, T-17.7, T-17.8, T-20.2, T-40.3 | research.md S-4 (D), research.md S-5 (D), check-repo-rules.test.mjs, check-client-bundle.test.mjs | 077c51e |
-| 3.3 | C7 | T-18.3, T-18.4, T-18.5, T-38.2, T-39.1, T-40.3 |  |  |
-| 3.4 | C2, C7 | T-3.3, T-18.3, T-18.4, T-31.1, T-35.3, T-40.3 | guarded-agent.test.ts | 70dd437 |
-| 3.5 | C7, C13, C14 | T-18.2, T-18.4, T-19.4, T-19.6, T-20.2, T-31.2, T-31.3, T-35.2, T-35.3, T-36.1, T-40.3 |  |  |
-| 3.6 | C7, C14 | T-18.3, T-18.4, T-19.4, T-19.6, T-31.1, T-31.3, T-35.3 |  |  |
-| 3.7 | C6, C13 | T-2.1, T-17.3, T-19.3, T-19.6, T-19.7, T-20.1, T-31.3, T-40.3 | env-schema.test.ts, feature-requirements.test.ts, load.test.ts | 3af8b69 |
-| 3.8 | C6, C13, C14 | T-1.5, T-1.6, T-2.1, T-2.2, T-17.2, T-17.6, T-17.7, T-17.8, T-19.1, T-19.5, T-19.6, T-20.3, T-31.1, T-31.3, T-35.3, T-35.5, T-39.2, T-40.3, T-41.1, T-41.2, T-41.4 | research.md S-4 (D), research.md S-5 (D), env-schema.test.ts, feature-requirements.test.ts, load.test.ts, gateway.test.ts | 3af8b69 |
-| 3.9 | C7, C13 | T-2.1, T-18.1, T-19.2, T-19.6, T-20.2, T-31.1, T-40.3, T-42.1, T-42.2 | env-schema.test.ts, feature-requirements.test.ts, load.test.ts | 3af8b69 |
-| 3.10 | C6, C15 | T-6.1, T-6.4, T-17.1, T-18.4, T-18.5 | m3-scenarios.test.ts | 077c51e |
+| 3.1 | C6, C7, C13 | T-1.2, T-1.5, T-1.6, T-6.1, T-17.4, T-17.7, T-17.8, T-18.4, T-19.6, T-20.1, T-35.5, T-39.2, T-40.3, T-40.7, T-40.8 | research.md S-4 (D), research.md S-5 (D), provider.test.ts, mock.test.ts, agent.test.ts, analysis route.test.ts, real-server.spec.ts (E) | ee815d5, 077c51e, 8510c68, 0114cd7, 748cd84 |
+| 3.2 | C6, C16 | T-1.5, T-1.6, T-6.1, T-6.2, T-6.3, T-17.4, T-17.5, T-17.6, T-17.7, T-17.8, T-20.2, T-40.3 | research.md S-4 (D), research.md S-5 (D), check-repo-rules.test.mjs, check-client-bundle.test.mjs, provider.test.ts, provider.container.test.ts (C), engine.test.ts, tar.test.ts, check-repo-rules.test.mjs | 077c51e, 8510c68 |
+| 3.3 | C7 | T-18.3, T-18.4, T-18.5, T-38.2, T-39.1, T-40.3 | attempts.test.ts, run-python-tool.test.ts, agent.test.ts, scenarios.test.ts | 0114cd7 |
+| 3.4 | C2, C7 | T-3.3, T-18.3, T-18.4, T-31.1, T-35.3, T-40.3 | guarded-agent.test.ts, run-python-tool.test.ts, agent.test.ts, analysis route.test.ts | 70dd437, 0114cd7, 748cd84 |
+| 3.5 | C7, C13, C14 | T-18.2, T-18.4, T-19.4, T-19.6, T-20.2, T-31.2, T-31.3, T-35.2, T-35.3, T-36.1, T-40.3 | output-parser.test.ts, prelude.test.ts, domain-stream.test.ts, analysis route.test.ts | 0114cd7, 748cd84 |
+| 3.6 | C7, C14 | T-18.3, T-18.4, T-19.4, T-19.6, T-31.1, T-31.3, T-35.3 | attempts.test.ts, agent.test.ts, domain-stream.test.ts, analysis route.test.ts | 0114cd7, 748cd84 |
+| 3.7 | C6, C13 | T-2.1, T-17.3, T-19.3, T-19.6, T-19.7, T-20.1, T-31.3, T-40.3 | env-schema.test.ts, feature-requirements.test.ts, load.test.ts, lifecycle.test.ts, sessions.test.ts, analysis route.test.ts, sessions/[id]/route.test.ts, real-server.spec.ts (E) | 3af8b69, 8510c68, 748cd84 |
+| 3.8 | C6, C13, C14 | T-1.5, T-1.6, T-2.1, T-2.2, T-17.2, T-17.6, T-17.7, T-17.8, T-19.1, T-19.5, T-19.6, T-20.3, T-31.1, T-31.3, T-35.3, T-35.5, T-39.2, T-40.3, T-41.1, T-41.2, T-41.4 | research.md S-4 (D), research.md S-5 (D), env-schema.test.ts, feature-requirements.test.ts, load.test.ts, gateway.test.ts, select.test.ts, local.test.ts, probe.test.ts, platform.test.ts, status/route.test.ts | 3af8b69, 8510c68, 748cd84 |
+| 3.9 | C7, C13 | T-2.1, T-18.1, T-19.2, T-19.6, T-20.2, T-31.1, T-40.3, T-42.1, T-42.2 | env-schema.test.ts, feature-requirements.test.ts, load.test.ts, upload-check.test.ts, upload.test.ts, analysis route.test.ts | 3af8b69, 0114cd7, 748cd84 |
+| 3.10 | C6, C15 | T-6.1, T-6.4, T-17.1, T-18.4, T-18.5 | m3-scenarios.test.ts, mock.test.ts, scenarios.test.ts, m3-scenarios.test.ts | 077c51e, 8510c68, 0114cd7 |
 
 **検証の計画**（plan より）
 
@@ -194,4 +194,5 @@ ID 規約は `tasks.md` の「ID 対応表」を参照する（この spec の p
 - **W3 の出荷時点（2026-10-18）の持ち越し**: 2.5 の「状態変化から 1 秒以内」は gate では書き出しの即時性（順序と回数）までの検証で、画面での確認は W7（30.x、35.x）。2.6・2.7 の Docker Postgres での検証（`client.pg.test.ts`）は実行済み。W3 の修正後の fresh な再レビューは未実施（`.sdd/reviews/003-domain-agents-impl-w3-review-2026-10-18.md`）。`test:mutation` の全体は未実行（対象の 2 ファイルは 91.41）。
 - **plan の記載漏れ**（tasks.md の Boundary の例外 (4)）: `packages/ai-core/src/rag/db/client.pg.test.ts` は plan の Test Strategy が言及するが File Structure Plan に載っていない。13.1・26.2 が M2 の既存ファイルへ 1 ケースを足すだけに限って触れる。
 - **plan の波の割り当てからの調整**: `docs:check` の必須トピックを W1 から W8（40.8）へ、`sessions.ts`・`upload.ts` を W4（19.2、19.3）へ移した（理由は `tasks.md`）。
+- **W4 の出荷時点（2026-10-18）の持ち越し**: W4 の敵対的レビュー（`.sdd/reviews/003-domain-agents-impl-w4-review-2026-10-18.md`）の修正後の fresh な再レビューは未実施。CL-26（修正回数の数え方）は ★ で人の確認が未了。F-14・F-15 は受け入れた制限、F-17 は 004 へ。3.5・3.6 の画面での描画は W7（35.x）、3.3 の実モデルの修正は `local`（L）で未確認、E2B の実機は D で未確認。
 - **004 への引き継ぎ**: E2B の外向き通信（CL-21）、外部コンテンツの汚染状態（CL-10）、MCP の注釈を信頼しない前提（ADR-7）。`tasks.md`「004 への引き継ぎ事項」と 40.3 に記録する。

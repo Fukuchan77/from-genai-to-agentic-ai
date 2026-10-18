@@ -44,6 +44,7 @@ M3 は `packages/ai-core` に 8 つの領域（`files/`、`mcp/`、`sandbox/`、
 | CL-23 | Req 6.6 の永続化 | 商品カタログとペルソナ定義は DB（`marketing_products`、`marketing_personas`）に置き、マイグレーションは `packages/ai-core/drizzle/0003_marketing.sql`（ヘルプデスクの `0002_helpdesk.sql` とは別。Wave を分けるため） | |
 | CL-24 | Req 1.3、1.5 の MCP 経由の致命的エラー | 自作サーバーは別プロセスのため、`FatalToolError` は MCP の境界を越えない。サーバーは失敗を例外ではなくツール結果 `{ isError: true, content: [短い文言], _meta: { "agentic-ai/error": { kind: "fatal" \| "recoverable"; code } } }` として返す（`code` は C2 の閉じた語彙。致命的は `not-allowed` など）。クライアントの `adaptMcpTool` は `isError` の結果を `classifyMcpToolResult` で判定し、`trustErrorMeta: true` のサーバー（`filesServerConfig` だけが立てる）の `kind: "fatal"` に限り `FatalToolError` を投げてラッチを立てる（以降は C2 の経路で停止理由 `error`）。学習者向けの文言はクライアントがサーバーの設定（許可ルートのパス）から組み立て、サーバーの文字列をそのまま使わない。`trustErrorMeta` の無いサーバー（GitHub など）の `isError` は回復可能として、要約と次の修正アクションを返す。HTTP の 401 / 403 は従来どおり `auth-failed`。`_meta` がクライアントの `execute` まで届くかは spike S-2 で確かめ、届かなければ `structuredContent` に同じ形を載せる。それも届かなければ `adaptMcpTool` が `tools/call` を自前で呼んで結果を読む（S-2 の退き方と同じ） | ★ |
 | CL-25 | Req 1.1、1.11 と Req 1.9 の両立（外部の MCP ツールの説明文） | 外部のサーバー（GitHub）の説明文は CL-18 の形式を満たさない。そこで `McpServerConfig.descriptions`（ツール名 → CL-18 の形式の説明文。リポジトリのコードに書き、クライアントの要求からは受け付けない）で上書きし、上書きがあればそれを、無ければサーバーの説明文を「実効の説明文」として検査する。外部ツールの入力は Zod ではなく JSON Schema のため、入力の意味の検査は `checkJsonSchemaDescription` が行う（入力の全プロパティに `description` があるか、プロパティ名が実効の説明文に現れること）。`githubServerConfig` は既定の許可リストに載せる読み取り専用ツールの上書きを持つ（ツールの一覧は spike S-6 の結果で決める）。上書きが無く検査に通らないツールは登録せず、`disabledReason` に「説明文の形式」を出す。これにより Req 1.1・1.11 は登録されるすべてのツールで満たし、Req 1.9 は上書きを持つ許可リストのツールで満たす | ★ |
+| CL-26 | Req 3.3、3.4 の修正回数の数え方 | 「修正」は失敗した実行の次の実行である。**修正の許容は失敗ごと**: 1 回の失敗に対して修正の実行は `maxFixAttempts`（既定 3）回までで、**失敗した実行 1 回 + 修正 3 回 = その失敗に最大 4 回の実行**。通算 4 回目（3 回目の修正）が失敗した時点で `attempt-limit` として止め、5 回目の実行は求めない。成功した実行で失敗は終わり、その後の新しい失敗には改めて 3 回の修正がある（分析全体の長さはエージェントのステップ上限が抑える）。表示用の `fixes` は分析全体の修正の合計。plan の「4 回目は実行せず」の「4 回目」は 4 回目の修正（通算 5 回目）を指すと読んだ。通算 3 回の読みなら `maxFixAttempts` を 2 にする（コードの変更は要らない）。レビュー W4 F-3 で、累積の数え方（失敗と成功が交互だと、修正を 1 回も受けていない失敗で止まる）を失敗ごとに改めた | ★ |
 
 ## Architecture Overview
 
@@ -206,7 +207,7 @@ flowchart TD
 
 - **Responsibility**: ツールのエラーを「回復可能」と「致命的」に分け、致命的なエラーを Run 単位で 1 件だけ保持して、以降のツール実行を止める経路を提供する（ADR-5）。
 - **Public interface**:
-  - `class FatalToolError extends Error { code: "auth-failed" | "config-missing" | "not-allowed" | "attempt-limit"; learnerMessage: string }`。学習者に見せてよい短い文言だけを持つ。
+  - `class FatalToolError extends Error { code: "auth-failed" | "config-missing" | "not-allowed" | "attempt-limit" | "sandbox-unavailable"; learnerMessage: string }`。学習者に見せてよい短い文言だけを持つ。
   - `FatalLatch`: `trip(error: FatalToolError): void`、`readonly error: FatalToolError | undefined`。最初の 1 件だけを保持し、後続は無視する。
   - `classifyToolError(error: unknown): { kind: "recoverable"; summary: string; nextAction: string } | { kind: "fatal"; error: FatalToolError }`。生のスタックトレースを含めない。
   - `ToolRuntime` に任意の `fatal: FatalLatch` を足す（省略時は M1 と同じ挙動）。
@@ -269,7 +270,8 @@ flowchart TD
   - `sandbox/e2b.ts`: `createE2bProvider({ apiKey, sdk })`。SDK の `Sandbox` を注入できる形にし、テストは偽の SDK で行う。
   - `sandbox/docker/`: `probeDockerSocket(env)`（`DOCKER_HOST`、`~/.docker/run/docker.sock`、`/var/run/docker.sock` の順）、`createDockerProvider({ engine, image })`。
   - `sandbox/mock.ts`: 定義済みの標準出力、エラー出力、画像を返す疑似提供者（Req 3.10）。
-- **Owns**: 提供者の選択、セッションのアイドル判定（`Clock`）、Engine API の呼び出し（`engine.ts`、`tar.ts`、`demux.ts`）、E2B の SDK の呼び出し（`sandbox/e2b.ts` だけ）、Docker の作業ディレクトリと制限（ネットワークなし、メモリ、CPU、読み取り専用ルート、tmpfs の `/work`、PID 上限、capability の削除、`no-new-privileges`）、画像 `docker/sandbox/Dockerfile`。
+- **Owns**: 提供者の選択、セッションのアイドル判定（`Clock`）、Engine API の呼び出し（`engine.ts`、`tar.ts`、`demux.ts`）、E2B の SDK の呼び出し（`sandbox/e2b.ts` だけ）、Docker の作業ディレクトリと制限（ネットワークなし、メモリ、CPU、読み取り専用ルート、**匿名ボリュームの `/work` と tmpfs の `/tmp`**、PID 上限、capability の削除、`no-new-privileges`）、画像 `docker/sandbox/Dockerfile` と固定した依存 `requirements.txt`。
+  - **W4 の実測による訂正**（research「W4 の実測」）: 読み取り専用ルートでは tmpfs の `/work` に archive で入力を置けないため、`/work` は匿名ボリューム（root 所有で非 root から書けない。入力は起動前に archive で置く）、書込先は `/tmp` の tmpfs（64 MiB、`noexec`）だけにした。コンテナは**実行ごとの使い捨て**で（`LogConfig` で保存するログを 16m に制限し、ラベル `agentic-ai.sandbox=1` を付ける。残ったものは `mise run sandbox:clean` で消す。Engine API の呼び出しは `wait` 以外すべてタイムアウトを持つ: 確認系 3 秒、その他 30 秒。セッションを閉じた時点で作成中だったコンテナは、作成の完了後に削除して実行しない。W4 のレビューで足した）、セッションが入力ファイルをメモリに持ち、実行のたびに置き直す。`SandboxRegistry.acquire` は `SandboxLease { session; recreated; done() }` を返し、貸出中は `sweep` が破棄しない。`SandboxSession.writeFile` の `path` は**ディレクトリを含まない平易なファイル名**（`assertSandboxFileName`。3 提供者が同じ規則）。Engine API の版は 1.44。E2B は SDK を提供者の最初の `create` で遅延読み込みし（キーが無ければ読まない）、`allowInternetAccess` は指定したときだけ SDK に渡す。
 - **Does NOT own**: 解析の手順、生成コードの評価と修正（C7）。学習者のセッション識別と HTTP（C13）。MCP（C5）。サンドボックス内で `child_process` を使う経路（ない）。
 - **Requirements**: 3.1、3.2、3.7、3.8、3.10
 
@@ -278,7 +280,7 @@ flowchart TD
 - **Responsibility**: アップロードを検査し、サンドボックスでコードを実行して、失敗を修正しながら分析を進める修正ループと、出力の分離を提供する。
 - **Public interface**:
   - `checkUpload({ name, bytes, declaredLength? }): { ok: true; kind: "csv" | "xlsx" | "xls" } | { ok: false; reason: "extension" | "magic" | "size" | "encoding" }`（純関数。`analysis/upload-check.ts`）。
-  - `runAnalysis({ sandbox, file, instruction, model, options: { maxFixAttempts; executionTimeoutMs }, observer, signal }): Promise<AnalysisResult>`。`AnalysisResult` は `{ status: "succeeded" | "attempt-limit"; attempts: readonly AnalysisAttempt[]; figures; tables; text }`。
+  - `runAnalysis({ sandbox, file, instruction, model, options: { maxFixAttempts; executionTimeoutMs }, limits?, clock, observer, signal, onEvent? }): Promise<AnalysisResult>`。`AnalysisResult` は `{ status: "succeeded" | "incomplete" | "attempt-limit" | "sandbox-unavailable" | "unreadable" | "stopped"; attempts: readonly AnalysisAttempt[]; fixes; figures; tables; text; run? }`（`succeeded` は最後の実行が成功したとき。`incomplete` はモデルが失敗の後で修正せずに終えた、またはコードを一度も実行しなかったとき。`sandbox-unavailable` はサンドボックスが使えなくなった（`runPython` が `provider-unavailable` を受けると致命的エラーで 1 回のモデル呼び出しのうちに止める）とき。`unreadable` は壊れた `.xlsx` / `.xls`（下調べが時間・メモリの上限に当たったときは壊れたとみなさず分析へ進む）、`stopped` はステップ・トークン・時間の上限。W4 の 18.4 とレビューで足した）。`checkUpload` の拒否理由には `empty`（空ファイル）を足した。修正回数の数え方は CL-26。
   - `parseSandboxOutput(stdout: string, limits): { text: string; figures: readonly Figure[]; tables: readonly Table[]; rejected: readonly string[] }`（`analysis/output-parser.ts`、純関数）。目印の行（`__PNG__:`、`__TABLE__:`）を取り出し、PNG のマジックバイト、サイズ、行数を検査する。
   - `analysisPrelude: string`（`analysis/prelude.ts`）: `show_figure(alt)` と `show_table(df, caption)` を定義する Python の断片。サンドボックスへ投入する。
   - `createRunPythonTool({ registry })`: `runPython` を `risk: "read-only"` で定義する。作用はサンドボックスの中だけ。
@@ -360,7 +362,7 @@ flowchart TD
 - **Responsibility**: 6 組の Route Handler で入力を検査し、ドメインの部品を組み立て、学習者のセッションを保持し、結果をストリームへ写像する。
 - **Public interface**:
   - `lib/server/platform.ts` の拡張: `getSandboxSelection()`、`getMcpRegistry()`、`getHelpdeskStore()`、`getArxivClient()`、`getCatalogRepo()`。すべての組み立てはこの 1 ファイルで行う（M2 と同じ）。
-  - `lib/server/sessions.ts`: `createSessionRegistry<T>({ clock, idleTimeoutMs })` が `get(id)`、`create(id, factory)`、`touch(id)`、`dispose(id)` を持つ。アイドルの破棄は `Clock` で数える。**レジストリの実体（分析、要件の各セッション用）は `platform.ts` と同じ `globalThis` のホルダーに 1 つだけ保持する**（`getSessionRegistries()`）。Route Handler はルートごとに別のバンドルになりえ、dev ではモジュールが再読み込みされるため、モジュールスコープの変数では、あるルートが作ったセッションを別のルートが見つけられない。
+  - `lib/server/sessions.ts`: `createSessionRegistry<T>({ clock, idleTimeoutMs })` が `get(id)`、`create(id, factory)`、`touch(id)`、`dispose(id)` を持つ。アイドルの破棄は `Clock` で数える。**レジストリの実体（分析、要件の各セッション用）は `platform.ts` と同じ `globalThis` のホルダーに 1 つだけ保持する**（`getSessionRegistries()`）。Route Handler はルートごとに別のバンドルになりえ、dev ではモジュールが再読み込みされるため、モジュールスコープの変数では、あるルートが作ったセッションを別のルートが見つけられない。 実装は `getSessionRegistries()` ではなく `getSessionRegistry(name, options)`（名前ごとに 1 つ）。サンドボックスは `getSandboxSelection()` の `SandboxRegistry`（上限 `DEFAULT_SANDBOX.maxSessions` = 8、超えたら使っていない最古を閉じ、全部使用中なら 503）。選択が実行時に外れた（`sandbox-unavailable`）ときは `invalidateSandboxSelection()` が掃除を止めて全セッションを閉じ、次の要求が選び直す。接続断（`request.signal` の abort）はそのセッションのサンドボックスを**即座に**閉じる（Req 3.7 の「接続が途絶えた状態を含むアイドル」を、毎回ファイルを送り直す前提で、即時の破棄と読んだ。Next.js の実サーバーで切断が `request.signal` を abort するかは未確認）。
   - `lib/server/upload.ts`: `readUpload(request, { maxBytes })`。`Content-Length` と受信バイト数の両方で上限を検査する（CL-7）。
   - `lib/server/domain-stream.ts`: 各ドメインのイベントを `data-*` パートへ写像する（M2 の `rag-stream.ts` と同じ方式）。
   - Route Handler（Interfaces / Contracts の表）。
@@ -395,7 +397,7 @@ flowchart TD
 
 - **Responsibility**: 新しい境界を機械的に守らせる規則、タスクの入口、評価テストの配置、3-1〜3-6 の解説とステアリングの更新を担う。
 - **Public interface**:
-  - `scripts/check-repo-rules.mjs`: 規則 `mcp-import-scope`（`@ai-sdk/mcp` は `mcp/` だけ。`ports/` には置かない）、`sandbox-import-scope`（`@e2b/code-interpreter` は `sandbox/e2b.ts` だけ、`node:http` の Docker 接続は `sandbox/docker/` だけ）を足す。`RULE_NAMES` は 13 になる（ADR-4、ADR-7）。
+  - `scripts/check-repo-rules.mjs`: 規則 `mcp-import-scope`（`@ai-sdk/mcp` は `mcp/` だけ。`ports/` には置かない）、`sandbox-import-scope`（`@e2b/code-interpreter` は `sandbox/e2b.ts` だけ、`node:http` の Docker 接続は `sandbox/docker/` だけ）を足す。`RULE_NAMES` は 13 になる（ADR-4、ADR-7）。 `sandbox-import-scope` の `docker.sock` / `socketPath` の検査から除くのは、コンテナのテストのためのテスト基盤の 4 ファイルだけ（`tooling/vitest/network-guard.ts` と `setup-hermetic.test.ts`、`testing/container-only.ts` と `container-only.test.ts`。ディレクトリ単位では除かない。W4）。
   - `scripts/check-docs.mjs`: `REQUIRED_TOPICS` に `3-1`〜`3-6` を足す。
   - `scripts/seed-samples.ts`（`mise run seed:samples`）: `seedHelpdesk` と `seedMarketing` を呼ぶ入口（Node 26 の型除去で直接起動する、CL-3）。
   - `mise.toml`: `sandbox:build`（`docker/sandbox/Dockerfile` から画像を作る）、`test:container`（`*.container.test.ts`）、`seed:samples` を足す。`client-bundle` のセンチネルに `E2B_API_KEY` と `GITHUB_TOKEN` を足す。
@@ -512,9 +514,9 @@ DB に保存しない型は Zod のスキーマを正とし、型は `z.infer` �
 | `POST /api/helpdesk` | `{ inquiry: string（1〜4000 文字）; modelId?; maxSteps?: 1〜30 }` | UI メッセージストリーム（下表の `data-helpdesk-*`）。完了時に `{ ticketId; status }` | 400（空の問い合わせ）、503 `provider-unavailable`（DB に接続できない）、`capability-unsupported`、429 |
 | `GET /api/helpdesk/tickets` | クエリ `status?: "open" \| "resolved" \| "escalated"` | JSON `{ tickets: TicketSummary[] }`（新しい順、50 件まで） | 503 |
 | `GET /api/helpdesk/tickets/[id]` | なし | JSON `{ ticket; revisions: PlanRevision[] }` | 404 `invalid-request`、503 |
-| `GET /api/analysis/status` | なし | JSON `{ sandbox: { kind: "e2b" \| "docker" } \| { kind: "disabled"; reason; guidance }; upload: { maxBytes; accepts: string[] } }`（Req 3.8 の表示用） | — |
-| `POST /api/analysis` | `multipart/form-data`: `file`（.csv / .xlsx / .xls）、`instruction`（1〜2000 文字）、`sessionId`（UUID）、`modelId?`。`file` は 1 つだけ | UI メッセージストリーム（下表の `data-analysis-*`） | 413（20 MB 超。`Content-Length` と受信バイト数の両方）、400 `invalid-request`（拡張子、マジックバイト、エンコーディング、空）、503 `provider-unavailable`（サンドボックス無効。`guidance` を `details` に含む）。拒否のときはサンドボックスを起動しない（Req 3.9） |
-| `DELETE /api/analysis/sessions/[id]` | なし | 204。サンドボックスを破棄する（Req 3.7）。存在しない ID も 204（冪等） | 400（ID の形式） |
+| `GET /api/analysis/status` | なし | JSON `{ sandbox: { kind: "e2b" \| "docker" \| "mock" } \| { kind: "disabled"; reason; guidance }; upload: { maxBytes; accepts: string[] } }`（Req 3.8 の表示用。`mock` は疑似提供者） | — |
+| `POST /api/analysis` | `multipart/form-data`: `file`（.csv / .xlsx / .xls）、`instruction`（1〜2000 文字）、`sessionId`（UUID）、`modelId?`。`file` は 1 つだけ | UI メッセージストリーム（下表の `data-analysis-*`） | 413（20 MB 超。`Content-Length` と受信バイト数の両方）、400 `invalid-request`（拡張子、マジックバイト、エンコーディング、空）、503 `provider-unavailable`（サンドボックス無効。`guidance` を `details` に含む）。同じ `sessionId` の分析が実行中なら 400 `invalid-request`。検査の順序は 413 → フォームの形 400 → 指示・`sessionId` 400 → `checkUpload` 400 → サンドボックス無効 503 → 同じセッションが実行中 400 → `live` のみ 429 → モデル（`tools` が要る）→ サンドボックス。拒否のときはサンドボックスもモデルも起動せず、レート制限の枠も使わない（Req 3.9） |
+| `DELETE /api/analysis/sessions/[id]` | なし | 204（本文なし）。サンドボックスを破棄する（Req 3.7）。存在しない ID も 204（冪等）。閉じたかどうかを応答ヘッダー `x-analysis-session: released \| absent` で返す（実サーバーの確認が読む。W4 で足した） | 400（ID の形式） |
 | `POST /api/research` | `{ theme: string（1〜500 文字）; modelId?; maxSubagentCalls?: 1〜20 }` | UI メッセージストリーム（下表の `data-research-*`）。最後に `data-research-result` | 400、`capability-unsupported`、`source-unavailable`（arXiv に到達できない場合も、検索の欠落として `missing` に記録して続行するため、ここで返すのは Supervisor 自体が起動できないときだけ）、429 |
 | `POST /api/requirements/sessions` | `{ overview: string（1〜2000 文字）; modelId?; personaCount?: 1〜5; maxRounds?: 1〜10 }` | JSON `{ sessionId; personas: Persona[]; questions: Question[] }` | 400、502 `output-invalid`（ペルソナの構造化出力が 3 回失敗）、429 |
 | `POST /api/requirements/sessions/[id]/messages` | `{ answers: { questionId; text（1〜2000 文字） }[]（1〜10 件） }` | UI メッセージストリーム（`data-requirements-*`）。ラウンドの終わりに判定と、次の質問または完了 | 404（セッションなし・破棄済み）、409 `invalid-request`（完了済みのセッション）、400、502 |
@@ -537,7 +539,8 @@ DB に保存しない型は Zod のスキーマを正とし、型は `z.infer` �
 | `data-analysis-attempt` | イベント | `{ index; code; stdout; stderr; errorSummary? }` | 生成コードと実行結果（Req 3.6） |
 | `data-analysis-figure` | イベント | `Figure`（`alt`、`mediaType: "image/png"`、`base64`） | グラフ（Req 3.5、ADR-2） |
 | `data-analysis-table` | イベント | `Table` | 表（Req 3.5） |
-| `data-analysis-result` | イベント | `{ status: "succeeded" \| "attempt-limit"; attempts: number; fixes: number; text }` | 修正回数と、上限到達時の停止（Req 3.4、3.6） |
+| `data-analysis-result` | イベント | `{ status: "succeeded" \| "incomplete" \| "attempt-limit" \| "sandbox-unavailable" \| "unreadable" \| "stopped"; attempts: number; fixes: number; text }` | 修正回数と、上限到達時の停止（Req 3.4、3.6）。`unreadable` は壊れた Excel、`stopped` はステップ・トークン・時間の上限（W4 で足した） |
+| `data-analysis-notice` | イベント | `{ reasons: string[] }` | 捨てた図表の理由と、サンドボックスの作り直しの通知（Req 3.5、3.7。W4 で足した） |
 | `data-research-event` | イベント | `{ agent: "supervisor" \| "search" \| "reading" \| "market"; kind: "call" \| "tool" \| "summary" \| "card" \| "error"; detail }` | Agent Inspector。どの主体のものかを区別する（Req 4.9） |
 | `data-research-usage` | 状態 | `TokenBreakdown` と `{ calls; maxCalls }` | トークン内訳（Req 4.10）と呼び出し回数（Req 4.8） |
 | `data-research-result` | イベント | `ResearchResult`（`report` は引用の照合後、`warnings`、`missing`） | レポート（Req 4.2、4.5、4.6） |
