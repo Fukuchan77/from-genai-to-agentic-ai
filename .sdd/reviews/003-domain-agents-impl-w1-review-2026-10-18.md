@@ -242,4 +242,23 @@ forced: false
 
 ## Responses
 
-<!-- Implementer appends the response to each finding here (wave migration condition 3). -->
+### Round 1 responses (2026-10-18)
+
+| Finding | Response |
+|---|---|
+| F-1 | Fixed. With a latch `buildToolSet` runs one call after another and refuses those that start after the trip. Test `refuses a sibling call that starts together with the failing call (one step)`; PROVE: removing the queue → `expected 1 to be +0`. |
+| F-2 | Fixed. `buildToolSet` records the latch in a module-private `WeakMap`; `createGuardedAgent` reads it, so the `fatal` option is gone. An already-tripped latch is rejected. |
+| F-3 | Fixed for the scan scope, alias and dynamic specifiers (PROVE: 9 failures). The Docker check stays an approximation (`socketPath` and `docker.sock` strings); recorded in plan C2/C16. |
+| F-4, F-5 | Fixed (whole-word match; record, `$ref`, union and unsendable-schema handling). PROVE: 5 failures. |
+| F-6 | Fixed (exclusive bounds, string formats; the example is printed only when the schema accepts it). |
+| F-8 | Fixed. plan.md C2/C3, the File Structure Plan and C16 are synced; tasks.md Boundary exception (5) records the deviations. |
+| F-12, F-13 | Fixed (module 1-2 snippet; correction appended to research.md). |
+| F-7 | Accepted for now. No tool fetches arbitrary URLs yet. Convention: a tool that fetches third-party URLs converts 401/403 into `ToolExecutionError`. Carried to 9.x (MCP adapter, the first credentialed adapter): throw `FatalToolError("auth-failed")` there explicitly and add the convention test. |
+| F-9 | Accepted. The reading is "body ≤ `maxCharacters`, the omission line and the hint are added on top" (the tests pin it). To be written into the C3 text when 40.x documents it. |
+| F-10, F-11 | Deferred to W5 task 22.x, the first consumer of `TokenLedger` and the external-content log: add `ledgerObserver` (maps `AgentRunSummary.totalTokens`), attach the agent name to ingestion records, and cap `source` at 512 characters, each with a test. |
+| F-14 | Accepted and qualified. Schema-derived keys do not change; the M1 description rewrite changes the key of any recorded request that includes the six M1 tools, so such `local` recordings must be re-recorded. To be stated in the 3-1 document's 移植時の変更点 (40.1). `fixtures/cassettes/llm/` is empty, so the gate is unaffected. |
+| F-15 | Deferred to W2 task 9.x (it touches `failureFrom` again): reuse `classifyToolError`'s recoverable result in `failureFrom` and pin the no-latch summary text in the M1-compatibility test. |
+| F-16 | Deferred to W4 task 17.x: add the skip helper and the container-suite exception in `tooling/vitest/network-guard.ts`; add `tooling/vitest/*` to that task's boundary. |
+| F-17 | Deferred to 16.1 and 28.1: assert the expected scanned count, or fail when a listed file is missing once its directory exists. |
+| F-18 | Accepted (confidence low). `describeTool` stays in `testing/`, which is a test-support subpath; revisit if production code imports it. |
+| F-19 | Closed. 1.2, 1.3, 1.5 and 7.2 are done, Task 7's Implementation Notes are written, and the work is committed (`ee815d5`…`bebea03`). CI `ci-status` is confirmed after the branch is pushed (see the migration commit). |

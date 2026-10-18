@@ -416,3 +416,6 @@ _Traces:_ REQ-001, C16
   _Verify:_ `mise run gate` の成功と所要時間を research.md に記録した。W1 の敵対的レビューの記録が `.sdd/reviews/003-domain-agents-impl-w1-review-*.md` にある
 
 ### Implementation Notes
+
+- 実測は `mise run gate` が約 31 秒（5 分の予算に対して十分）、`pnpm audit` 0 件、`allowBuilds` の警告なし。ミューテーションは 86.71 点（閾値 70、gate の外）。
+- 敵対的レビュー W1 は HIGH 1 件・MEDIUM 6 件を修正し、LOW は `.sdd/reviews/003-domain-agents-impl-w1-review-2026-10-18.md` の「Responses」に対応先を記録した（W2 以降の「W1 からの持ち越し」）。
