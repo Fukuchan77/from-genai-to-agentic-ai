@@ -60,16 +60,16 @@ ID 規約は `tasks.md` の「ID 対応表」を参照する（この spec の p
 
 | Requirement | Design | Task | Test | Commit |
 |---|---|---|---|---|
-| 2.1 | C10 | T-12.1, T-12.4, T-13.2, T-14.1, T-15.1, T-15.3, T-37.2, T-40.2, T-40.7, T-40.8 |  |  |
-| 2.2 | C10 | T-12.2, T-12.6, T-14.1, T-16.1, T-40.2 |  |  |
-| 2.3 | C10 | T-12.1, T-12.5, T-13.2, T-14.1, T-15.1, T-15.3, T-15.4, T-16.1, T-30.1, T-40.2 |  |  |
-| 2.4 | C1, C10 | T-2.1, T-12.6, T-13.2, T-14.1, T-15.3, T-30.1, T-40.2 | env-schema.test.ts, feature-requirements.test.ts, load.test.ts | 3af8b69 |
-| 2.5 | C13, C14 | T-15.2, T-15.3, T-30.1, T-30.2, T-35.2, T-35.3, T-36.1 |  |  |
-| 2.6 | C10 | T-13.1, T-13.2, T-14.1, T-15.2, T-15.3, T-15.4, T-16.2, T-30.1, T-30.2, T-37.2, T-40.2 |  |  |
-| 2.7 | C10 | T-13.1, T-13.2, T-14.1, T-15.3, T-15.4, T-30.1, T-30.2, T-37.2, T-40.2 |  |  |
-| 2.8 | C10 | T-12.3, T-13.2, T-14.1, T-15.3, T-40.2 |  |  |
-| 2.9 | C10, C15, C16 | T-13.3, T-13.4 |  |  |
-| 2.10 | C10 | T-2.1, T-12.1, T-12.4, T-14.1, T-15.3, T-16.1, T-40.2 | env-schema.test.ts, feature-requirements.test.ts, load.test.ts | 3af8b69 |
+| 2.1 | C10 | T-12.1, T-12.4, T-13.2, T-14.1, T-15.1, T-15.3, T-37.2, T-40.2, T-40.7, T-40.8 | plan-schema.test.ts, planner.test.ts, ticket-store.db.test.ts, helpdesk.test.ts, api/helpdesk/route.test.ts | 1a0ff4c, 2f07038, 7f1351f |
+| 2.2 | C10 | T-12.2, T-12.6, T-14.1, T-16.1, T-40.2 | scheduler.test.ts, run.test.ts, helpdesk.test.ts, check-repo-rules.test.mjs | 1a0ff4c, dea6909 |
+| 2.3 | C10 | T-12.1, T-12.5, T-13.2, T-14.1, T-15.1, T-15.3, T-15.4, T-16.1, T-30.1, T-40.2 | plan-schema.test.ts, replanner.test.ts, ticket-store.db.test.ts, helpdesk.test.ts, api/helpdesk/**/route.test.ts | 1a0ff4c, 2f07038, 7f1351f, dea6909 |
+| 2.4 | C1, C10 | T-2.1, T-12.6, T-13.2, T-14.1, T-15.3, T-30.1, T-40.2 | env-schema.test.ts, feature-requirements.test.ts, load.test.ts, helpdesk tests (ticket-store.db.test.ts, helpdesk.test.ts, plan-schema.test.ts, planner.test.ts) | 3af8b69, 1a0ff4c |
+| 2.5 | C13, C14 | T-15.2, T-15.3, T-30.1, T-30.2, T-35.2, T-35.3, T-36.1 | domain-stream.test.ts, api/helpdesk/route.test.ts | 7f1351f |
+| 2.6 | C10 | T-13.1, T-13.2, T-14.1, T-15.2, T-15.3, T-15.4, T-16.2, T-30.1, T-30.2, T-37.2, T-40.2 | schema.db.test.ts, client.pg.test.ts (PG), ticket-store.db.test.ts, helpdesk.test.ts, domain-stream.test.ts, api/helpdesk/**/route.test.ts | 1a0ff4c, 7f1351f |
+| 2.7 | C10 | T-13.1, T-13.2, T-14.1, T-15.3, T-15.4, T-30.1, T-30.2, T-37.2, T-40.2 | schema.db.test.ts, client.pg.test.ts (PG), ticket-store.db.test.ts, helpdesk.test.ts, api/helpdesk/**/route.test.ts | 1a0ff4c, 7f1351f |
+| 2.8 | C10 | T-12.3, T-13.2, T-14.1, T-15.3, T-40.2 | credentials.test.ts, ticket-store.db.test.ts, helpdesk.test.ts, api/helpdesk/route.test.ts | 1a0ff4c, 7f1351f |
+| 2.9 | C10, C15, C16 | T-13.3, T-13.4 | seed.db.test.ts; `mise run seed:samples` twice on Docker Postgres (5 added, then 0) | 1a0ff4c, b67826d |
+| 2.10 | C10 | T-2.1, T-12.1, T-12.4, T-14.1, T-15.3, T-16.1, T-40.2 | env-schema.test.ts, feature-requirements.test.ts, load.test.ts, helpdesk tests (ticket-store.db.test.ts, helpdesk.test.ts, plan-schema.test.ts, planner.test.ts) | 3af8b69, 1a0ff4c |
 
 **検証の計画**（plan より）
 
@@ -191,6 +191,7 @@ ID 規約は `tasks.md` の「ID 対応表」を参照する（この spec の p
 - 未対応の要件: なし（全 60 の受け入れ基準が 1 つ以上のサブタスクに対応する。生成時に機械的に確認した）。
 - 受け入れ基準を持たないタスク: 1.1〜1.6（spike）、4.8、6.x、各波の締め（7.x、11.2〜11.3、16.x、20.x、24.x、28.x、36.1、42.x）は基盤・結線・検証のタスクで、対応する受け入れ基準は `_Requirements:_` に示した。
 - **gate が保証しないもの**（41.1 で確定し、各解説の「確認できていないこと」に書く）: E2B の実機の挙動と外向き通信の既定（S-4、CL-21）、GitHub の公式ホスト型 MCP のエンドポイントとツールの注釈（S-6）、実 Docker での隔離と macOS のソケット（S-5、`*.container.test.ts`）、実モデルの品質（修正ループの成功率、Supervisor の呼び分け、合意に達する割合）、arXiv の実応答と 429 / 503 / `Retry-After` の実挙動、複数インスタンスにまたがる arXiv の速度制限、利用者ごとの認証（005 の境界）。
+- **W3 の出荷時点（2026-10-18）の持ち越し**: 2.5 の「状態変化から 1 秒以内」は gate では書き出しの即時性（順序と回数）までの検証で、画面での確認は W7（30.x、35.x）。2.6・2.7 の Docker Postgres での検証（`client.pg.test.ts`）は実行済み。W3 の修正後の fresh な再レビューは未実施（`.sdd/reviews/003-domain-agents-impl-w3-review-2026-10-18.md`）。`test:mutation` の全体は未実行（対象の 2 ファイルは 91.41）。
 - **plan の記載漏れ**（tasks.md の Boundary の例外 (4)）: `packages/ai-core/src/rag/db/client.pg.test.ts` は plan の Test Strategy が言及するが File Structure Plan に載っていない。13.1・26.2 が M2 の既存ファイルへ 1 ケースを足すだけに限って触れる。
 - **plan の波の割り当てからの調整**: `docs:check` の必須トピックを W1 から W8（40.8）へ、`sessions.ts`・`upload.ts` を W4（19.2、19.3）へ移した（理由は `tasks.md`）。
 - **004 への引き継ぎ**: E2B の外向き通信（CL-21）、外部コンテンツの汚染状態（CL-10）、MCP の注釈を信頼しない前提（ADR-7）。`tasks.md`「004 への引き継ぎ事項」と 40.3 に記録する。

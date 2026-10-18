@@ -406,3 +406,26 @@ M3 の着手前に、Node.js と pnpm を M3 着手時点の最新安定版へ�
 - **最初のビルドは失敗した**: `mcp/github.ts` の `fileURLToPath(new URL("../files/stdio.ts", import.meta.url))` を Turbopack が「ファイル資産の参照」として扱い、`Failed to collect configuration for /chat … The "path" argument must be of type string or an instance of URL. Received an instance of URL` で落ちた。M1 の `DEFAULT_FIXTURE_DIRECTORY`（`mock/fixtures.ts`）と同じ原因で、`resolve(dirname(fileURLToPath(import.meta.url)), "..", "files", "stdio.ts")` の形に直した。Vitest はバンドラーを通らないため、この失敗は単体テストでは検出できず、実サーバーのビルドだけが見つけた。
 - **`.ts` 拡張子の import**: `files/operations.ts`・`server.ts`・`stdio.ts` は Node の型除去で起動するため `.ts` 拡張子付きの import を使う（`tsconfig.base.json` の `allowImportingTsExtensions`）。Turbopack は `@platform/ai-core/files`・`/mcp` 経由でこれらを読んでも問題なくビルドした。
 - 未確認: `next dev`（Turbopack の開発モード）での同じ流れ、`GITHUB_TOKEN` を使う GitHub の接続（`mock` は接続しない設計。ハンズオンで確かめる、S-6）。
+
+## W3 の gate 実測（16.2、2026-10-18）
+
+`env -u NODE_ENV mise run gate`（`mise` の Node 26.12、Docker なし）: **exit 0、41.0 s（wall）**。W2 の締めの 37 s から **+約 4 s**。件数は次のとおり。
+
+| 領域 | W2 の締め | W3 の締め | 差 |
+|---|---|---|---|
+| ルート | 410（1 expected fail を含む） | 412（411 passed + 1 expected fail） | +2（`check-repo-rules.test.mjs` の実ツリーの 2 件） |
+| `@platform/ai-core` | 2,112（4 skipped） | 2,341（4 skipped、116 ファイル） | +229 |
+| `@platform/eval-suite` | 7（8 skipped） | 7（8 skipped） | 0 |
+| `web` | 771 | 830 | +59 |
+
+- `Docs: 8 module documents, 110 test references verified`、`tool-risk-declared: scanned 277 FILES`、`workflow-no-agent-loop: scanned 37 FILES`（`planner.ts`・`replanner.ts`・`helpdesk.ts` を含む）、`TypeScript packages/ai-core/tsconfig.json: 287 files`、`apps/web/tsconfig.json: 145 files`。
+- **`*.db.test.ts` による増分**: W3 が足した PGlite の DB テストは `schema.db.test.ts`（ヘルプデスクの表の 21 件）、`ticket-store.db.test.ts`（32）、`seed.db.test.ts`（13）と、実 PGlite を使う `helpdesk.test.ts`（35）、`apps/web` の `route.test.ts` 3 本（26・10・11）。PGlite の起動（約 1 s）は各ファイルで 1 回で、ファイル内は `TRUNCATE` で初期化する。gate 全体の増分が約 4 s にとどまるのは、これらが並列のワーカーで動くためである。5 分の予算（憲章 原則 3）に対しては余裕がある。
+- **ミューテーション**: `stryker run --mutate packages/ai-core/src/helpdesk/plan-schema.ts,…/scheduler.ts` で 91.41（plan-schema 90.83、scheduler 100.00。生き残り 10 は `describe` 文言の文字列リテラルなど）。閾値 70 を満たす。全体の `mise run test:mutation` は実行していない。
+- **`check:client-bundle`**: `next build` が成功し、`/api/helpdesk`・`/api/helpdesk/tickets`・`/api/helpdesk/tickets/[id]` がルート一覧に出た。`helpdesk/seed.ts` が `new URL(…, import.meta.url)` ではなく `path.resolve(dirname(fileURLToPath(import.meta.url)), …)` でフィクスチャを指すのは、W2 の教訓（Turbopack がファイル資産の参照として扱う）による。クライアントバンドルの走査は 20 ファイルで、秘密名・センチネルは検出されなかった。
+- **E2E は W3 では走らせていない**（画面は W7）。`mise run test:db`（Docker Postgres で `0002_helpdesk.sql` を適用する `client.pg.test.ts` の 1 ケース）と、Docker Postgres での `mise run seed:samples` の 2 回実行は Docker が無く未実施で、人が行う。
+
+### W3 で分かったこと
+
+- **mock の埋め込みは疑似乱数で、既定の類似度（0.5）では検索が常に空になる**。ヘルプデスクは根拠（`sources`）が無いとき `escalated` にするため、`mock` のルートは `minSimilarity: -1`（上位 k 件をそのまま返す）で検索する。`local` / `live` は既定のままである。
+- **シナリオの曖昧さ**: M2 の Agentic RAG のターン（`stepIndex: 1` と `toolResultFor: "searchKnowledgeBase"` だけで一致）は、同じツールを使うヘルプデスクのタスクの応答にも一致してしまう。`mock/m3-scenarios.test.ts` の検出器が見つけ、M2 側に質問文の条件を足して解消した。以後、`searchKnowledgeBase` を使う M3 のシナリオは、ユーザー文の条件を必ず持つ。
+- **Node の型除去でスクリプトを起動する**: ai-core のソースは拡張子なしで相互に import するため、`scripts/seed-samples.ts` は `module.registerHooks` の resolve フック（`.ts`、`/index.ts` を補う）を自分で登録してから動的 import する。`tsx` は不要（CL-3）。Node 26.12 で確認した。

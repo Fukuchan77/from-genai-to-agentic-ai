@@ -471,7 +471,7 @@ erDiagram
 
 - **マイグレーション**: `packages/ai-core/drizzle/0002_helpdesk.sql`（`helpdesk_tickets`、`helpdesk_plan_revisions`）と `packages/ai-core/drizzle/0003_marketing.sql`（`marketing_products`、`marketing_personas`）。`rag_migrations` に適用済みのファイル名を記録する既存の `runMigrations` を使い、`CREATE EXTENSION` は足さない。`schema.ts` を M3 の表に広げ、**スキーマ照合テスト**（`*.db.test.ts`）が適用後の `information_schema.columns` と突き合わせる（M2 と同じ）。
 - **`reset` の範囲**: M2 の `reset: true` が空にするのは `rag_*` だけである。M3 の表は消さない（学習者のチケットを知識ベースの再構築で失わないため）。M3 の表を空にする手段は `seedHelpdesk` / `seedMarketing` の `reset` 引数だけとする。
-- **不変条件**: (1) `status` と `answer` / `escalation_reason` の組み合わせが CHECK 制約で矛盾しない。(2) 計画の改訂は追記のみで、更新しない。(3) 商品 ID は一意で、レコメンドは `marketing_products` に存在する ID だけを返す。(4) 初期投入は冪等である（2 回実行しても行が増えない）。
+- **不変条件**: (1) `status` と `answer` / `escalation_reason` の組み合わせが CHECK 制約で矛盾しない。(2) 計画の改訂は追記のみで、更新しない（ストアに更新の経路がない。DB の trigger は置かない）。(3) 商品 ID は一意で、レコメンドは `marketing_products` に存在する ID だけを返す。(4) 初期投入は冪等である（2 回実行しても行が増えない）。
 
 ### アプリケーション側の型
 
@@ -1000,7 +1000,7 @@ Vitest はバンドラーを通らないため、`@e2b/code-interpreter`、`@ai-
 - ステップ数の上限（既定 12）に達する → 実行を止め、未完了タスクの一覧を返す。チケットは `open` のまま `stopped_reason = 'step-limit'` を記録する（CL-14）。上限は 1〜30 の範囲で指定でき、範囲外は 400。
 - タスクの実行が失敗（検索ツールの例外など）→ 回復可能なら、そのタスクの結果に失敗を記録して Replanner に判断させる。ナレッジに根拠が無い場合は `finish` で `escalated`（未解決の理由を記録、Req 2.7）。
 - 最終回答に認証情報の形状（平文のパスワード、一時パスワード、API キー、アクセストークン）→ 回答を保存も表示もしない。検出した種別だけを記録して再作成させる（1 回）。再作成後も検出されたら `escalated`。値は DB・ログ・ストリームに出さない（Req 2.8）。問い合わせ本文に含まれるものは、保存前に検査せず（利用者の入力）、回答の検査のみを行う。
-- DB に接続できない → 503 `provider-unavailable`（`mise run services:up:db` を案内、`mock` は PGlite のため発生しない）。チケットの状態を戻す遷移（`resolved` → `open`）は CHECK とストアの両方で拒否する。
+- DB に接続できない → 503 `provider-unavailable`（`mise run services:up:db` を案内、`mock` は PGlite のため発生しない）。チケットの状態を戻す遷移（`resolved` → `open`）はストアが拒否する（条件付きの 1 回の UPDATE。行の CHECK は旧い行を見られないため、状態と回答・理由の組み合わせの矛盾だけを拒否する）。
 - 同時の複数チケット → チケット ID は最大値からの採番のため、衝突時はストアが再試行する（トランザクション内）。
 - 中断 → 以降の LLM 呼び出しを始めない。チケットは `open` のまま `stopped_reason = 'aborted'` と実行済みのステップ数を保存する。
 - 初期投入: 2 回実行しても行が増えない。`reset` は M3 の表だけを空にする。FAQ の取り込みの失敗は M2 の `skipped` と同じ扱い。
