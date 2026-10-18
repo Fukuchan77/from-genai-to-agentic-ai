@@ -150,7 +150,7 @@ services:
       start_period: 1s
 
   minio:
-    image: cgr.dev/chainguard/minio:latest@sha256:7df55d002b698e4494a131b848dd553361bbe58b7e19f62d9623c29af1ba9ccf
+    image: cgr.dev/chainguard/minio:latest@sha256:709099319add48dfb44aa596a7070d3ddd8dd04d7ae881765719aec29df9e510
     profiles: [trace]
     restart: unless-stopped
     entrypoint: sh
