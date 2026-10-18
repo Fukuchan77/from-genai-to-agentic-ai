@@ -13,6 +13,8 @@ export default {
 		"packages/ai-core/src/agents/stop-reason.ts",
 		"packages/ai-core/src/aci/define-tool.ts",
 		"packages/ai-core/src/aci/description-check.ts",
+		"packages/ai-core/src/files/path.ts",
+		"packages/ai-core/src/mcp/risk.ts",
 		"packages/ai-core/src/config/run-mode.ts",
 		"packages/ai-core/src/mock/resolve.ts",
 		"packages/ai-core/src/summarize/plan.ts",

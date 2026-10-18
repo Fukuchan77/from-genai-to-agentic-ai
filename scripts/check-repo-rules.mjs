@@ -916,8 +916,9 @@ const runners = {
 	},
 
 	async "tool-risk-declared"(root) {
-		const allFiles = await collectFiles(root, ["packages/ai-core/src/aci"], new Set([".ts"]));
-		const files = allFiles.filter((file) => file.startsWith("packages/ai-core/src/aci/"));
+		// Every `defineAciTool` caller in ai-core (the files and mcp areas define tools too), not only aci/.
+		const allFiles = await collectFiles(root, ["packages/ai-core/src"], new Set([".ts"]));
+		const files = allFiles.filter((file) => file.startsWith("packages/ai-core/src/"));
 		const violations = [];
 		for (const file of await readCodeFiles(root, files)) {
 			const { tokens } = file;
