@@ -1,9 +1,19 @@
 import { describe, expect, it } from "vitest";
+import { MAX_AGENT_TOOLS } from "../agents/guarded-agent";
 import {
 	DEFAULT_AGENT_LIMITS,
+	DEFAULT_ANALYSIS,
+	DEFAULT_ARXIV,
 	DEFAULT_CHAT_RATE_LIMIT,
+	DEFAULT_COUNCIL,
+	DEFAULT_HELPDESK,
 	DEFAULT_INPUT_LIMITS,
+	DEFAULT_INTERVIEW,
+	DEFAULT_MCP_FS_ROOT,
 	DEFAULT_RAG,
+	DEFAULT_RESEARCH,
+	DEFAULT_SANDBOX,
+	DEFAULT_TOOLS,
 	DEFAULT_WORKFLOW_LIMITS,
 } from "./defaults";
 import { ENV_KEYS, envSchema } from "./env-schema";
@@ -102,6 +112,88 @@ describe("envSchema", () => {
 		});
 		expect(Object.isFrozen(DEFAULT_RAG)).toBe(true);
 		expect(Object.isFrozen(DEFAULT_WORKFLOW_LIMITS)).toBe(true);
+	});
+
+	it("freezes the M3 defaults at the plan values", () => {
+		expect(DEFAULT_TOOLS).toEqual({
+			maxToolsPerAgent: 20,
+			conciseMaxCharacters: 1_000,
+			thinkEnabled: true,
+		});
+		expect(DEFAULT_HELPDESK).toEqual({
+			maxSteps: 12,
+			maxPlanRegenerations: 2,
+			maxPlanTasks: 8,
+			maxInquiryCharacters: 4_000,
+		});
+		expect(DEFAULT_SANDBOX).toEqual({
+			idleTimeoutMs: 600_000,
+			executionTimeoutMs: 60_000,
+			memoryBytes: 512 * 1024 * 1024,
+			cpus: 1,
+			pidsLimit: 128,
+			image: "agentic-ai-sandbox:local",
+		});
+		expect(DEFAULT_ANALYSIS).toEqual({
+			maxFixAttempts: 3,
+			maxUploadBytes: 20 * 1024 * 1024,
+			maxFigureBytes: 1024 * 1024,
+			maxTableRows: 200,
+			maxInstructionCharacters: 2_000,
+		});
+		expect(DEFAULT_ARXIV).toEqual({
+			minIntervalMs: 3_000,
+			maxRetries: 3,
+			cacheTtlMs: 86_400_000,
+			maxResponseBytes: 2 * 1024 * 1024,
+			maxResults: 10,
+		});
+		expect(DEFAULT_RESEARCH).toEqual({
+			maxSubagentCalls: 8,
+			maxTotalTokens: 80_000,
+			subagentSummaryCharacters: 800,
+		});
+		expect(DEFAULT_INTERVIEW).toEqual({
+			personaCount: 3,
+			maxRounds: 5,
+			maxAnswerCharacters: 2_000,
+		});
+		expect(DEFAULT_COUNCIL).toEqual({
+			maxRounds: 3,
+			maxTotalTokens: 50_000,
+			personaIds: ["marketer-strict", "consumer", "seo-specialist"],
+			maxDraftCharacters: 2_000,
+		});
+		expect(DEFAULT_MCP_FS_ROOT).toBe("workspace/");
+		for (const frozen of [
+			DEFAULT_TOOLS,
+			DEFAULT_HELPDESK,
+			DEFAULT_SANDBOX,
+			DEFAULT_ANALYSIS,
+			DEFAULT_ARXIV,
+			DEFAULT_RESEARCH,
+			DEFAULT_INTERVIEW,
+			DEFAULT_COUNCIL,
+			DEFAULT_COUNCIL.personaIds,
+		]) {
+			expect(Object.isFrozen(frozen)).toBe(true);
+		}
+	});
+
+	it("reuses the M1 agent tool cap", () => {
+		expect(DEFAULT_TOOLS.maxToolsPerAgent).toBe(MAX_AGENT_TOOLS);
+	});
+
+	it.each([
+		"E2B_API_KEY",
+		"GITHUB_TOKEN",
+		"MCP_FS_ROOT",
+		"DOCKER_HOST",
+		"DOCKER_SANDBOX_IMAGE",
+	] as const)("accepts %s as an optional string and treats empty as absent", (name) => {
+		expect(envSchema.parse({})[name]).toBeUndefined();
+		expect(envSchema.parse({ [name]: "" })[name]).toBeUndefined();
+		expect(envSchema.parse({ [name]: "changeme" })[name]).toBe("changeme");
 	});
 
 	it("publishes a unique list matching the schema shape", () => {

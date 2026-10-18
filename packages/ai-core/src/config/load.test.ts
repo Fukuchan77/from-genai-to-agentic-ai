@@ -154,6 +154,46 @@ describe("loadPlatformConfig", () => {
 		).toBe("changeme");
 	});
 
+	it("exposes the E2B and GitHub credentials only when they are set", () => {
+		const bare = loadPlatformConfig({}).credentials;
+		expect(bare).not.toHaveProperty("e2b");
+		expect(bare).not.toHaveProperty("github");
+		const set = loadPlatformConfig({ E2B_API_KEY: "changeme-e2b", GITHUB_TOKEN: "changeme-gh" });
+		expect(set.credentials.e2b).toBe("changeme-e2b");
+		expect(set.credentials.github).toBe("changeme-gh");
+	});
+
+	it.each([
+		["e2b-sandbox", "E2B_API_KEY"],
+		["github-mcp", "GITHUB_TOKEN"],
+	] as const)("requires %s's variable when the feature is requested", (feature, variable) => {
+		let thrown: unknown;
+		try {
+			loadPlatformConfig({}, { features: [feature] });
+		} catch (error) {
+			thrown = error;
+		}
+		expect(thrown).toBeInstanceOf(ConfigError);
+		expect(thrown).toMatchObject({ missing: [{ variable, feature }] });
+		expect(() =>
+			loadPlatformConfig({ [variable]: "changeme" }, { features: [feature] }),
+		).not.toThrow();
+	});
+
+	it("defaults the MCP file root and the Docker sandbox settings, and overrides them", () => {
+		const defaults = loadPlatformConfig({});
+		expect(defaults.mcpFsRoot).toBe("workspace/");
+		expect(defaults.docker).toEqual({ host: undefined, image: "agentic-ai-sandbox:local" });
+
+		const custom = loadPlatformConfig({
+			MCP_FS_ROOT: "/tmp/ws",
+			DOCKER_HOST: "unix:///tmp/engine.sock",
+			DOCKER_SANDBOX_IMAGE: "my-sandbox:1",
+		});
+		expect(custom.mcpFsRoot).toBe("/tmp/ws");
+		expect(custom.docker).toEqual({ host: "unix:///tmp/engine.sock", image: "my-sandbox:1" });
+	});
+
 	it("keeps the sample environment variable names identical to the schema", () => {
 		expect(envNamesFromExample().sort()).toEqual([...ENV_KEYS].sort());
 	});

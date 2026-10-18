@@ -137,6 +137,8 @@ function credentialSecrets(credentials: PlatformConfig["credentials"]) {
 		GOOGLE_GENERATIVE_AI_API_KEY: credentials.google,
 		TAVILY_API_KEY: credentials.tavily,
 		COHERE_API_KEY: credentials.cohere,
+		E2B_API_KEY: credentials.e2b,
+		GITHUB_TOKEN: credentials.github,
 	};
 }
 

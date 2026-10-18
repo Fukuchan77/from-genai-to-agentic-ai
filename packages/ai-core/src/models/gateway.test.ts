@@ -649,6 +649,42 @@ describe("createModelGateway recording", () => {
 		expect(JSON.stringify(store.put.mock.calls[0]?.[1])).not.toContain(cohereKey);
 	});
 
+	it.each([
+		["E2B_API_KEY", "test-e2b-key"],
+		["GITHUB_TOKEN", "test-github-token"],
+	] as const)(
+		"redacts %s from recorded cassettes like the other credentials",
+		async (name, value) => {
+			const store = recordingStore();
+			const providers = {
+				...spyProviders(),
+				anthropic: () => ({
+					languageModel: () => createTextStreamModel(`echo ${value}`),
+					embeddingModel: (): never => {
+						throw new Error("unused");
+					},
+				}),
+			};
+			const gateway = createModelGateway({
+				config: configFor({
+					AI_TEST_RUN_MODE: "live",
+					ANTHROPIC_API_KEY: FAKE_ANTHROPIC_KEY,
+					[name]: value,
+					AI_RECORD: "1",
+				}),
+				providers,
+				clock: createFakeClock(Date.UTC(2026, 9, 7)),
+				recording: { store },
+			});
+
+			const { model } = await gateway.resolve({ purpose: "chat" });
+			await generateText({ model, prompt: "hi" });
+
+			expect(store.put).toHaveBeenCalledTimes(1);
+			expect(JSON.stringify(store.put.mock.calls[0]?.[1])).not.toContain(value);
+		},
+	);
+
 	it("records local calls with recordedWith local", async () => {
 		const store = recordingStore();
 		const gateway = createModelGateway({

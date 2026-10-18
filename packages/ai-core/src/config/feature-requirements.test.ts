@@ -28,6 +28,18 @@ describe("FEATURE_REQUIREMENTS", () => {
 		expect(FEATURE_IDS).toContain("rerank");
 	});
 
+	it("requires E2B_API_KEY for e2b-sandbox and GITHUB_TOKEN for github-mcp", () => {
+		expect(FEATURE_REQUIREMENTS["e2b-sandbox"]).toEqual(["E2B_API_KEY"]);
+		expect(FEATURE_REQUIREMENTS["github-mcp"]).toEqual(["GITHUB_TOKEN"]);
+		expect(FEATURE_IDS).toEqual(expect.arrayContaining(["e2b-sandbox", "github-mcp"]));
+	});
+
+	it("keeps Docker out of the feature table because it is detected by a socket probe", () => {
+		const required = Object.values(FEATURE_REQUIREMENTS).flat() as string[];
+		expect(required).not.toContain("DOCKER_HOST");
+		expect(FEATURE_IDS.some((id) => id.includes("docker"))).toBe(false);
+	});
+
 	it("keeps feature and required-variable types closed", () => {
 		expect(FEATURE_IDS).toContain("web-search");
 		expectTypeOf<FeatureId>().toEqualTypeOf<(typeof FEATURE_IDS)[number]>();
