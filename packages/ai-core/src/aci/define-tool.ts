@@ -3,7 +3,11 @@ import type { z } from "zod";
 import { ConfigError } from "../config/load";
 import { PlatformError } from "../errors";
 import { raceWithAbort } from "../ports/abort";
-import { checkDescription } from "./description-check";
+import {
+	checkDescription,
+	checkJsonSchemaDescription,
+	type JsonSchemaNode,
+} from "./description-check";
 import { classifyToolError } from "./fatal";
 import { formatInputGuide } from "./input-guide";
 import {
@@ -75,7 +79,10 @@ function assertValidDefinition<INPUT, OUTPUT>(definition: AciToolDefinition<INPU
 	if (definition.timeoutMs !== undefined && !isPositiveInteger(definition.timeoutMs)) {
 		throw new ConfigError(`ツール「${definition.name}」の timeoutMs は正の整数にしてください。`);
 	}
-	const issues = checkDescription(definition.description, definition.inputSchema);
+	const issues =
+		definition.externalInputSchema === undefined
+			? checkDescription(definition.description, definition.inputSchema)
+			: checkJsonSchemaDescription(definition.description, definition.externalInputSchema);
 	if (issues.length > 0) {
 		throw new ConfigError(
 			`ツール「${definition.name}」の説明文が規約を満たしていません: ${issues.map((issue) => issue.message).join(" ")}`,
@@ -100,6 +107,21 @@ function guidedInputSchema<INPUT>(inputSchema: z.ZodType<INPUT>) {
 				success: false,
 				error: new Error(formatInputGuide(result.error as z.ZodError, inputSchema)),
 			};
+		},
+	});
+}
+
+/**
+ * The JSON Schema an MCP server sent, shown to the model unchanged. A failed validation carries the
+ * same fix guide as `guidedInputSchema`.
+ */
+function externalGuidedSchema<INPUT>(external: JsonSchemaNode, inputSchema: z.ZodType<INPUT>) {
+	return jsonSchema<INPUT>(external as unknown as Parameters<typeof jsonSchema>[0], {
+		validate: async (value) => {
+			const result = await inputSchema.safeParseAsync(value);
+			return result.success
+				? { success: true, value: result.data }
+				: { success: false, error: new Error(formatInputGuide(result.error, inputSchema)) };
 		},
 	});
 }
@@ -206,7 +228,10 @@ export const defineAciTool = <INPUT, OUTPUT>(
 			const timeoutMs = effectiveToolTimeoutMs(definition.timeoutMs, runtime.toolTimeoutMs);
 			return tool({
 				description: definition.description,
-				inputSchema: guidedInputSchema(definition.inputSchema),
+				inputSchema:
+					definition.externalInputSchema === undefined
+						? guidedInputSchema(definition.inputSchema)
+						: externalGuidedSchema(definition.externalInputSchema, definition.inputSchema),
 				execute: (input, options) =>
 					executeWithGuards(definition, runtime, timeoutMs, input, options),
 			});

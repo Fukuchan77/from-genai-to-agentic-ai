@@ -484,3 +484,75 @@ describe("defineAciTool: input fix guide (CL-2)", () => {
 		expect(result.toolResults[0]?.output).toEqual({ ok: true, data: 3 });
 	});
 });
+
+describe("defineAciTool with an external JSON Schema (003 CL-25)", () => {
+	const external = {
+		type: "object",
+		properties: { owner: { type: "string", description: "リポジトリの所有者" } },
+		required: ["owner"],
+		additionalProperties: false,
+	};
+	const description = [
+		"所有者のリポジトリを調べる。",
+		"使うとき: owner のリポジトリの情報が欲しいとき。",
+		"使わないとき: 書き込みのとき。",
+		'例: {"owner":"octocat"}',
+	].join("\n");
+
+	function externalTool(
+		overrides: Partial<AciToolDefinition<{ owner?: string | undefined }, string>> = {},
+	) {
+		return defineAciTool<{ owner?: string | undefined }, string>({
+			name: "lookup",
+			description,
+			inputSchema: z.looseObject({ owner: z.string().optional() }),
+			externalInputSchema: external,
+			risk: "read-only",
+			execute: (input) => `owner=${input.owner}`,
+			...overrides,
+		});
+	}
+
+	it("sends the external schema to the model unchanged", async () => {
+		const converted = externalTool().toTool({ clock: createFakeClock(), toolTimeoutMs: 100 });
+		const schema = asSchema(converted.inputSchema);
+		expect(await schema.jsonSchema).toEqual(external);
+	});
+
+	it("checks the description against the external schema, not the Zod placeholder", () => {
+		// The Zod placeholder has an undescribed field; only the JSON Schema check applies.
+		expect(() => externalTool()).not.toThrow();
+		expect(() => externalTool({ description: "short description without headings" })).toThrow(
+			ConfigError,
+		);
+		expect(() =>
+			externalTool({
+				externalInputSchema: { type: "object", properties: { zzz: {} } },
+			}),
+		).toThrow(/zzz/u);
+	});
+
+	it("still checks a Zod-only tool the old way", () => {
+		expect(() =>
+			defineAciTool({
+				name: "plain",
+				description,
+				inputSchema: z.object({ owner: z.string() }),
+				risk: "read-only",
+				execute: () => "x",
+			}),
+		).toThrow(ConfigError);
+	});
+
+	it("validates the input with the placeholder schema and returns the fix guide on failure", async () => {
+		const converted = externalTool({
+			inputSchema: z.object({ owner: z.string().describe("所有者") }),
+		}).toTool({ clock: createFakeClock(), toolTimeoutMs: 100 });
+		const schema = asSchema(converted.inputSchema);
+		const bad = await schema.validate?.({ owner: 3 });
+		expect(bad?.success).toBe(false);
+		if (bad && !bad.success) expect(bad.error.message).toContain("owner");
+		const good = await schema.validate?.({ owner: "octocat" });
+		expect(good).toEqual({ success: true, value: { owner: "octocat" } });
+	});
+});
