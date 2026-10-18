@@ -1,6 +1,6 @@
 # domain-agents（Milestone 3）— トレーサビリティ
 
-`/sdd-tasks` が生成した骨格（2026-10-18）。Requirement / Design / Task の列は `tasks.md`・`tasks-w2.md`〜`tasks-w8.md` の
+`/sdd-tasks` が生成した骨格（2026-10-18）。Requirement / Design / Task の列は `tasks.md`（現在の波）・`tasks-comp-w1.md`・`tasks-w3.md`〜`tasks-w8.md` の
 `_Requirements:_` と plan.md「Requirements Traceability」から機械的に作った。Test と Commit の列は `/sdd-ship` が実装後に埋める
 （Test の列は 41.1 でも、解説のレビューや `local`・`container` で検証するものを含めて埋める）。
 
@@ -9,7 +9,7 @@ ID 規約は `tasks.md` の「ID 対応表」を参照する（この spec の p
 
 - **Requirement**: spec.md の受け入れ基準番号（`X.Y`）。`REQ-00N` は Requirement N のグループ ID
 - **Design**: plan.md の部品 ID（`C1`〜`C16`。001 の `C1`〜`C22`、002 の `C1`〜`C18` とは別の番号）
-- **Task**: タスク ID（`T-#.#` はサブタスク。波ごとのファイル `tasks.md`（spike・W1）、`tasks-w2.md`〜`tasks-w8.md` を番号で引く）
+- **Task**: タスク ID（`T-#.#` はサブタスク。波ごとのファイル `tasks-comp-w1.md`（spike・W1）、`tasks.md`（W2）、`tasks-w3.md`〜`tasks-w8.md` を番号で引く）
 - **Test** / **Commit**: `/sdd-ship` が実装後に記入する。plan の検証の略号（G = gate、DB = PGlite、PG = `test:db`、C = `test:container`、L = `test:local`、E = Playwright、D = 解説のレビュー・ハンズオンの記録）は、各行の下の「検証の計画」に残した
 
 
