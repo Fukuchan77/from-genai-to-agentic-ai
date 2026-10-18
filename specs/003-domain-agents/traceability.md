@@ -17,23 +17,23 @@ ID 規約は `tasks.md` の「ID 対応表」を参照する（この spec の p
 
 | Requirement | Design | Task | Test | Commit |
 |---|---|---|---|---|
-| 1.1 | C3, C4, C5, C16 | T-4.1, T-4.6, T-4.7, T-4.8, T-7.1, T-8.3, T-9.3, T-40.1, T-40.7, T-40.8, T-41.1, T-41.3, T-42.3 | description-check.test.ts, define-tool.test.ts | 70dd437, 077c51e |
+| 1.1 | C3, C4, C5, C16 | T-4.1, T-4.6, T-4.7, T-4.8, T-7.1, T-8.3, T-9.3, T-40.1, T-40.7, T-40.8, T-41.1, T-41.3, T-42.3 | description-check.test.ts, define-tool.test.ts, tools.test.ts, adapt.test.ts | 70dd437, 077c51e, 9df796f, 7c3c3f9 |
 | 1.2 | C2, C3 | T-1.1, T-4.2, T-4.7, T-4.8 | research.md S-1 (D), input-guide.test.ts, define-tool.test.ts | 70dd437 |
-| 1.3 | C2, C5, C13, C14 | T-1.1, T-3.1, T-3.2, T-3.3, T-7.2, T-9.3, T-10.4, T-29.2, T-35.3, T-37.1, T-40.1 | research.md S-1 (D), fatal.test.ts, tool-set.test.ts, guarded-agent.test.ts, research.md gate 実測 (D) | 70dd437 |
-| 1.4 | C4 | T-8.2, T-8.3, T-11.2, T-42.2 |  |  |
-| 1.5 | C2, C4, C5 | T-3.1, T-8.2, T-8.3, T-9.3, T-11.2, T-37.1, T-40.1, T-42.1, T-42.2 | fatal.test.ts | 70dd437 |
-| 1.6 | C3, C4 | T-4.3, T-4.8, T-8.3 | response-format.test.ts | 70dd437 |
-| 1.7 | C4, C5, C13, C14 | T-1.2, T-1.3, T-2.1, T-8.1, T-8.4, T-9.4, T-9.5, T-10.2, T-10.3, T-11.1, T-29.1, T-29.2, T-35.1, T-35.5, T-40.1 | research.md S-2/S-3 (D), env-schema.test.ts, feature-requirements.test.ts, load.test.ts | ee815d5, 3af8b69 |
-| 1.8 | C5 | T-1.2, T-1.3, T-2.1, T-9.2, T-9.5, T-10.2, T-10.4, T-11.1, T-40.1 | research.md S-2/S-3 (D), env-schema.test.ts, feature-requirements.test.ts, load.test.ts | ee815d5, 3af8b69 |
-| 1.9 | C5 | T-1.2, T-1.4, T-2.1, T-2.2, T-9.4, T-11.3 | research.md S-6 (D), env-schema.test.ts, feature-requirements.test.ts, load.test.ts, gateway.test.ts | ee815d5, 3af8b69 |
-| 1.10 | C5, C13, C14 | T-9.5, T-10.1, T-10.2, T-10.3, T-11.3, T-29.1, T-29.2, T-35.3 |  |  |
-| 1.11 | C3, C16 | T-4.1, T-4.6, T-4.7, T-7.1, T-8.3, T-9.3 | description-check.test.ts, define-tool.test.ts | 70dd437, 077c51e |
-| 1.12 | C3, C4, C13 | T-4.5, T-4.8, T-8.3, T-10.1, T-10.5, T-29.1, T-38.1, T-38.5, T-39.1, T-40.1 | high-level-compare.test.ts | 70dd437 |
-| 1.13 | C3 | T-4.4, T-4.8, T-8.3 | short-id.test.ts, think-tool.test.ts | 70dd437 |
-| 1.14 | C3 | T-4.4, T-4.8, T-10.4 | short-id.test.ts, think-tool.test.ts | 70dd437 |
-| 1.15 | C1, C5, C13 | T-2.1, T-9.5, T-10.3, T-10.4, T-29.1 | env-schema.test.ts, feature-requirements.test.ts, load.test.ts | 3af8b69 |
-| 1.16 | C2, C4, C5, C16 | T-1.3, T-4.7, T-6.2, T-8.3, T-9.1, T-9.3, T-11.2, T-21.4, T-40.1 | research.md S-2/S-3 (D), define-tool.test.ts, check-repo-rules.test.mjs | 70dd437, 077c51e |
-| 1.17 | C4, C5, C16 | T-1.4, T-6.2, T-8.3, T-8.4, T-9.1, T-9.5, T-10.4, T-11.2, T-29.1, T-40.1 | research.md S-6 (D), check-repo-rules.test.mjs | 077c51e |
+| 1.3 | C2, C5, C13, C14 | T-1.1, T-3.1, T-3.2, T-3.3, T-7.2, T-9.3, T-10.4, T-29.2, T-35.3, T-37.1, T-40.1 | research.md S-1 (D), fatal.test.ts, tool-set.test.ts, guarded-agent.test.ts, research.md gate 実測 (D), adapt.test.ts, mcp/chat route.test.ts | 70dd437, 7c3c3f9, c710007 |
+| 1.4 | C4 | T-8.2, T-8.3, T-11.2, T-42.2 | path.test.ts, tools.test.ts | 9df796f, 2432c19 |
+| 1.5 | C2, C4, C5 | T-3.1, T-8.2, T-8.3, T-9.3, T-11.2, T-37.1, T-40.1, T-42.1, T-42.2 | fatal.test.ts, path.test.ts, tools.test.ts, adapt.test.ts | 70dd437, 9df796f, 7c3c3f9 |
+| 1.6 | C3, C4 | T-4.3, T-4.8, T-8.3 | response-format.test.ts, tools.test.ts | 70dd437, 9df796f |
+| 1.7 | C4, C5, C13, C14 | T-1.2, T-1.3, T-2.1, T-8.1, T-8.4, T-9.4, T-9.5, T-10.2, T-10.3, T-11.1, T-29.1, T-29.2, T-35.1, T-35.5, T-40.1 | research.md S-2/S-3 (D), env-schema.test.ts, feature-requirements.test.ts, load.test.ts, server.test.ts, github.test.ts, connect.test.ts, platform.test.ts, mcp route.test.ts, real-server.spec.ts (E) | ee815d5, 3af8b69, 9df796f, 7c3c3f9, c710007 |
+| 1.8 | C5 | T-1.2, T-1.3, T-2.1, T-9.2, T-9.5, T-10.2, T-10.4, T-11.1, T-40.1 | research.md S-2/S-3 (D), env-schema.test.ts, feature-requirements.test.ts, load.test.ts, allow-list.test.ts, connect.test.ts, mcp route.test.ts, real-server.spec.ts (E) | ee815d5, 3af8b69, 7c3c3f9, c710007 |
+| 1.9 | C5 | T-1.2, T-1.4, T-2.1, T-2.2, T-9.4, T-11.3 | research.md S-6 (D), env-schema.test.ts, feature-requirements.test.ts, load.test.ts, gateway.test.ts, github.test.ts | ee815d5, 3af8b69, 7c3c3f9 |
+| 1.10 | C5, C13, C14 | T-9.5, T-10.1, T-10.2, T-10.3, T-11.3, T-29.1, T-29.2, T-35.3 | connect.test.ts, m3-scenarios.test.ts, platform.test.ts, mcp route.test.ts | 7c3c3f9, c710007 |
+| 1.11 | C3, C16 | T-4.1, T-4.6, T-4.7, T-7.1, T-8.3, T-9.3 | description-check.test.ts, define-tool.test.ts, tools.test.ts, adapt.test.ts | 70dd437, 077c51e, 4121998, 9df796f, 7c3c3f9 |
+| 1.12 | C3, C4, C13 | T-4.5, T-4.8, T-8.3, T-10.1, T-10.5, T-29.1, T-38.1, T-38.5, T-39.1, T-40.1 | high-level-compare.test.ts, tools.test.ts, m3-scenarios.test.ts, mcp/compare route.test.ts | 70dd437, 9df796f, c710007 |
+| 1.13 | C3 | T-4.4, T-4.8, T-8.3 | short-id.test.ts, think-tool.test.ts, tools.test.ts | 70dd437, 9df796f |
+| 1.14 | C3 | T-4.4, T-4.8, T-10.4 | short-id.test.ts, think-tool.test.ts, mcp/chat route.test.ts | 70dd437, c710007 |
+| 1.15 | C1, C5, C13 | T-2.1, T-9.5, T-10.3, T-10.4, T-29.1 | env-schema.test.ts, feature-requirements.test.ts, load.test.ts, connect.test.ts, mcp route.test.ts | 3af8b69, 7c3c3f9, c710007 |
+| 1.16 | C2, C4, C5, C16 | T-1.3, T-4.7, T-6.2, T-8.3, T-9.1, T-9.3, T-11.2, T-21.4, T-40.1 | research.md S-2/S-3 (D), define-tool.test.ts, check-repo-rules.test.mjs, tools.test.ts, risk.test.ts, adapt.test.ts | 70dd437, 077c51e, 4121998, 9df796f, 7c3c3f9, 2432c19 |
+| 1.17 | C4, C5, C16 | T-1.4, T-6.2, T-8.3, T-8.4, T-9.1, T-9.5, T-10.4, T-11.2, T-29.1, T-40.1 | research.md S-6 (D), check-repo-rules.test.mjs, server.test.ts, risk.test.ts, connect.test.ts, mcp/chat route.test.ts | 077c51e, 9df796f, 7c3c3f9, c710007, 2432c19 |
 
 **検証の計画**（plan より）
 

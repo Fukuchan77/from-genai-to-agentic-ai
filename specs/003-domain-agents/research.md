@@ -374,6 +374,7 @@ M3 の着手前に、Node.js と pnpm を M3 着手時点の最新安定版へ�
 | 時点 | 結果 | 所要時間 | 備考 |
 |---|---|---|---|
 | W1（2026-10-18、依存 4 件の追加前） | `mise run gate` が終了コード 0（ルート 399、`@platform/ai-core` 1,884（スキップ 4）、`@platform/eval-suite` 7（スキップ 8）、`web` 733） | `real` 31.3 秒 | `env -u NODE_ENV`。5 分以内。`mise run test:mutation` は 86.71 点（閾値 70）、9 分 3 秒（gate の外）。依存 4 件の追加後に再実行して終了コード 0（件数は同じ）。`pnpm audit` は 0 件、`allowBuilds` の警告なし |
+| W2（2026-10-18） | `mise run gate` が終了コード 0（ルート 410、`@platform/ai-core` 2,107（スキップ 4）、`@platform/eval-suite` 7（スキップ 8）、`web` 771、`Docs: 8 module documents, 110 test references verified`、`mcp-import-scope: scanned 426 FILES`） | `real` 約 37 秒 | `env -u NODE_ENV`。`GITHUB_TOKEN` なしで成功（`mock` は GitHub に接続しない）。`mise run test:mutation` は 86.71→86.61 点（閾値 70。`files/path.ts` 77.78、`mcp/risk.ts` 100） |
 
 ### S-2・S-3: MCP クライアントと自作サーバー（2026-10-18、実測）
 
@@ -395,3 +396,13 @@ M3 の着手前に、Node.js と pnpm を M3 着手時点の最新安定版へ�
 - **CL-2 の実装**: 上の「CL-2」の節は `jsonSchema(z.toJSONSchema(schema), { validate })` と書いたが、採用した形は `jsonSchema(() => zodSchema(schema).jsonSchema, { validate })`（`ai` の `zodSchema`）である。生の `z.toJSONSchema` は `io: "input"`、`target: "draft-7"`、`additionalProperties` の補正を持たず、モデルに送る JSON Schema とカセットのキーが変わるため、AI SDK 自身の変換を使う。
 - **S-1 の「同じステップの残りのツール」**: AI SDK のループは止めない。同じステップの呼び出しは同時に始まるため、`buildToolSet` は、ラッチがあるときだけツール呼び出しを 1 件ずつ実行し、ラッチが立った後に始まる呼び出しを拒否する（並行性を手放す）。2 件を同時に呼ぶテストが固定する。
 - **説明文の変更とカセット**: 「カセットのキーが変わらない」は入力スキーマについてである。M1 の 6 ツールの説明文を CL-18 の形式に改めたため、ツールを含むリクエストのキーは変わる。既存のシナリオはキーを使わず述語で照合するので影響はなく、M1・M2 のカセットでツール定義を含むものは gate で全件通っている。
+
+## W2 の実サーバー確認（R-1、2026-10-18、実測）
+
+`mise` の Node 26.12、`next build`（Next.js 16.4.0、Turbopack）と `next start -p 3100`（`AI_RUN_MODE=mock`）で、`apps/web/e2e/real-server.spec.ts` の `mcp:` の 4 ケースを chromium で実行した（`pnpm --filter web exec playwright test e2e/real-server.spec.ts --project=chromium -g "mcp:"`、4 件成功）。確認した内容は次のとおり。
+
+- **`serverExternalPackages` に足した集合は空**。`@ai-sdk/mcp` と `@modelcontextprotocol/server` は Turbopack のバンドルに入ったまま、ビルドと実行が通った。`/api/mcp/servers` は自作サーバー（`files`）を `connected` で返し、読み込んだツールは `findAndReadFiles` / `listFiles` / `readFile` / `searchFiles` の 4 つ、`writeFile`（`destructive`）は `registered: false`。`/api/mcp/chat` の mock 完走（`listFiles` → `readFile` の結果に `[0] README.md`）、許可ルート外の読み取りが停止理由 `error`（`code: "not-allowed"`）、`/api/mcp/compare`（手順数 2 対 3）も実サーバーで成功した。したがって足す理由のあるパッケージはなく、`next.config.ts` は変えていない（理由を書けない追加はしない）。
+- **自作サーバーの子プロセス**: `process.execPath`（`next start` を動かしている Node 26.12）が、リポジトリの実ファイル `packages/ai-core/src/files/stdio.ts` を型除去で起動した。ファイルの場所は `platform.ts` が `DEFAULT_FIXTURE_DIRECTORY`（フィクスチャのディレクトリ）から導く。テスト終了後に `files/stdio.ts` のプロセスと 3100 番の待ち受けは残っていない（`ps`、`lsof` で確認）。
+- **最初のビルドは失敗した**: `mcp/github.ts` の `fileURLToPath(new URL("../files/stdio.ts", import.meta.url))` を Turbopack が「ファイル資産の参照」として扱い、`Failed to collect configuration for /chat … The "path" argument must be of type string or an instance of URL. Received an instance of URL` で落ちた。M1 の `DEFAULT_FIXTURE_DIRECTORY`（`mock/fixtures.ts`）と同じ原因で、`resolve(dirname(fileURLToPath(import.meta.url)), "..", "files", "stdio.ts")` の形に直した。Vitest はバンドラーを通らないため、この失敗は単体テストでは検出できず、実サーバーのビルドだけが見つけた。
+- **`.ts` 拡張子の import**: `files/operations.ts`・`server.ts`・`stdio.ts` は Node の型除去で起動するため `.ts` 拡張子付きの import を使う（`tsconfig.base.json` の `allowImportingTsExtensions`）。Turbopack は `@platform/ai-core/files`・`/mcp` 経由でこれらを読んでも問題なくビルドした。
+- 未確認: `next dev`（Turbopack の開発モード）での同じ流れ、`GITHUB_TOKEN` を使う GitHub の接続（`mock` は接続しない設計。ハンズオンで確かめる、S-6）。

@@ -225,7 +225,7 @@ flowchart TD
   - `ShortIdIndex<T>`: `assign(items: readonly T[]): readonly { index: number; label: string }[]`、`resolve(index: number): T | undefined`。0 始まりの索引と名称を使い、UUID を使わない（Req 1.13）。
   - `createThinkTool({ enabled: boolean }): AciTool | undefined`: 思考の内容を保持せず、呼び出しを記録して確認の文言を返す。無効なら `undefined`（Req 1.14）。
   - `compareApproaches({ highLevel: RunMetrics; lowLevel: RunMetrics }): { steps: number; tokens: number; ratio: number }`（`aci/high-level-compare.ts`）。計測値を受け取るだけで、実行はしない（Req 1.12）。
-- **Owns**: 説明文の形式と検査、修正ガイドの文面、切り詰めの規則、索引 ID の割り当て、思考用ツールの定義、比較の計算。M1 の 6 ツール（`aci/tools/`）の説明文を CL-18 の形式へ改める。`AciTool` に Zod の `inputSchema` を公開する（`aci/types.ts`）。`defineAciTool` は AI SDK 自身の JSON Schema（`zodSchema`）を保ったまま、検証失敗の文言だけを修正ガイドに差し替える。説明文の形式を必須にしたことで壊れる既存のテスト定義は `describeTool` で直す（`patterns/role-based-cooperation.test.ts` と `aci/tools/calculator.test.ts` を含む。tasks.md の Boundary の例外）。
+- **Owns**: 説明文の形式と検査、修正ガイドの文面、切り詰めの規則、索引 ID の割り当て、思考用ツールの定義、比較の計算。M1 の 6 ツール（`aci/tools/`）の説明文を CL-18 の形式へ改める。`AciTool` に Zod の `inputSchema` を公開する（`aci/types.ts`）。外部の JSON Schema を持つツール（MCP 由来）のために `AciToolDefinition.externalInputSchema` を足した（W2 の 9.3。説明文の検査は `checkJsonSchemaDescription`、モデルへは JSON Schema をそのまま送り、Zod の `inputSchema` は入力が object であることを確かめるだけ）。`defineAciTool` は AI SDK 自身の JSON Schema（`zodSchema`）を保ったまま、検証失敗の文言だけを修正ガイドに差し替える。説明文の形式を必須にしたことで壊れる既存のテスト定義は `describeTool` で直す（`patterns/role-based-cooperation.test.ts` と `aci/tools/calculator.test.ts` を含む。tasks.md の Boundary の例外）。
 - **Does NOT own**: ツールの実行とガードの配線（C2 が所有する `aci/tool-set.ts`）。ツール数の上限（既存の `buildToolSet` と `MAX_AGENT_TOOLS` を再利用する）。MCP 由来のツールの説明文の上書きの文言（C5 の `McpServerConfig.descriptions` が持つ。C3 は形式の検査だけを行う、CL-25）。
 - **Requirements**: 1.1、1.2、1.6、1.11、1.12（比較）、1.13、1.14
 
@@ -234,9 +234,11 @@ flowchart TD
 - **Responsibility**: 許可されたワークスペースの内側だけでファイルを操作するツールを `defineAciTool` で定義し、同じツールを公式 MCP SDK で公開する stdio サーバーを提供する。
 - **Public interface**:
   - `resolveWorkspacePath(root: string, input: string): Promise<Result<string, PathError>>`: `PathError` は `relative | outside-root | not-found | invalid` の閉じた種別。相対パスを拒否し、正規化し、シンボリックリンクを解決した実パスが `root` と同一または配下（パス区切り単位）であることを検査する。
-  - `createFileTools({ root, clock }): readonly AciTool[]`: `listFiles`、`readFile`（`format` を持つ）、`searchFiles`、`findAndReadFiles`（高水準。一覧と読み取りを 1 回で行う、Req 1.12）。すべて `risk: "read-only"`。`writeFile` と `deleteFile` は定義するが、C5 の登録対象にならない（`destructive` / `write`）。
+  - `createFileTools({ root, conciseMaxCharacters? }): readonly AnyAciTool[]`（W2 で `clock` を外した。時刻に依存するツールがなく、`ToolRuntime` が時計を渡す）: `listFiles`、`readFile`（`format` を持つ）、`searchFiles`、`findAndReadFiles`（高水準。一覧と読み取りを 1 回で行う、Req 1.12）。読み取り系は `risk: "read-only"`。`writeFile`（`write`）と `deleteFile`（`destructive`）は定義するが、C5 の登録対象にならない。
+  - `createFileOperations({ root, conciseMaxCharacters? }): readonly FileOperation[]`（`files/operations.ts`、W2 で追加）: 上の 6 つの処理の本体。`FileOperation` は `{ name, description, inputSchema, risk, run }` で、失敗は `FileToolError`（`recoverable` / `fatal` と `not-allowed` / `config-missing`）。`tools.ts` が `defineAciTool` で、`server.ts` が MCP SDK で、それぞれ包む。`stdio.ts` は Node の型除去で直接起動するため拡張子なしの import を解決できない。そこで `operations.ts`・`server.ts`・`stdio.ts` は `.ts` 拡張子付きの import だけで、`aci/` の依存のない 2 ファイル（`response-format.ts`、`short-id.ts`）と `path.ts` に到達する（`tsconfig.base.json` の `allowImportingTsExtensions`）。
   - `createFilesServer({ root }): McpServer`: 上記のツールを登録する。`writeFile` と `deleteFile` は公開するが、注釈は `readOnlyHint: false` とする（Req 1.17 の実例）。ツールの失敗は例外にせず、`isError: true` と `_meta["agentic-ai/error"]`（`kind` と `code`）を持つツール結果として返す（CL-24。許可ルートの外は `kind: "fatal"`、`code: "not-allowed"`、相対パスと存在しないパスは `kind: "recoverable"`）。
   - `files/stdio.ts`: `MCP_FS_ROOT` を読み、`StdioServerTransport` で接続する起動入口（`node` で直接起動する）。
+  - `resolveServerRoot(requested)`（`files/server.ts`）: 許可ルートを実パスに解決し、存在しなければ作らずに理由を返す（`stdio.ts` が使う）。
 - **Owns**: パスの検査規則、ツールの入出力スキーマ、公開するツール名と注釈。ワークスペースの既定（`workspace/`）と `workspace/README.md`。
 - **Does NOT own**: 許可リストと MCP クライアント（C5）。ワークスペースの内容（学習者が置く。テストは一時ディレクトリを使う）。配信（C14）。
 - **Requirements**: 1.4、1.5、1.6、1.7、1.12、1.16、1.17
@@ -246,13 +248,14 @@ flowchart TD
 - **Responsibility**: 設定された MCP サーバーへ接続し、サーバーごとの状態を記録し、エージェントごとの許可リストで絞ったツールを `defineAciTool` と同じ形へ変換して返す。
 - **Public interface**:
   - `connectMcpServers(configs: readonly McpServerConfig[], { signal }): Promise<McpRegistry>`。失敗は例外にせず `McpServerStatus` に記録する。
-  - `McpRegistry`: `status(): readonly McpServerStatus[]`、`toolsFor(agentId: AgentId): readonly AciTool[]`、`close(): Promise<void>`。
+  - `McpRegistry`: `status(): readonly McpServerStatus[]`、`toolsFor(agentId: AgentId, { allow?, reservedTools? }): readonly AnyAciTool[]`（`allow` はエージェントごとの許可リストで、設定の許可リストを狭めるだけ。`reservedTools` は組み込みツールの数で、20 個の上限に数える）、`close(): Promise<void>`。`connectMcpServers` の第 2 引数は `{ signal, clock, connectTimeoutMs, maxToolsPerAgent, transportFor }`（`transportFor` はテストが同一プロセスの接続に差し替える口）。`McpServerConfig` は `fatalMessages`（致命的エラーの学習者向け文言を設定から作る、CL-24）を持つ。`mcp/request-schema.ts`（`/api/mcp/chat`・`/compare` の本文スキーマ。`apps/web` に `zod` がないため ai-core に置く）、`mcp/chat.ts`（チャットの指示文と比較の文面）、`publicMcpStatus`（状態を送れるフィールドだけに写す）を W2 で追加した。
   - `riskFromAnnotations(annotations: unknown): ToolRisk`: `readOnlyHint === true` だけを `read-only` とし、それ以外（注釈なしを含む）は `destructive` とする（ADR-7）。
-  - `adaptMcpTool(name, tool, { risk, description, trustErrorMeta }): AciTool`: 実効の説明文（`descriptions` の上書き、無ければサーバーの説明文）を C3 の `checkJsonSchemaDescription` に通す（CL-25）。実行結果は `classifyMcpToolResult` に通す。
+  - `adaptMcpTool(name, tool, { serverId, risk, description, trustErrorMeta, learnerMessageFor?, onCallError? }): { ok: true; tool } | { ok: false; reason }`: 実効の説明文（`descriptions` の上書き、無ければサーバーの説明文）を C3 の `checkJsonSchemaDescription` に通す（CL-25）。実行結果は `classifyMcpToolResult` に通す。
   - `classifyMcpToolResult(result, { serverId, trustErrorMeta, learnerMessageFor }): { ok: true; output } | { kind: "recoverable"; summary; nextAction } | { kind: "fatal"; error: FatalToolError }`（純関数、CL-24）。`kind: "fatal"` は `trustErrorMeta` が真で、`code` が C2 の閉じた語彙のときだけ認める。学習者向けの文言は `learnerMessageFor(code)`（クライアントの設定から作る）で組み立て、サーバーの文字列を使わない。
-  - `githubServerConfig(env): McpServerConfig | { reason: "token-missing" }`: `Authorization` ヘッダに `GITHUB_TOKEN` を入れる HTTP 設定を返す（CL-4）。既定の許可リストに載せる読み取り専用ツールの説明文の上書き（`descriptions`、CL-25）を持ち、`trustErrorMeta` は偽。
+  - `githubServerConfig(env): McpServerConfig | { reason: "token-missing" }`: `Authorization` ヘッダに `GITHUB_TOKEN` を入れる HTTP 設定を返す（CL-4）。既定の許可リストに載せる読み取り専用ツールの説明文の上書き（`descriptions`、CL-25）を持ち、`trustErrorMeta` は偽。サーバー自身の読み取り専用モード（`X-MCP-Readonly: true`）も求める（プラットフォームの許可リストとリスクの検査は、これに依存しない）。
   - `filesServerConfig({ root }): McpServerConfig`: 自作サーバーの stdio 設定（`command: process.execPath`、引数はサーバーのファイル、環境変数 `MCP_FS_ROOT`）。`trustErrorMeta: true`（CL-24）。
 - **Owns**: 接続と切断の寿命、`McpServerStatus` の遷移（`connected` / `unavailable` と理由）、許可リストの適用（`client.tools({ schemas })` に渡すオブジェクトの組み立て）、注釈から区分への写像、ツール結果のエラーの分類（CL-24）、説明文の上書きの適用（CL-25）。
+- **W2 で決めた制約**: (1) HTTP の 401 / 403 は、`trustErrorMeta` に関わらずどのサーバーでも致命的（`auth-failed`）として扱う。サーバーの文言ではなく転送層の信号で、学習者向けの文言は設定から作る。GitHub の 403（二次レート制限など）でも止まる点は既知（レビュー W2 F-9）。(2) ファイルサーバーの索引は 1 プロセスで 1 つで、同時の会話で共有される（単一の学習者が前提、ADR-10。許可ルートの外には出ない。F-1）。(3) 利用不可になったサーバーは再接続しない（再起動が要る。F-3）。(4) パスの検査と操作の間の入れ替えは防がない（書き込み・削除はエージェントに登録しない。F-10）。
 - **Does NOT own**: MCP の応答のスキーマ検証（`@ai-sdk/mcp` の既定に従う）。ツールの実行時のガード（C2）。認可（利用者ごとの認証は 005 の境界外）。
 - **Requirements**: 1.1、1.3、1.5、1.7、1.8、1.9、1.10、1.11、1.15、1.16、1.17
 
@@ -668,6 +671,7 @@ DB に保存しない型は Zod のスキーマを正とし、型は `z.infer` �
 | File | Create/Modify | Responsibility | C |
 |------|---------------|----------------|---|
 | `packages/ai-core/src/files/path.ts` | Create | `resolveWorkspacePath`（相対パス・ルート外・シンボリックリンクの検査、パス区切り単位の比較） | C4 |
+| `packages/ai-core/src/files/operations.ts` | Create | 6 つの処理の本体（`createFileOperations`、`FileToolError`）。`.ts` 拡張子の import だけで、`stdio.ts` の型除去の起動から使える（W2 で追加） | C4 |
 | `packages/ai-core/src/files/tools.ts` | Create | `createFileTools`（`listFiles`、`readFile`、`searchFiles`、`findAndReadFiles`、`writeFile`、`deleteFile`） | C4 |
 | `packages/ai-core/src/files/server.ts` | Create | `createFilesServer`（公式 SDK で同じツールを公開し、注釈を付ける） | C4 |
 | `packages/ai-core/src/files/stdio.ts` | Create | `MCP_FS_ROOT` を読み stdio で接続する起動入口（Node の型除去で直接起動する） | C4 |
@@ -680,6 +684,8 @@ DB に保存しない型は Zod のスキーマを正とし、型は `z.infer` �
 | `packages/ai-core/src/mcp/adapt.ts` | Create | `adaptMcpTool`（`AciTool` へ変換し、実効の説明文を `checkJsonSchemaDescription` に通す、CL-25）と `classifyMcpToolResult`（`isError` の結果の分類、CL-24） | C5 |
 | `packages/ai-core/src/mcp/github.ts` | Create | `githubServerConfig`（既定の許可リストの読み取り専用ツールと、その説明文の上書き。`trustErrorMeta: false`）、`filesServerConfig`（`trustErrorMeta: true`）。接続設定の組み立てで、トークンは `Authorization` にだけ入れる | C5 |
 | `packages/ai-core/src/mcp/{connect,allow-list,risk,adapt,github}.test.ts` | Create | 接続失敗が他のサーバーに影響しないこと、許可リストに無いツールが読み込まれないこと、注釈なしが `destructive` になること、`write` / `destructive` が `disabled` に入ること、ツール 21 個で拒否されること、トークンが状態・例外の文言に出ないこと、自作サーバーの `kind: "fatal"` で `FatalToolError` が投げられること、`trustErrorMeta` の無いサーバーの `kind: "fatal"` が回復可能に落ちること、学習者向けの文言にサーバーの文字列が混ざらないこと、上書きのある外部ツールが登録され上書きの無いツールが「説明文の形式」で登録されないこと | C5 |
+| `packages/ai-core/src/mcp/request-schema.ts` | Create | `/api/mcp/chat`・`/compare` の本文スキーマ（`apps/web` に `zod` がないため。W2 で追加） | C5 |
+| `packages/ai-core/src/mcp/chat.ts` | Create | チャットの指示文、比較の文面と方式ごとのツール（W2 で追加） | C5 |
 | `packages/ai-core/src/mcp/index.ts` | Create | `@platform/ai-core/mcp` の公開 API | C5 |
 
 ### packages/ai-core — sandbox・analysis
