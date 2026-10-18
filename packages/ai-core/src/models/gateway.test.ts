@@ -9,6 +9,7 @@ import {
 	M2_CORPUS_TEXT,
 	M3_1_SAMPLE_TASKS,
 	M3_2_SAMPLE_INQUIRIES,
+	M3_3_SAMPLE_INSTRUCTIONS,
 } from "../mock";
 import type { RecordingStore } from "../mock/recording";
 import { createFakeClock } from "../ports/clock";
@@ -185,6 +186,24 @@ describe("createModelGateway resolve (mock)", () => {
 			["t1", []],
 			["t2", ["t1"]],
 		]);
+	});
+
+	it("answers the M3-3 analysis scenario with a runPython call on the first step", async () => {
+		const gateway = createModelGateway({ config: configFor({}) });
+		const chat = await gateway.resolve({ purpose: "chat" });
+
+		const first = await generateText({
+			model: chat.model,
+			prompt: `次のファイルを分析してください。\n\n<instruction>\n${M3_3_SAMPLE_INSTRUCTIONS.success}\n</instruction>`,
+			tools: {
+				runPython: tool({
+					inputSchema: jsonSchema({ type: "object" }),
+					execute: async () => "ok",
+				}),
+			},
+		});
+
+		expect(first.toolCalls.map((call) => call.toolName)).toEqual(["runPython"]);
 	});
 
 	it("binds a separate mock model per purpose and uses injected scenarios", async () => {
