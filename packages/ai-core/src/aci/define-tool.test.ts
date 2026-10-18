@@ -1,13 +1,21 @@
-import { generateText, type Tool } from "ai";
-import { describe, expect, it } from "vitest";
+import { asSchema, generateText, isStepCount, type Tool } from "ai";
+import { describe, expect, expectTypeOf, it } from "vitest";
 import { z } from "zod";
 import { ConfigError } from "../config/load";
 import { createFakeClock, type FakeClock } from "../ports/clock";
 import { createToolCallingModel } from "../testing/mock-models";
+import { describeTool } from "../testing/tool-description";
 import { defineAciTool, effectiveToolTimeoutMs, ToolExecutionError } from "./define-tool";
-import type { AciToolContext, ToolOutcome, ToolRisk } from "./types";
+import { checkDescription } from "./description-check";
+import { createCalculatorTool } from "./tools/calculator";
+import { createCurrencyConvertTool } from "./tools/currency";
+import { createCurrentTimeTool } from "./tools/current-time";
+import { createSearchKnowledgeBaseTool } from "./tools/search-knowledge-base";
+import { createWeatherTool } from "./tools/weather";
+import { createWebSearchTool } from "./tools/web-search";
+import type { AciToolContext, AciToolDefinition, ToolOutcome, ToolRisk } from "./types";
 
-const echoSchema = z.object({ text: z.string() });
+const echoSchema = z.object({ text: z.string().describe("入力のテキスト") });
 
 function never<T>(): Promise<T> {
 	return new Promise<T>(() => {});
@@ -44,7 +52,7 @@ function track<T>(promise: Promise<T>): { settled: () => boolean; promise: Promi
 function hangingTool(timeoutMs?: number) {
 	return defineAciTool({
 		name: "hang",
-		description: "Never finishes.",
+		description: describeTool("Never finishes."),
 		inputSchema: echoSchema,
 		risk: "read-only",
 		...(timeoutMs === undefined ? {} : { timeoutMs }),
@@ -84,7 +92,7 @@ describe("defineAciTool", () => {
 		let seen: AciToolContext | undefined;
 		const echo = defineAciTool({
 			name: "echo",
-			description: "Echoes the text.",
+			description: describeTool("Echoes the text."),
 			inputSchema: echoSchema,
 			risk: "read-only",
 			execute: (input, context) => {
@@ -98,8 +106,12 @@ describe("defineAciTool", () => {
 			ok: true,
 			data: { echoed: "hi" },
 		});
-		expect(converted.description).toBe("Echoes the text.");
-		expect(converted.inputSchema).toBe(echoSchema);
+		expect(converted.description).toBe(echo.description);
+		expect(echo.description).toContain("Echoes the text.");
+		// The schema is wrapped to give the model a fix guide (CL-2) but sends the same JSON Schema,
+		// so recorded cassette keys do not change.
+		expect(asSchema(converted.inputSchema).jsonSchema).toEqual(asSchema(echoSchema).jsonSchema);
+		expect(echo.inputSchema).toBe(echoSchema);
 		expect(seen?.clock).toBe(clock);
 		expect(seen?.toolCallId).toBe("call-1");
 		expect(seen?.abortSignal.aborted).toBe(false);
@@ -129,7 +141,7 @@ describe("defineAciTool", () => {
 		let signal: AbortSignal | undefined;
 		const slow = defineAciTool({
 			name: "slow",
-			description: "Waits for its signal.",
+			description: describeTool("Waits for its signal."),
 			inputSchema: echoSchema,
 			risk: "read-only",
 			execute: (_input, context) => {
@@ -155,7 +167,7 @@ describe("defineAciTool", () => {
 	it("turns a ToolExecutionError into a recoverable outcome with its summary and next action", async () => {
 		const failing = defineAciTool({
 			name: "failing",
-			description: "Always fails.",
+			description: describeTool("Always fails."),
 			inputSchema: echoSchema,
 			risk: "read-only",
 			execute: () => {
@@ -178,7 +190,7 @@ describe("defineAciTool", () => {
 	it("does not leak the message of an unexpected error into the outcome", async () => {
 		const failing = defineAciTool({
 			name: "leaky",
-			description: "Fails with a secret in the message.",
+			description: describeTool("Fails with a secret in the message."),
 			inputSchema: echoSchema,
 			risk: "read-only",
 			execute: async () => {
@@ -205,7 +217,7 @@ describe("defineAciTool", () => {
 		let signal: AbortSignal | undefined;
 		const waiting = defineAciTool({
 			name: "waiting",
-			description: "Waits for its signal.",
+			description: describeTool("Waits for its signal."),
 			inputSchema: echoSchema,
 			risk: "read-only",
 			execute: (_input, context) => {
@@ -235,7 +247,7 @@ describe("defineAciTool", () => {
 		let executed = false;
 		const tool = defineAciTool({
 			name: "noop",
-			description: "Does nothing.",
+			description: describeTool("Does nothing."),
 			inputSchema: echoSchema,
 			risk: "read-only",
 			execute: () => {
@@ -251,7 +263,7 @@ describe("defineAciTool", () => {
 	it("returns a failing tool's outcome as a tool result so the agent loop can continue", async () => {
 		const failing = defineAciTool({
 			name: "failing",
-			description: "Always fails.",
+			description: describeTool("Always fails."),
 			inputSchema: echoSchema,
 			risk: "read-only",
 			execute: () => {
@@ -285,7 +297,7 @@ describe("defineAciTool", () => {
 		expect(() =>
 			defineAciTool({
 				name: "valid",
-				description: "Valid.",
+				description: describeTool("Valid."),
 				inputSchema: echoSchema,
 				risk: "read-only",
 				execute: () => "ok",
@@ -298,7 +310,7 @@ describe("defineAciTool", () => {
 		expect(() =>
 			defineAciTool({
 				name: "untyped",
-				description: "Called from untyped code.",
+				description: describeTool("Called from untyped code."),
 				inputSchema: echoSchema,
 				risk: "unknown" as ToolRisk,
 				execute: () => "ok",
@@ -311,7 +323,7 @@ describe("defineAciTool", () => {
 		(toolTimeoutMs) => {
 			const tool = defineAciTool({
 				name: "valid",
-				description: "Valid.",
+				description: describeTool("Valid."),
 				inputSchema: echoSchema,
 				risk: "read-only",
 				execute: () => "ok",
@@ -319,4 +331,156 @@ describe("defineAciTool", () => {
 			expect(() => tool.toTool({ clock: createFakeClock(), toolTimeoutMs })).toThrow(ConfigError);
 		},
 	);
+});
+
+describe("defineAciTool: description check (CL-18)", () => {
+	function define(overrides: { description: string; inputSchema?: z.ZodType<{ text: string }> }) {
+		return defineAciTool({
+			name: "checked",
+			inputSchema: echoSchema,
+			risk: "read-only",
+			execute: () => "ok",
+			...overrides,
+		});
+	}
+
+	it("rejects a description without the three heading lines and names what is missing", () => {
+		const build = () => define({ description: "Just a sentence." });
+
+		expect(build).toThrow(ConfigError);
+		expect(build).toThrow("checked");
+		expect(build).toThrow("使うとき:");
+		expect(build).toThrow("例:");
+	});
+
+	it("rejects an input field without .describe() and names the field", () => {
+		const build = () =>
+			define({
+				description: describeTool("Has an undescribed field."),
+				inputSchema: z.object({ text: z.string() }),
+			});
+
+		expect(build).toThrow(ConfigError);
+		expect(build).toThrow("text");
+	});
+
+	it("rejects an input schema the AI SDK cannot send (a Date)", () => {
+		const build = () =>
+			define({
+				description: describeTool("Takes a date."),
+				inputSchema: z.object({
+					text: z.string().describe("t"),
+					when: z.date().describe("w"),
+				}) as never,
+			});
+
+		expect(build).toThrow(ConfigError);
+		expect(build).toThrow("JSON Schema");
+	});
+
+	it("accepts a description that follows the format", () => {
+		const tool = define({ description: describeTool("Fine.") });
+
+		expect(tool.name).toBe("checked");
+		expect(tool.description).toContain("使うとき:");
+	});
+
+	it("still requires a declared risk class, at the type level and at run time", () => {
+		expectTypeOf<AciToolDefinition<unknown, unknown>>().toHaveProperty("risk");
+		expectTypeOf<AciToolDefinition<unknown, unknown>["risk"]>().toEqualTypeOf<ToolRisk>();
+		expect(() =>
+			defineAciTool({
+				name: "norisk",
+				description: describeTool("No risk."),
+				inputSchema: echoSchema,
+				risk: undefined as unknown as ToolRisk,
+				execute: () => "ok",
+			}),
+		).toThrow(ConfigError);
+	});
+
+	it("passes for all six M1 tools", () => {
+		const fetcher = { fetch: async () => ({ status: 200, headers: {}, body: "" }) };
+		const tools = [
+			createCalculatorTool(),
+			createCurrencyConvertTool(),
+			createCurrentTimeTool(createFakeClock()),
+			createWeatherTool(fetcher),
+			createWebSearchTool({ search: async () => [] }),
+			createSearchKnowledgeBaseTool({
+				search: async () => [],
+				registry: { register: () => 1 },
+			}),
+		];
+
+		expect(tools).toHaveLength(6);
+		for (const aciTool of tools) {
+			expect(checkDescription(aciTool.description, aciTool.inputSchema), aciTool.name).toEqual([]);
+		}
+	});
+});
+
+describe("defineAciTool: input fix guide (CL-2)", () => {
+	it("does not run the tool body for an invalid input and shows the model a fix guide", async () => {
+		let bodyRuns = 0;
+		const guarded = defineAciTool({
+			name: "guarded",
+			description: describeTool("Needs text."),
+			inputSchema: echoSchema,
+			risk: "read-only",
+			execute: () => {
+				bodyRuns += 1;
+				return "ok";
+			},
+		});
+
+		const result = await generateText({
+			model: createToolCallingModel({
+				toolCallId: "call-1",
+				toolName: "guarded",
+				input: { text: 42 },
+			}),
+			prompt: "call the tool",
+			tools: { guarded: guarded.toTool({ clock: createFakeClock(), toolTimeoutMs: 100 }) },
+			stopWhen: isStepCount(1),
+		});
+
+		expect(bodyRuns).toBe(0);
+		const toolError = result.content.find((part) => part.type === "tool-error");
+		expect(toolError).toBeDefined();
+		const failure = (toolError as { error: unknown }).error;
+		const text = failure instanceof Error ? failure.message : String(failure);
+		expect(text).toContain("text（入力のテキスト）");
+		expect(text).toContain("string 型");
+		expect(text).toContain("正しい入力の例:");
+		expect(text).not.toContain("invalid_type");
+	});
+
+	it("runs the body and passes the parsed value when the input is valid", async () => {
+		const seen: unknown[] = [];
+		const echo = defineAciTool({
+			name: "echoer",
+			description: describeTool("Echoes."),
+			inputSchema: z.object({ count: z.coerce.number().describe("回数") }),
+			risk: "read-only",
+			execute: (input) => {
+				seen.push(input);
+				return input.count;
+			},
+		});
+
+		const result = await generateText({
+			model: createToolCallingModel({
+				toolCallId: "call-1",
+				toolName: "echoer",
+				input: { count: "3" },
+			}),
+			prompt: "call the tool",
+			tools: { echoer: echo.toTool({ clock: createFakeClock(), toolTimeoutMs: 100 }) },
+			stopWhen: isStepCount(1),
+		});
+
+		expect(seen).toEqual([{ count: 3 }]);
+		expect(result.toolResults[0]?.output).toEqual({ ok: true, data: 3 });
+	});
 });

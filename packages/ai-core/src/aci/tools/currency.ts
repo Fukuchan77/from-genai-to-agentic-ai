@@ -81,7 +81,12 @@ export function createCurrencyConvertTool(
 
 	return defineAciTool({
 		name: CURRENCY_CONVERT_TOOL_NAME,
-		description: `固定の為替レート表（${rates.asOf} 時点、学習用）で金額を別の通貨に換算します。対応通貨: ${supported.join(", ")}`,
+		description: [
+			`固定の為替レート表（${rates.asOf} 時点、学習用）で金額を別の通貨に換算する。対応通貨: ${supported.join(", ")}`,
+			"使うとき: 金額を別の通貨に換算したいとき。",
+			"使わないとき: 最新のリアルタイム為替が必要なとき（レートは学習用の固定値）、通貨以外の単位換算のとき。",
+			'例: amount=100, from="USD", to="JPY"',
+		].join("\n"),
 		inputSchema: currencyInputSchema,
 		risk: "read-only",
 		execute: ({ amount, from, to }) => {

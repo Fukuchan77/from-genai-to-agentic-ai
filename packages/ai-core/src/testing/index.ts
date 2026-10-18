@@ -7,3 +7,4 @@ export {
 	type MockToolCall,
 } from "./mock-models";
 export { buildTextPdf } from "./pdf-builder";
+export { describeTool } from "./tool-description";

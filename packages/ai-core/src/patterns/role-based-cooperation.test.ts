@@ -8,6 +8,7 @@ import { createCalculatorTool } from "../aci/tools/calculator";
 import type { GuardedToolSet } from "../aci/types";
 import { PlatformError } from "../errors";
 import { createFakeClock } from "../ports/clock";
+import { describeTool } from "../testing/tool-description";
 import { type CooperateByRoleParams, cooperateByRole, type Role } from "./role-based-cooperation";
 
 // The repository rule `workflow-no-agent-loop` allows only role-based-cooperation.ts to import the
@@ -370,7 +371,7 @@ describe("cooperateByRole", () => {
 	it("keeps the role's own tools out of the other roles", async () => {
 		const secretTool = defineAciTool({
 			name: "secret",
-			description: "only for the coder",
+			description: describeTool("only for the coder"),
 			inputSchema: z.object({}),
 			risk: "read-only",
 			execute: () => ({ ok: true }),

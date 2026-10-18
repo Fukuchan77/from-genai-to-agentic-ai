@@ -24,8 +24,12 @@ export function createWebSearchTool(
 ): AciTool<z.output<typeof webSearchInputSchema>, WebSearchResult> {
 	return defineAciTool<z.output<typeof webSearchInputSchema>, WebSearchResult>({
 		name: WEB_SEARCH_TOOL_NAME,
-		description:
-			"Web を検索して、関連するページのタイトル・URL・抜粋を返します。最新の情報や出典が必要なときに使ってください。",
+		description: [
+			"Web を検索して、関連するページのタイトル・URL・抜粋を返す。",
+			"使うとき: 最新の情報や、出典の URL が必要なとき。",
+			"使わないとき: 計算で済む質問のとき、取り込み済みの社内資料で答えられる質問のとき。",
+			'例: query="Vercel AI SDK v7 の新機能"',
+		].join("\n"),
 		inputSchema: webSearchInputSchema,
 		risk: "read-only",
 		requiredFeature: "web-search",

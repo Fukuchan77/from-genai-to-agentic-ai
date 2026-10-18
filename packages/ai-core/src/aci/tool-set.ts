@@ -2,6 +2,7 @@ import type { Tool, ToolSet } from "ai";
 import { FEATURE_REQUIREMENTS } from "../config/feature-requirements";
 import { ConfigError, type PlatformConfig } from "../config/load";
 import { assertValidToolRuntime, isDefinedAciTool } from "./define-tool";
+import type { FatalLatch } from "./fatal";
 import type {
 	AnyAciTool,
 	BuiltToolSet,
@@ -34,6 +35,55 @@ function assertRegistrable(tools: readonly AnyAciTool[]): void {
 	}
 }
 
+const latchOfToolSet = new WeakMap<object, FatalLatch>();
+
+/**
+ * The latch a tool set was built with (`runtime.fatal`), so `createGuardedAgent` reads the same
+ * instance instead of taking it a second time from the caller.
+ */
+export function fatalLatchOf(tools: GuardedToolSet): FatalLatch | undefined {
+	return latchOfToolSet.get(tools);
+}
+
+const LATCH_REFUSAL_SUMMARY =
+	"致命的なエラーが起きたため、この実行は終了します。このツールは実行されませんでした。";
+const LATCH_REFUSAL_NEXT_ACTION =
+	"ツールを呼び出さず、これまでの結果と起きたことを説明して回答を終えてください。";
+
+/**
+ * Once the run's latch is tripped no tool body runs again: the call returns a refusal result
+ * instead. A call that already started is not interrupted (its result is dropped with the run).
+ */
+function refuseAfterLatch(
+	registered: Tool,
+	latch: FatalLatch,
+	queue: { tail: Promise<unknown> },
+): Tool {
+	const run = registered.execute;
+	if (run === undefined) return registered;
+	const refusal = {
+		ok: false,
+		failure: {
+			kind: "recoverable",
+			summary: LATCH_REFUSAL_SUMMARY,
+			nextAction: LATCH_REFUSAL_NEXT_ACTION,
+		},
+	};
+	return {
+		...registered,
+		// Calls of one step start together, so a plain check would let a sibling run before the
+		// failing call has tripped the latch. Calls therefore run one after another (a run with a
+		// latch trades the step's parallelism for "nothing runs after a fatal error", Req 1.3).
+		execute: (input, options) => {
+			const result = queue.tail.then(async () =>
+				latch.error === undefined ? await run(input, options) : refusal,
+			);
+			queue.tail = result.catch(() => undefined);
+			return result;
+		},
+	} as Tool;
+}
+
 /**
  * Converts ACI tools with `runtime` and returns the only kind of tool set an agent accepts.
  * Tools whose required feature is unavailable are left out and listed in `disabled` (Req 5.4).
@@ -47,6 +97,7 @@ export function buildToolSet(
 	assertRegistrable(tools);
 
 	const registered: Record<string, Tool> = {};
+	const serial: { tail: Promise<unknown> } = { tail: Promise.resolve() };
 	const disabled: DisabledTool[] = [];
 	for (const aciTool of tools) {
 		const feature = aciTool.requiredFeature;
@@ -60,10 +111,13 @@ export function buildToolSet(
 			);
 			continue;
 		}
-		registered[aciTool.name] = aciTool.toTool(runtime);
+		const converted = aciTool.toTool(runtime);
+		registered[aciTool.name] =
+			runtime.fatal === undefined ? converted : refuseAfterLatch(converted, runtime.fatal, serial);
 	}
 	// Frozen so that a raw tool cannot be added to an already checked set.
 	const guarded = Object.freeze(registered) as ToolSet as GuardedToolSet;
+	if (runtime.fatal !== undefined) latchOfToolSet.set(guarded, runtime.fatal);
 	return Object.freeze({ tools: guarded, disabled: Object.freeze(disabled) });
 }
 

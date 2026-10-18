@@ -1,7 +1,11 @@
-import { type Tool, type ToolExecutionOptions, tool } from "ai";
+import { jsonSchema, type Tool, type ToolExecutionOptions, tool, zodSchema } from "ai";
+import type { z } from "zod";
 import { ConfigError } from "../config/load";
 import { PlatformError } from "../errors";
 import { raceWithAbort } from "../ports/abort";
+import { checkDescription } from "./description-check";
+import { classifyToolError } from "./fatal";
+import { formatInputGuide } from "./input-guide";
 import {
 	type AciTool,
 	type AciToolDefinition,
@@ -26,6 +30,8 @@ export function isDefinedAciTool(value: object): boolean {
 }
 const TIMEOUT_NEXT_ACTION = "入力を小さくして再試行するか、ツールを使わずに回答してください。";
 const FAILURE_NEXT_ACTION = "入力を見直して再試行するか、ツールを使わずに回答してください。";
+const FATAL_NEXT_ACTION =
+	"この実行は終了します。再試行せず、ツールを呼び出さずに回答を終えてください。";
 
 /**
  * A failure a tool reports on purpose. Its `summary` and `nextAction` are shown to the model
@@ -69,6 +75,33 @@ function assertValidDefinition<INPUT, OUTPUT>(definition: AciToolDefinition<INPU
 	if (definition.timeoutMs !== undefined && !isPositiveInteger(definition.timeoutMs)) {
 		throw new ConfigError(`ツール「${definition.name}」の timeoutMs は正の整数にしてください。`);
 	}
+	const issues = checkDescription(definition.description, definition.inputSchema);
+	if (issues.length > 0) {
+		throw new ConfigError(
+			`ツール「${definition.name}」の説明文が規約を満たしていません: ${issues.map((issue) => issue.message).join(" ")}`,
+		);
+	}
+}
+
+/**
+ * The AI SDK's own JSON Schema for the Zod schema (so the request sent to the model, and every
+ * recorded cassette key, is unchanged), with a validation failure that carries the fix guide
+ * instead of Zod's raw issue dump (CL-2). The SDK still prefixes `Invalid input for tool <name>:`.
+ */
+function guidedInputSchema<INPUT>(inputSchema: z.ZodType<INPUT>) {
+	const base = zodSchema(inputSchema);
+	return jsonSchema<INPUT>(() => base.jsonSchema, {
+		validate: async (value) => {
+			const result = await base.validate?.(value);
+			if (result === undefined || result.success) {
+				return result ?? { success: true, value: value as INPUT };
+			}
+			return {
+				success: false,
+				error: new Error(formatInputGuide(result.error as z.ZodError, inputSchema)),
+			};
+		},
+	});
 }
 
 export function assertValidToolRuntime(runtime: ToolRuntime): void {
@@ -77,12 +110,22 @@ export function assertValidToolRuntime(runtime: ToolRuntime): void {
 	}
 }
 
-function failureFrom(name: string, error: unknown): ToolFailure {
+function failureFrom(name: string, error: unknown, runtime: ToolRuntime): ToolFailure {
 	if (error instanceof ToolExecutionError) {
 		return {
 			kind: "recoverable",
 			summary: error.summary,
 			...(error.nextAction === undefined ? {} : { nextAction: error.nextAction }),
+		};
+	}
+	const classified = classifyToolError(error);
+	if (classified.kind === "fatal") {
+		// Without a latch the error is only reported, which is M1's behaviour (every error recoverable).
+		runtime.fatal?.trip(classified.error);
+		return {
+			kind: "recoverable",
+			summary: classified.error.learnerMessage,
+			nextAction: runtime.fatal === undefined ? FAILURE_NEXT_ACTION : FATAL_NEXT_ACTION,
 		};
 	}
 	if (error instanceof PlatformError) {
@@ -136,7 +179,7 @@ async function executeWithGuards<INPUT, OUTPUT>(
 			}
 			throw abortSignal.reason;
 		}
-		return { ok: false, failure: failureFrom(definition.name, error) };
+		return { ok: false, failure: failureFrom(definition.name, error, runtime) };
 	}
 }
 
@@ -154,6 +197,7 @@ export const defineAciTool = <INPUT, OUTPUT>(
 	const aciTool = Object.freeze({
 		name: definition.name,
 		description: definition.description,
+		inputSchema: definition.inputSchema,
 		risk: definition.risk,
 		timeoutMs: definition.timeoutMs,
 		requiredFeature: definition.requiredFeature,
@@ -162,7 +206,7 @@ export const defineAciTool = <INPUT, OUTPUT>(
 			const timeoutMs = effectiveToolTimeoutMs(definition.timeoutMs, runtime.toolTimeoutMs);
 			return tool({
 				description: definition.description,
-				inputSchema: definition.inputSchema,
+				inputSchema: guidedInputSchema(definition.inputSchema),
 				execute: (input, options) =>
 					executeWithGuards(definition, runtime, timeoutMs, input, options),
 			});

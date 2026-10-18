@@ -4,7 +4,9 @@ import { z } from "zod";
 import { ConfigError } from "../config/load";
 import type { Clock } from "../ports/clock";
 import { createFakeClock } from "../ports/clock";
+import { describeTool } from "../testing/tool-description";
 import { defineAciTool } from "./define-tool";
+import { FatalLatch, FatalToolError } from "./fatal";
 import { buildToolSet, toolAvailabilityFromConfig } from "./tool-set";
 import type {
 	AciTool,
@@ -20,7 +22,7 @@ const inputSchema = z.object({});
 function hangingTool(name: string, seen: Clock[]): AciTool<Record<string, never>, string> {
 	return defineAciTool({
 		name,
-		description: `${name} never finishes.`,
+		description: describeTool(`${name} never finishes.`),
 		inputSchema,
 		risk: "read-only",
 		execute: (_input, context) => {
@@ -33,7 +35,7 @@ function hangingTool(name: string, seen: Clock[]): AciTool<Record<string, never>
 function riskyTool(risk: ToolRisk): AciTool<Record<string, never>, string> {
 	return defineAciTool({
 		name: `risky-${risk}`,
-		description: "Changes something.",
+		description: describeTool("Changes something."),
 		inputSchema,
 		risk,
 		execute: () => "changed",
@@ -42,7 +44,7 @@ function riskyTool(risk: ToolRisk): AciTool<Record<string, never>, string> {
 
 const searchTool = defineAciTool({
 	name: "webSearch",
-	description: "Searches the web.",
+	description: describeTool("Searches the web."),
 	inputSchema,
 	risk: "read-only",
 	requiredFeature: "web-search",
@@ -158,7 +160,7 @@ describe("buildToolSet", () => {
 	it("rejects a non-read-only tool even when its feature would disable it", () => {
 		const risky = defineAciTool({
 			name: "riskySearch",
-			description: "Writes somewhere.",
+			description: describeTool("Writes somewhere."),
 			inputSchema,
 			risk: "write",
 			requiredFeature: "web-search",
@@ -228,6 +230,131 @@ describe("buildToolSet: only defineAciTool output", () => {
 		const typed: AnyAciTool = forgedTool();
 		expectTypeOf(searchTool).toExtend<AnyAciTool>();
 		expect(typed.name).toBe("forged");
+	});
+});
+
+describe("buildToolSet: fatal latch", () => {
+	function counting(name: string, behaviour: () => unknown) {
+		const calls = { count: 0 };
+		const aciTool = defineAciTool({
+			name,
+			description: describeTool(`${name} for the latch tests.`),
+			inputSchema,
+			risk: "read-only",
+			execute: () => {
+				calls.count += 1;
+				return behaviour();
+			},
+		});
+		return { aciTool, calls };
+	}
+
+	function setup(withLatch: boolean) {
+		const latch = new FatalLatch();
+		const fatal = counting("fatalTool", () => {
+			throw new FatalToolError("not-allowed", "許可されていない操作です。");
+		});
+		const other = counting("otherTool", () => "other-result");
+		const flaky = counting("flakyTool", () => {
+			throw new Error("temporary glitch");
+		});
+		const unauthorized = counting("unauthorizedTool", () => {
+			throw Object.assign(new Error("Unauthorized"), { status: 401 });
+		});
+		const { tools } = buildToolSet(
+			[fatal.aciTool, other.aciTool, flaky.aciTool, unauthorized.aciTool],
+			{},
+			{
+				clock: createFakeClock(),
+				toolTimeoutMs: 1_000,
+				...(withLatch ? { fatal: latch } : {}),
+			},
+		);
+		return { latch, tools, fatal, other, flaky, unauthorized };
+	}
+
+	it("trips the latch when a tool throws a FatalToolError and still returns an outcome", async () => {
+		const { latch, tools } = setup(true);
+
+		const outcome = await execute(tools, "fatalTool");
+
+		expect(latch.error).toMatchObject({
+			code: "not-allowed",
+			learnerMessage: "許可されていない操作です。",
+		});
+		expect(outcome.ok).toBe(false);
+	});
+
+	it("does not run any tool after the latch is tripped, and says why", async () => {
+		const { tools, other, fatal } = setup(true);
+
+		await execute(tools, "fatalTool");
+		const refused = await execute(tools, "otherTool");
+		await execute(tools, "fatalTool");
+
+		expect(other.calls.count).toBe(0);
+		expect(fatal.calls.count).toBe(1);
+		expect(refused).toMatchObject({ ok: false });
+		if (refused.ok) throw new Error("expected a refusal");
+		expect(refused.failure.summary).toContain("実行されませんでした");
+	});
+
+	it("refuses a sibling call that starts together with the failing call (one step)", async () => {
+		const { latch, tools, other, fatal } = setup(true);
+
+		const [first, second] = await Promise.all([
+			execute(tools, "fatalTool"),
+			execute(tools, "otherTool"),
+		]);
+
+		expect(latch.error?.code).toBe("not-allowed");
+		expect(fatal.calls.count).toBe(1);
+		expect(other.calls.count).toBe(0);
+		expect(first.ok).toBe(false);
+		expect(second).toMatchObject({ ok: false });
+	});
+
+	it("keeps the first fatal error when later calls would also fail", async () => {
+		const { latch, tools } = setup(true);
+
+		await execute(tools, "unauthorizedTool");
+		await execute(tools, "fatalTool");
+
+		expect(latch.error?.code).toBe("auth-failed");
+	});
+
+	it("treats an HTTP 401 thrown by a tool as fatal auth-failed", async () => {
+		const { latch, tools } = setup(true);
+
+		await execute(tools, "unauthorizedTool");
+
+		expect(latch.error?.code).toBe("auth-failed");
+	});
+
+	it("returns a summary and a next action for a recoverable error and keeps running tools", async () => {
+		const { latch, tools, other } = setup(true);
+
+		const outcome = await execute(tools, "flakyTool");
+		const next = await execute(tools, "otherTool");
+
+		expect(latch.error).toBeUndefined();
+		expect(outcome).toMatchObject({
+			ok: false,
+			failure: { kind: "recoverable", summary: expect.stringContaining("flakyTool") },
+		});
+		expect(next).toEqual({ ok: true, data: "other-result" });
+		expect(other.calls.count).toBe(1);
+	});
+
+	it("behaves like M1 without a latch: a FatalToolError is an ordinary failure and nothing is refused", async () => {
+		const { tools, other } = setup(false);
+
+		const outcome = await execute(tools, "fatalTool");
+		const next = await execute(tools, "otherTool");
+
+		expect(outcome.ok).toBe(false);
+		expect(next).toEqual({ ok: true, data: "other-result" });
+		expect(other.calls.count).toBe(1);
 	});
 });
 

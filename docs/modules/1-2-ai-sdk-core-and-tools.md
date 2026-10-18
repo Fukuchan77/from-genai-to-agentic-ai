@@ -143,14 +143,19 @@ return result.toUIMessageStreamResponse({ sendReasoning: true, messageMetadata, 
 
 ### ツール定義（ACI）と Clock、ツールのエラーはツール結果
 
-ツールは `tool()` を直接使わず、`defineAciTool` で定義します。`name`、`description`、`inputSchema`（Zod。旧 `parameters` から改名）、**必須の `risk`**（`read-only` / `write` / `destructive`）、`execute` を持ちます。
+ツールは `tool()` を直接使わず、`defineAciTool` で定義します。`name`、`description`、`inputSchema`（Zod。旧 `parameters` から改名）、**必須の `risk`**（`read-only` / `write` / `destructive`）、`execute` を持ちます。M3 から、`description` は「用途の 1 文」に続けて `使うとき:`、`使わないとき:`、`例:` の 3 行を含み、入力の全フィールドに `.describe()` が必要です（満たさないと `defineAciTool` が登録時に失敗します）。
 
 ```ts
 // packages/ai-core/src/aci/tools/current-time.ts (abridged)
 export function createCurrentTimeTool(clock: Clock) {
 	return defineAciTool({
 		name: "currentTime",
-		description: "現在の日時を返します。日付や時刻、曜日を答えるときに使ってください。",
+		description: [
+			"現在の日時（日付・時刻・曜日）を返す。",
+			"使うとき: 今日の日付、現在の時刻、曜日を答えるとき。",
+			"使わないとき: 過去や未来の日付の計算だけが必要なとき、日時に関係しない質問のとき。",
+			'例: timeZone="Asia/Tokyo"',
+		].join("\n"),
 		inputSchema: currentTimeInputSchema,
 		risk: "read-only",
 		execute: ({ timeZone }) => describeInstant(clock.now(), timeZone ?? DEFAULT_TIME_ZONE),

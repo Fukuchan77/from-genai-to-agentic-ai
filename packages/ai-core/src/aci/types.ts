@@ -2,6 +2,7 @@ import type { Tool, ToolSet } from "ai";
 import type { z } from "zod";
 import type { FeatureId, RequiredEnvVariable } from "../config/feature-requirements";
 import type { Clock } from "../ports/clock";
+import type { FatalLatch } from "./fatal";
 
 /** Risk class of a tool. M1 registers only `read-only` tools (constitution principle 6). */
 export const TOOL_RISKS = ["read-only", "write", "destructive"] as const;
@@ -27,6 +28,11 @@ export interface ToolRuntime {
 	readonly clock: Clock;
 	/** Upper bound for one tool execution, from `AGENT_TOOL_TIMEOUT_MS`. */
 	readonly toolTimeoutMs: number;
+	/**
+	 * This run's fatal-error latch. Omit it to keep M1's behaviour, where every tool error is
+	 * recoverable and the loop continues.
+	 */
+	readonly fatal?: FatalLatch | undefined;
 }
 
 export interface AciToolContext {
@@ -58,6 +64,8 @@ interface AciToolMetadata {
 	readonly [aciToolBrand]: true;
 	readonly name: string;
 	readonly description: string;
+	/** The Zod schema the tool was defined with (the model receives its JSON Schema). */
+	readonly inputSchema: z.ZodType;
 	readonly risk: ToolRisk;
 	readonly timeoutMs: number | undefined;
 	readonly requiredFeature: FeatureId | undefined;

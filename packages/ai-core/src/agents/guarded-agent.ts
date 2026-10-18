@@ -9,6 +9,8 @@ import {
 	type ToolLoopAgentSettings,
 	type ToolSet,
 } from "ai";
+import type { FatalErrorCode, FatalLatch } from "../aci/fatal";
+import { fatalLatchOf } from "../aci/tool-set";
 import type { GuardedToolSet } from "../aci/types";
 import { ConfigError } from "../config/load";
 import { PlatformError, type PlatformErrorCode } from "../errors";
@@ -46,14 +48,15 @@ export interface AgentTokenTotals {
  * Closed classification of the error that ended a run: the `PlatformError` code, or
  * `"unexpected"` for anything else. AI SDK `APICallError`s count as `provider-unavailable`.
  */
-export type AgentRunErrorCode = PlatformErrorCode | "unexpected";
+export type AgentRunErrorCode = PlatformErrorCode | FatalErrorCode | "unexpected";
 
 /** The fixed learner-facing text recorded for every run error (never the raw error message). */
 export const AGENT_RUN_ERROR_MESSAGE = "エージェントの実行中にエラーが発生しました。";
 
 /**
  * Why a run ended in `error`. The summary is sent to the browser as `finish` message metadata,
- * so it holds only a closed code and a fixed message: a raw error message can carry API keys,
+ * so it holds only a closed code and a vetted message (fixed, or a fatal tool error's
+ * `learnerMessage`): a raw error message can carry API keys,
  * request bodies or internal hosts (plan "Error Handling", constitution principle 7).
  */
 export interface AgentRunError {
@@ -184,6 +187,15 @@ function runError(error: unknown): AgentRunError {
 }
 
 /**
+ * Reads only the latch, never a tool result. A stop condition (not an abort) ends the loop because
+ * an abort drops the stream's `finish` part and `onEnd` (spike S-1), and the learner-facing message
+ * rides on `finish`.
+ */
+function latchTripped(latch: FatalLatch): StopCondition<ToolSet> {
+	return () => latch.error !== undefined;
+}
+
+/**
  * `generateText` has no `onError` and rejects instead, so a direct `agent.generate()` that throws
  * would leave `done` pending. This subclass finalises the run with the error, then rethrows it.
  */
@@ -220,6 +232,13 @@ export function createGuardedAgent<TOOLS extends ToolSet>(
 ): GuardedAgent<TOOLS> {
 	assertValidLimits(options.limits);
 	assertToolCount(options.tools);
+	// The latch is the one the tool set was built with (`runtime.fatal`): one instance, no mismatch.
+	const fatal = fatalLatchOf(options.tools);
+	if (fatal?.error !== undefined) {
+		throw new ConfigError(
+			"致命的エラーのラッチが使用済みです。ラッチは実行ごとに新しく作ってください。",
+		);
+	}
 
 	const { clock, limits } = options;
 	const observers = [...(options.observers ?? [])];
@@ -249,15 +268,23 @@ export function createGuardedAgent<TOOLS extends ToolSet>(
 	function finalise(error?: unknown): AgentRunSummary {
 		if (finalSummary !== undefined) return finalSummary;
 		abortSignal.removeEventListener("abort", onAbort);
-		const abort = abortCause();
-		const errored = abort === undefined && error !== undefined;
+		// A tripped latch outranks an abort that arrives with it (S-1: an abort would drop `finish`).
+		const latched = fatal?.error;
+		const abort = latched === undefined ? abortCause() : undefined;
+		const errored = latched !== undefined || (abort === undefined && error !== undefined);
 		const summary: AgentRunSummary = Object.freeze({
 			stopReason: deriveStopReason({ ...(abort ? { abort } : {}), errored, fired: record }),
 			steps,
 			totalTokens: Object.freeze({ ...totals }),
 			elapsedMs: clock.now() - startedAt,
 			toolsCalled: Object.freeze([...toolsCalled]),
-			error: errored ? Object.freeze(runError(error)) : undefined,
+			error: errored
+				? Object.freeze(
+						latched === undefined
+							? runError(error)
+							: { code: latched.code, message: latched.learnerMessage },
+					)
+				: undefined,
 		});
 		finalSummary = summary;
 		resolveDone(summary);
@@ -303,7 +330,9 @@ export function createGuardedAgent<TOOLS extends ToolSet>(
 		model: options.model,
 		instructions: options.instructions,
 		tools: options.tools,
-		stopWhen: stopWhen satisfies StopCondition<TOOLS>[],
+		stopWhen: (fatal === undefined
+			? stopWhen
+			: [...stopWhen, latchTripped(fatal)]) satisfies StopCondition<TOOLS>[],
 		...(options.providerOptions ? { providerOptions: options.providerOptions } : {}),
 		onStepEnd,
 		onEnd: () => {

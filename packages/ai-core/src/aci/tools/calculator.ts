@@ -216,7 +216,12 @@ const calculatorInputSchema = z.object({
 export function createCalculatorTool(): AciTool<{ expression: string }, CalculatorResult> {
 	return defineAciTool({
 		name: CALCULATOR_TOOL_NAME,
-		description: "数式を正確に計算します。暗算せず、計算が必要なときはこのツールを使ってください。",
+		description: [
+			"数式を正確に計算して結果を返す。",
+			"使うとき: 四則演算、べき乗、括弧を含む数値計算が必要なとき（暗算せずにこのツールを使う）。",
+			"使わないとき: 数式を含まない質問のとき、通貨や単位の換算のとき。",
+			'例: expression="(1 + 2) * 3"',
+		].join("\n"),
 		inputSchema: calculatorInputSchema,
 		risk: "read-only",
 		execute: ({ expression }) => ({ expression, result: evaluateExpression(expression) }),
