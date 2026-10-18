@@ -64,6 +64,11 @@ env = { AI_TEST_RUN_MODE = "mock", AI_TEST_SUITE = "container" }
 # Only @platform/ai-core has container tests, so the other workspaces' configs need no such suite.
 run = "pnpm --filter @platform/ai-core run test"
 
+[tasks."seed:samples"]
+description = "Seed the sample data for the M3 modules (help-desk FAQ and tickets); --reset empties the help-desk tables first"
+# local / live seed the Compose Postgres (run services:up:db first); mock seeds a throwaway in-memory database.
+run = "node --env-file-if-exists=.env.local scripts/seed-samples.ts"
+
 [tasks."e2e:fixtures"]
 description = "Regenerate the E2E SSE fixtures from the Route Handlers in mock mode"
 env = { SSE_FIXTURES = "write", AI_TEST_RUN_MODE = "mock", AI_TEST_SUITE = "gate" }
