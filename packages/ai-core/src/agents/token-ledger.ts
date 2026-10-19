@@ -1,3 +1,5 @@
+import type { AgentRunSummary } from "./guarded-agent";
+
 /** What a provider reported for one call. Any field can be missing (some local models report none). */
 export interface UsageInput {
 	readonly inputTokens?: number | undefined;
@@ -80,4 +82,17 @@ export class TokenLedger {
 			total: Object.freeze(total),
 		});
 	}
+}
+
+/**
+ * The ledger's usage for one finished run (003 W1 review F-10). `AgentRunSummary.totalTokens` is
+ * input and output (cache reads and reasoning are inside those two). A run that took no step, or
+ * whose provider reported nothing, is `undefined`: unavailable, never estimated.
+ */
+export function usageFromRun(
+	summary: Pick<AgentRunSummary, "totalTokens">,
+): UsageInput | undefined {
+	const { input, output } = summary.totalTokens;
+	if (input + output === 0) return undefined;
+	return { inputTokens: input, outputTokens: output, totalTokens: input + output };
 }

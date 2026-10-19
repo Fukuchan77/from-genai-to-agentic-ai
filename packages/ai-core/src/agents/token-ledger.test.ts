@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { TokenLedger } from "./token-ledger";
+import { TokenLedger, usageFromRun } from "./token-ledger";
 
 describe("TokenLedger", () => {
 	it("starts empty", () => {
@@ -103,5 +103,44 @@ describe("TokenLedger", () => {
 
 		expect(Object.keys(ledger.breakdown().byRole)).toEqual(["__proto__"]);
 		expect(ledger.breakdown().total.totalTokens).toBe(2);
+	});
+});
+
+describe("usageFromRun (W1 review F-10)", () => {
+	const totals = (input: number, output: number) => ({ input, output, cacheRead: 0, reasoning: 0 });
+
+	it("maps a run's token totals to the ledger's usage", () => {
+		expect(usageFromRun({ totalTokens: totals(100, 20) })).toEqual({
+			inputTokens: 100,
+			outputTokens: 20,
+			totalTokens: 120,
+		});
+	});
+
+	it("does not count cache reads or reasoning again: they are inside input and output", () => {
+		const usage = usageFromRun({
+			totalTokens: { input: 100, output: 20, cacheRead: 80, reasoning: 15 },
+		});
+		expect(usage?.totalTokens).toBe(120);
+	});
+
+	it("says the usage is unknown when the run reported no tokens (no step ran, or the provider is silent)", () => {
+		expect(usageFromRun({ totalTokens: totals(0, 0) })).toBeUndefined();
+	});
+
+	it("takes a provider that reports only the output as known", () => {
+		expect(usageFromRun({ totalTokens: totals(0, 7) })).toEqual({
+			inputTokens: 0,
+			outputTokens: 7,
+			totalTokens: 7,
+		});
+	});
+
+	it("feeds the ledger so the role's total matches the run", () => {
+		const ledger = new TokenLedger();
+		ledger.record("search", usageFromRun({ totalTokens: totals(10, 5) }));
+		ledger.record("market", usageFromRun({ totalTokens: totals(0, 0) }));
+		expect(ledger.breakdown().byRole.search).toMatchObject({ totalTokens: 15 });
+		expect(ledger.breakdown().byRole.market).toBe("unknown");
 	});
 });

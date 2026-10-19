@@ -23,16 +23,23 @@ export function createNamedObserver(
 export const EXTERNAL_CONTENT_KINDS = ["arxiv-abstract", "file-content", "mcp-response"] as const;
 export type ExternalContentKind = (typeof EXTERNAL_CONTENT_KINDS)[number];
 
+/** The longest `source` a record may carry: an origin is short, so a longer one is content. */
+export const MAX_EXTERNAL_SOURCE_CHARACTERS = 512;
+
 /** Where external content came from. Never the content itself. */
 export interface ExternalContentIngestion {
 	readonly kind: ExternalContentKind;
 	/** A path, an arXiv ID or `server:tool`: enough to find the origin, never the text. */
 	readonly source: string;
+	/** The agent that took it in; set by a log's `forAgent` view. */
+	readonly agent?: string | undefined;
 }
 
 export interface ExternalContentLog {
 	record(ingestion: ExternalContentIngestion): void;
 	entries(): readonly ExternalContentIngestion[];
+	/** A view over the same log that stamps `agent` on every record, so 004 can tell who read what. */
+	forAgent(agent: string): ExternalContentLog;
 }
 
 /**
@@ -41,14 +48,27 @@ export interface ExternalContentLog {
  */
 export function createExternalContentLog(): ExternalContentLog {
 	const log: ExternalContentIngestion[] = [];
-	return {
-		record: ({ kind, source }) => {
-			if (!(EXTERNAL_CONTENT_KINDS as readonly string[]).includes(kind)) {
-				throw new RangeError(`unknown external content kind: ${String(kind)}`);
-			}
-			if (source === "") throw new RangeError("source must not be empty.");
-			log.push(Object.freeze({ kind, source }));
-		},
-		entries: () => [...log],
-	};
+	function view(agent: string | undefined): ExternalContentLog {
+		return {
+			record: ({ kind, source, agent: given }) => {
+				if (!(EXTERNAL_CONTENT_KINDS as readonly string[]).includes(kind)) {
+					throw new RangeError(`unknown external content kind: ${String(kind)}`);
+				}
+				if (source === "") throw new RangeError("source must not be empty.");
+				if (Array.from(source).length > MAX_EXTERNAL_SOURCE_CHARACTERS) {
+					throw new RangeError(
+						`source must be at most ${MAX_EXTERNAL_SOURCE_CHARACTERS} characters: it names an origin, not the content.`,
+					);
+				}
+				const by = agent ?? given;
+				log.push(Object.freeze({ kind, source, ...(by === undefined ? {} : { agent: by }) }));
+			},
+			entries: () => [...log],
+			forAgent: (name) => {
+				if (name === "") throw new RangeError("agent name must not be empty.");
+				return view(name);
+			},
+		};
+	}
+	return view(undefined);
 }

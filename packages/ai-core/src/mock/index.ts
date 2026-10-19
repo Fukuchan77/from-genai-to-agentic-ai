@@ -1,6 +1,7 @@
 import { M3_1_SCENARIOS } from "../../fixtures/scenarios/m3-1";
 import { M3_2_SCENARIOS } from "../../fixtures/scenarios/m3-2";
 import { M3_3_SCENARIOS } from "../../fixtures/scenarios/m3-3";
+import { M3_4_SCENARIOS } from "../../fixtures/scenarios/m3-4";
 import type { ScenarioDefinition } from "./scenario";
 
 /**
@@ -12,6 +13,7 @@ export const M3_SCENARIOS: readonly ScenarioDefinition[] = Object.freeze([
 	...M3_1_SCENARIOS,
 	...M3_2_SCENARIOS,
 	...M3_3_SCENARIOS,
+	...M3_4_SCENARIOS,
 ]);
 
 export { M1_2_SCENARIOS } from "../../fixtures/scenarios/m1-2";
@@ -27,6 +29,12 @@ export { M2_4_SAMPLE_TASKS, M2_4_SCENARIOS } from "../../fixtures/scenarios/m2-4
 export { M3_1_SAMPLE_TASKS, M3_1_SCENARIOS } from "../../fixtures/scenarios/m3-1";
 export { M3_2_SAMPLE_INQUIRIES, M3_2_SCENARIOS } from "../../fixtures/scenarios/m3-2";
 export { M3_3_SAMPLE_INSTRUCTIONS, M3_3_SCENARIOS } from "../../fixtures/scenarios/m3-3";
+export { M3_4_SAMPLE_THEMES, M3_4_SCENARIOS } from "../../fixtures/scenarios/m3-4";
+export {
+	ARXIV_FIXTURE_FEEDS,
+	type ArxivFixtureFeed,
+	createArxivFixtureFetcher,
+} from "./arxiv-fixtures";
 export { type Cassette, type CassetteStore, createCassetteStore } from "./cassette-store";
 export { createDeterministicEmbeddingModel } from "./deterministic-embedding";
 export {

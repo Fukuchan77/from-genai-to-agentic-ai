@@ -10,6 +10,7 @@ import {
 	M3_1_SAMPLE_TASKS,
 	M3_2_SAMPLE_INQUIRIES,
 	M3_3_SAMPLE_INSTRUCTIONS,
+	M3_4_SAMPLE_THEMES,
 } from "../mock";
 import type { RecordingStore } from "../mock/recording";
 import { createFakeClock } from "../ports/clock";
@@ -204,6 +205,24 @@ describe("createModelGateway resolve (mock)", () => {
 		});
 
 		expect(first.toolCalls.map((call) => call.toolName)).toEqual(["runPython"]);
+	});
+
+	it("answers the M3-4 research scenario with a searchPapers call on the supervisor's first step", async () => {
+		const gateway = createModelGateway({ config: configFor({}) });
+		const chat = await gateway.resolve({ purpose: "chat" });
+
+		const first = await generateText({
+			model: chat.model,
+			prompt: `次のテーマについて調査して、Markdown のレポートを書いてください。\n\n<research-theme>\n${M3_4_SAMPLE_THEMES.default}\n</research-theme>`,
+			tools: {
+				searchPapers: tool({
+					inputSchema: jsonSchema({ type: "object" }),
+					execute: async () => "ok",
+				}),
+			},
+		});
+
+		expect(first.toolCalls.map((call) => call.toolName)).toEqual(["searchPapers"]);
 	});
 
 	it("binds a separate mock model per purpose and uses injected scenarios", async () => {

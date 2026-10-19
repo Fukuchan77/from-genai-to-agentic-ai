@@ -94,4 +94,63 @@ describe("createExternalContentLog (CL-10)", () => {
 
 		expect(second.entries()).toEqual([]);
 	});
+
+	describe("the agent that took the content in (W1 review F-11)", () => {
+		it("stamps the agent name on what a per-agent view records, in the shared log", () => {
+			const log = createExternalContentLog();
+			log.forAgent("search").record({ kind: "arxiv-abstract", source: "2401.00001" });
+			log.forAgent("reading").record({ kind: "arxiv-abstract", source: "2401.00002" });
+			log.record({ kind: "file-content", source: "a.md" });
+
+			expect(log.entries()).toEqual([
+				{ kind: "arxiv-abstract", source: "2401.00001", agent: "search" },
+				{ kind: "arxiv-abstract", source: "2401.00002", agent: "reading" },
+				{ kind: "file-content", source: "a.md" },
+			]);
+		});
+
+		it("lets the view's agent win over one the caller put on the record", () => {
+			const log = createExternalContentLog();
+			log.forAgent("search").record({ kind: "file-content", source: "a", agent: "other" });
+			expect(log.entries()).toEqual([{ kind: "file-content", source: "a", agent: "search" }]);
+		});
+
+		it("adds no agent key at all to a record that has no agent", () => {
+			const log = createExternalContentLog();
+			log.record({ kind: "file-content", source: "a.md" });
+			expect(log.entries()).toStrictEqual([{ kind: "file-content", source: "a.md" }]);
+		});
+
+		it("rejects an empty agent name", () => {
+			expect(() => createExternalContentLog().forAgent("")).toThrow(RangeError);
+		});
+
+		it("keeps the checks of the log on a view", () => {
+			const view = createExternalContentLog().forAgent("search");
+			expect(() => view.record({ kind: "web-page" as never, source: "x" })).toThrow(RangeError);
+			expect(() => view.record({ kind: "file-content", source: "" })).toThrow(RangeError);
+		});
+	});
+
+	describe("the length of a source", () => {
+		it("accepts a source of exactly 512 characters", () => {
+			const log = createExternalContentLog();
+			log.record({ kind: "file-content", source: "x".repeat(512) });
+			expect(log.entries()).toHaveLength(1);
+		});
+
+		it("rejects a source of 513 characters, so content cannot be passed as a source", () => {
+			const log = createExternalContentLog();
+			expect(() => log.record({ kind: "file-content", source: "x".repeat(513) })).toThrow(
+				RangeError,
+			);
+			expect(log.entries()).toEqual([]);
+		});
+
+		it("counts characters, not UTF-16 units", () => {
+			const log = createExternalContentLog();
+			log.record({ kind: "file-content", source: "😀".repeat(512) });
+			expect(log.entries()).toHaveLength(1);
+		});
+	});
 });

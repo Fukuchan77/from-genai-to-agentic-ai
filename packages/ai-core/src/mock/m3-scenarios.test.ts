@@ -187,8 +187,8 @@ describe("findUnresolvedFixtureMarkers (detector)", () => {
  * Each wave that adds M3 scenarios (10.1, 15.1, 18.5, 22.5, 27.1) updates these two numbers, so a
  * scenario added or dropped without a matching update fails here instead of passing unnoticed.
  */
-const EXPECTED_M3_SCENARIOS = 11;
-const EXPECTED_M3_TURNS = 42;
+const EXPECTED_M3_SCENARIOS = 13;
+const EXPECTED_M3_TURNS = 63;
 
 const PRIOR_SCENARIOS: readonly ScenarioDefinition[] = [
 	...M1_2_SCENARIOS,

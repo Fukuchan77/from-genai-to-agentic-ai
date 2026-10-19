@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/">
+  <title type="html">ArXiv Query: search_query=all:single</title>
+  <id>http://arxiv.org/api/example-single</id>
+  <updated>2026-10-18T00:00:00-04:00</updated>
+  <opensearch:totalResults>1</opensearch:totalResults>
+  <entry>
+    <id>http://arxiv.org/abs/2405.00001v3</id>
+    <updated>2024-06-01T10:00:00Z</updated>
+    <published>2024-05-01T08:00:00Z</published>
+    <title>The Only Matching Paper</title>
+    <summary>A single result must still be handled as a list.</summary>
+    <author><name>Solo Author</name></author>
+    <link href="http://arxiv.org/abs/2405.00001v3" rel="alternate" type="text/html"/>
+  </entry>
+</feed>
