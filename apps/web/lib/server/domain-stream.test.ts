@@ -1,10 +1,14 @@
 import type { AnalysisEvent, AnalysisResult } from "@platform/ai-core/analysis";
 import type { HelpdeskEvent } from "@platform/ai-core/helpdesk";
+import type { ResearchEvent, ResearchResult, ResearchUsage } from "@platform/ai-core/research";
 import { describe, expect, it } from "vitest";
 import {
 	createAnalysisStreamer,
 	createHelpdeskStreamer,
+	createResearchStreamer,
 	writeAnalysisResult,
+	writeResearchResult,
+	writeResearchUsage,
 } from "./domain-stream";
 
 type Part = { type: string; [key: string]: unknown };
@@ -388,5 +392,275 @@ describe("writeAnalysisResult", () => {
 
 		expect(JSON.stringify(parts)).not.toContain(PNG_BASE64);
 		expect(JSON.stringify(parts)).not.toContain('"code"');
+	});
+});
+
+// --- Research (Req 4.2, 4.5, 4.6, 4.8-4.10) ---
+
+describe("createResearchStreamer", () => {
+	const card = {
+		arxivId: "2401.01234",
+		title: "Hierarchical Agents",
+		authors: ["A. Author"],
+		publishedAt: "2024-01-02",
+		url: "https://arxiv.org/abs/2401.01234",
+	};
+
+	it("writes every event as data-research-event, numbered in order, with the agent and the kind", () => {
+		const { parts, writer } = collector();
+		const write = createResearchStreamer(writer);
+		const events: ResearchEvent[] = [
+			{ agent: "supervisor", kind: "call", detail: { callee: "search", task: "探す" } },
+			{ agent: "search", kind: "tool", detail: { name: "searchArxiv", input: "agents" } },
+			{ agent: "search", kind: "card", detail: card },
+			{ agent: "search", kind: "summary", detail: { text: "2 件見つけた。" } },
+			{ agent: "reading", kind: "error", detail: { reason: "ステップの上限" } },
+			{ agent: "supervisor", kind: "summary", detail: { characters: 1200, missing: 1 } },
+			{ agent: "market", kind: "summary", detail: { text: "影響は限定的。" } },
+		];
+
+		for (const event of events) write(event);
+
+		expect(parts.map((part) => [part.type, part.id])).toEqual(
+			events.map((_, index) => ["data-research-event", `event-${index + 1}`]),
+		);
+		expect(parts.map((part) => (part.data as { agent: string; kind: string }).agent)).toEqual(
+			events.map((event) => event.agent),
+		);
+		expect(parts[0]?.data).toEqual({
+			agent: "supervisor",
+			kind: "call",
+			detail: { callee: "search", task: "探す" },
+		});
+		expect(parts[2]?.data).toEqual({ agent: "search", kind: "card", detail: card });
+		expect(parts[1]?.data).toEqual({
+			agent: "search",
+			kind: "tool",
+			detail: { name: "searchArxiv", input: "agents" },
+		});
+		expect(parts[5]?.data).toEqual({
+			agent: "supervisor",
+			kind: "summary",
+			detail: { characters: 1200, missing: 1 },
+		});
+		expect(parts[6]?.data).toEqual({
+			agent: "market",
+			kind: "summary",
+			detail: { text: "影響は限定的。" },
+		});
+	});
+
+	it("copies a detail by name, so an abstract or any other field never reaches the stream", () => {
+		const { parts, writer } = collector();
+		const write = createResearchStreamer(writer);
+
+		write({
+			agent: "search",
+			kind: "card",
+			detail: { ...card, abstract: "ABSTRACT-TEXT", secret: FAKE_PASSWORD },
+		});
+		write({
+			agent: "reading",
+			kind: "tool",
+			detail: { name: "getPaperAbstract", input: "2401.01234", transcript: "INNER-TRANSCRIPT" },
+		});
+
+		const text = JSON.stringify(parts);
+		expect(text).not.toContain("ABSTRACT-TEXT");
+		expect(text).not.toContain(FAKE_PASSWORD);
+		expect(text).not.toContain("INNER-TRANSCRIPT");
+		expect(parts[0]?.data).toEqual({ agent: "search", kind: "card", detail: card });
+	});
+
+	it("leaves out a field of the wrong type instead of passing it on", () => {
+		const { parts, writer } = collector();
+		const write = createResearchStreamer(writer);
+
+		write({
+			agent: "search",
+			kind: "card",
+			detail: { ...card, authors: "not a list", title: { nested: true }, publishedAt: 5 },
+		});
+		write({
+			agent: "search",
+			kind: "card",
+			detail: { ...card, authors: ["ok", 3, { x: 1 }] },
+		});
+
+		expect(parts[0]?.data).toEqual({
+			agent: "search",
+			kind: "card",
+			detail: { arxivId: card.arxivId, url: card.url },
+		});
+		const second = parts[1]?.data as { detail: { authors: unknown } } | undefined;
+		expect(second?.detail.authors).toEqual(["ok"]);
+	});
+
+	it("leaves out a number that arrives as text", () => {
+		const { parts, writer } = collector();
+		createResearchStreamer(writer)({
+			agent: "supervisor",
+			kind: "summary",
+			detail: { characters: "1200", missing: 2 },
+		});
+		expect(parts[0]?.data).toEqual({
+			agent: "supervisor",
+			kind: "summary",
+			detail: { missing: 2 },
+		});
+	});
+
+	it("drops an event whose agent or kind is not in the vocabulary", () => {
+		const { parts, writer } = collector();
+		const write = createResearchStreamer(writer);
+
+		write({ agent: "intruder", kind: "call", detail: {} } as unknown as ResearchEvent);
+		write({ agent: "search", kind: "secret", detail: {} } as unknown as ResearchEvent);
+		write({ agent: "search", kind: "summary", detail: { text: "ok" } });
+
+		expect(parts).toHaveLength(1);
+		expect(parts[0]?.id).toBe("event-1");
+	});
+
+	it("writes at once, so the event reaches the stream before the agent's next step", () => {
+		const { parts, writer } = collector();
+		createResearchStreamer(writer)({ agent: "search", kind: "summary", detail: { text: "x" } });
+		expect(parts).toHaveLength(1);
+	});
+
+	it("keeps a separate count for each streamer", () => {
+		const first = collector();
+		const second = collector();
+		createResearchStreamer(first.writer)({
+			agent: "search",
+			kind: "summary",
+			detail: { text: "a" },
+		});
+		createResearchStreamer(second.writer)({
+			agent: "search",
+			kind: "summary",
+			detail: { text: "b" },
+		});
+		expect(second.parts[0]?.id).toBe("event-1");
+	});
+});
+
+describe("writeResearchUsage", () => {
+	const usage: ResearchUsage = {
+		usage: {
+			byRole: {
+				supervisor: {
+					inputTokens: 600,
+					outputTokens: 100,
+					totalTokens: 700,
+					calls: 4,
+					unknownCalls: 0,
+				},
+				market: "unknown",
+			},
+			total: { inputTokens: 600, outputTokens: 100, totalTokens: 700 },
+		},
+		calls: 3,
+		maxCalls: 8,
+	};
+
+	it("writes the breakdown and the call count as a state part with id `usage`", () => {
+		const { parts, writer } = collector();
+		writeResearchUsage(writer, usage);
+		expect(parts).toEqual([
+			{
+				type: "data-research-usage",
+				id: "usage",
+				data: {
+					byRole: {
+						supervisor: {
+							inputTokens: 600,
+							outputTokens: 100,
+							totalTokens: 700,
+							calls: 4,
+							unknownCalls: 0,
+						},
+						market: "unknown",
+					},
+					total: { inputTokens: 600, outputTokens: 100, totalTokens: 700 },
+					calls: 3,
+					maxCalls: 8,
+				},
+			},
+		]);
+	});
+
+	it("writes under the same id every time, so the newest replaces the one before", () => {
+		const { parts, writer } = collector();
+		writeResearchUsage(writer, usage);
+		writeResearchUsage(writer, { ...usage, calls: 4 });
+		expect(parts.map((part) => part.id)).toEqual(["usage", "usage"]);
+		const newest = parts[1]?.data as { calls: number } | undefined;
+		expect(newest?.calls).toBe(4);
+	});
+
+	it("copies the fields by name", () => {
+		const { parts, writer } = collector();
+		writeResearchUsage(writer, {
+			...usage,
+			usage: {
+				...usage.usage,
+				byRole: {
+					search: {
+						inputTokens: 1,
+						outputTokens: 2,
+						totalTokens: 3,
+						calls: 1,
+						unknownCalls: 0,
+						leaked: FAKE_PASSWORD,
+					} as never,
+				},
+			},
+		});
+		expect(JSON.stringify(parts)).not.toContain(FAKE_PASSWORD);
+	});
+});
+
+describe("writeResearchResult", () => {
+	const result: ResearchResult = {
+		report: "# レポート\n\n本文",
+		warnings: ["警告 1"],
+		missing: [{ agent: "reading", reason: "ステップの上限" }],
+		usage: {
+			byRole: {},
+			total: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+		},
+		calls: 3,
+	};
+
+	it("writes the checked report, the warnings and the gaps as data-research-result", () => {
+		const { parts, writer } = collector();
+		writeResearchResult(writer, result);
+		expect(parts).toEqual([
+			{
+				type: "data-research-result",
+				id: "result",
+				data: {
+					report: "# レポート\n\n本文",
+					warnings: ["警告 1"],
+					missing: [{ agent: "reading", reason: "ステップの上限" }],
+				},
+			},
+		]);
+	});
+
+	it("copies a gap by name", () => {
+		const { parts, writer } = collector();
+		writeResearchResult(writer, {
+			...result,
+			missing: [{ agent: "reading", reason: "x", secret: FAKE_PASSWORD } as never],
+		});
+		expect(JSON.stringify(parts)).not.toContain(FAKE_PASSWORD);
+	});
+
+	it("leaves out the usage: the usage part holds it", () => {
+		const { parts, writer } = collector();
+		writeResearchResult(writer, result);
+		expect(JSON.stringify(parts)).not.toContain("inputTokens");
 	});
 });

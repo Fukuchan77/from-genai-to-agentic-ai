@@ -26,6 +26,7 @@ import {
 } from "@platform/ai-core/mcp";
 import {
 	CASSETTE_FIXTURE_DIRECTORY,
+	createArxivFixtureFetcher,
 	createCassetteStore,
 	createFixtureHttpFetcher,
 	createFixtureTranscriptSource,
@@ -67,6 +68,7 @@ import {
 	createPostgresDatabase,
 	type RagDatabaseHandle,
 } from "@platform/ai-core/rag";
+import { type ArxivClient, createArxivClient } from "@platform/ai-core/research";
 import {
 	createE2bProvider,
 	createLocalDockerProvider,
@@ -812,4 +814,51 @@ export function setSandboxForTesting(setup: SandboxSetup | undefined): void {
 	if (previous) void previous.then(stopSetup, () => undefined);
 	if (setup) holder[SANDBOX_KEY] = Promise.resolve(setup);
 	else delete holder[SANDBOX_KEY];
+}
+
+// --- arXiv client (plan C13, Req 4.3, 4.7) ---
+
+/**
+ * The arXiv client for this platform. `mock` reads the fixture feed and needs no spacing; elsewhere
+ * the platform's guarded `HttpFetcher` is used (so `AI_RECORD=1` records arXiv too) and the client
+ * keeps arXiv's terms: one connection, three seconds apart, a day-long cache.
+ */
+export function createArxivClientFor(
+	platform: Pick<Platform, "mode" | "ports" | "clock">,
+): ArxivClient {
+	return platform.mode === "mock"
+		? createArxivClient({
+				fetcher: createArxivFixtureFetcher(),
+				clock: platform.clock,
+				options: { minIntervalMs: 0 },
+			})
+		: createArxivClient({ fetcher: platform.ports.http, clock: platform.clock });
+}
+
+const ARXIV_CLIENT_KEY = Symbol.for("from-genai-to-agentic-ai.arxiv-client");
+
+type ArxivClientHolder = { [ARXIV_CLIENT_KEY]?: Promise<ArxivClient> };
+
+/**
+ * The shared client, kept on `globalThis` for the reason the platform is: a Route Handler can be a
+ * separate bundle and dev reloads modules, and a second client would be a second queue (breaking
+ * "one connection") and a second cache. A failed build is not cached.
+ */
+export function getArxivClient(): Promise<ArxivClient> {
+	const holder = globalThis as ArxivClientHolder;
+	const existing = holder[ARXIV_CLIENT_KEY];
+	if (existing) return existing;
+	const created = getPlatform().then(createArxivClientFor);
+	holder[ARXIV_CLIENT_KEY] = created;
+	created.catch(() => {
+		if (holder[ARXIV_CLIENT_KEY] === created) delete holder[ARXIV_CLIENT_KEY];
+	});
+	return created;
+}
+
+/** Test seam: installs `client` as the shared one, or clears it with `undefined`. */
+export function setArxivClientForTesting(client: ArxivClient | undefined): void {
+	const holder = globalThis as ArxivClientHolder;
+	if (client) holder[ARXIV_CLIENT_KEY] = Promise.resolve(client);
+	else delete holder[ARXIV_CLIENT_KEY];
 }

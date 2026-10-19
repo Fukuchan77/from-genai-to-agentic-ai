@@ -6,6 +6,7 @@ import { expect, type Page, test } from "@playwright/test";
 import { M2_1_SAMPLE_QUESTIONS } from "../../../packages/ai-core/fixtures/scenarios/m2-1";
 import { M3_1_SAMPLE_TASKS } from "../../../packages/ai-core/fixtures/scenarios/m3-1";
 import { M3_3_SAMPLE_INSTRUCTIONS } from "../../../packages/ai-core/fixtures/scenarios/m3-3";
+import { M3_4_SAMPLE_THEMES } from "../../../packages/ai-core/fixtures/scenarios/m3-4";
 // A pure module (no vitest import), unlike the `@platform/ai-core/testing` index.
 import { buildTextPdf } from "../../../packages/ai-core/src/testing/pdf-builder";
 import { fillUntilEnabled } from "./support/form";
@@ -443,4 +444,55 @@ test("analysis: files that cannot be analysed are refused by the real route befo
 	expect(disguised.status()).toBe(400);
 	expect(tooBig.status()).toBe(413);
 	expect((await tooBig.json()).error.code).toBe("payload-too-large");
+});
+
+// Module 3-4 (plan C13, risk R-1): `fast-xml-parser` must survive the Turbopack build and parse the
+// arXiv fixture feed inside the real runtime (a `card` event exists only if a feed was parsed), the
+// arXiv client must be reachable from the Route Handler's own bundle, and the whole hierarchy
+// (supervisor, three sub-agents, citation check) must complete over the real stream.
+
+test("research: the sample theme runs through the real route with events by agent, usage and a checked report", async ({
+	request,
+}) => {
+	const response = await request.post("/api/research", {
+		data: { theme: M3_4_SAMPLE_THEMES.default },
+	});
+
+	expect(response.status()).toBe(200);
+	const text = await response.text();
+	for (const agent of ["supervisor", "search", "reading", "market"]) {
+		expect(text).toContain(`"agent":"${agent}"`);
+	}
+	// A card is written only for a paper the arXiv client parsed from the fixture feed.
+	expect(text).toContain('"kind":"card"');
+	expect(text).toContain('"arxivId":"2401.01234"');
+	expect(text).toContain('"type":"data-research-usage"');
+	expect(text).toContain('"type":"data-research-result"');
+	expect(text).toContain("## 引用の確認");
+	expect(text).not.toContain("未取得の手法 X");
+});
+
+test("research: a sub-agent that returns nothing is named in the report by the real route", async ({
+	request,
+}) => {
+	const response = await request.post("/api/research", {
+		data: { theme: M3_4_SAMPLE_THEMES.partialFailure },
+	});
+
+	expect(response.status()).toBe(200);
+	const text = await response.text();
+	expect(text).toContain("調査できなかった観点");
+	expect(text).toContain('"agent":"reading"');
+	expect(text).toContain('"type":"data-research-result"');
+});
+
+test("research: the call limit and the checks of the real route apply", async ({ request }) => {
+	const limited = await request.post("/api/research", {
+		data: { theme: M3_4_SAMPLE_THEMES.default, maxSubagentCalls: 2 },
+	});
+	const invalid = await request.post("/api/research", { data: { theme: "" } });
+
+	expect(await limited.text()).toContain('"calls":2,"maxCalls":2');
+	expect(invalid.status()).toBe(400);
+	expect((await invalid.json()).error.code).toBe("invalid-request");
 });

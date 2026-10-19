@@ -18,10 +18,12 @@ import { createMockSandboxProvider } from "@platform/ai-core/sandbox";
 import { ARTICLE_FETCH_LIMITS, SourceFetchError } from "@platform/ai-core/summarize";
 import { describe, expect, it, vi } from "vitest";
 import {
+	createArxivClientFor,
 	createGuardedFetch,
 	createKnowledgeBase,
 	createMcpRegistry,
 	createPlatform,
+	getArxivClient,
 	getHelpdeskStore,
 	getKnowledgeBase,
 	getMcpRegistry,
@@ -33,6 +35,7 @@ import {
 	mcpServerConfigs,
 	resolveKnowledgeEmbedding,
 	type SandboxDeps,
+	setArxivClientForTesting,
 	setKnowledgeBaseForTesting,
 	setMcpRegistryForTesting,
 	setPlatformForTesting,
@@ -1231,6 +1234,113 @@ describe("getSandboxSelection (plan C13, Req 3.7, 3.8, 3.10)", () => {
 			void provider;
 		} finally {
 			cleanup();
+		}
+	});
+});
+
+// --- arXiv client (plan C13, Req 4.3, 4.7) ---
+
+describe("createArxivClientFor and getArxivClient (plan C13, Req 4.3, 4.7)", () => {
+	const FEED = `<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"><entry><id>http://arxiv.org/abs/2401.01234v1</id><published>2024-01-02T00:00:00Z</published><title>Live Paper</title><summary>S</summary><author><name>A</name></author></entry></feed>`;
+
+	async function settle(): Promise<void> {
+		for (let turn = 0; turn < 10; turn += 1) await new Promise<void>((r) => setImmediate(r));
+	}
+
+	function livePorts() {
+		const fetch = vi.fn(async (_url: string) => ({ status: 200, headers: {}, body: FEED }));
+		return {
+			fetch,
+			ports: {
+				http: { fetch } satisfies HttpFetcher,
+				transcript: { fetchTranscript: vi.fn() } as unknown as TranscriptSource,
+				webSearch: { search: vi.fn(async () => []) } satisfies WebSearchProvider,
+			},
+		};
+	}
+
+	it("answers from the fixture feed in mock mode without a network and without waiting", async () => {
+		const platform = await createPlatform({ env: MOCK_ENV });
+		const client = createArxivClientFor(platform);
+		const started = Date.now();
+
+		const first = await client.search("hierarchical agents", { maxResults: 10 });
+		const second = await client.search("planning", { maxResults: 5 });
+
+		expect(first.map((paper) => paper.arxivId)).toEqual(["2401.01234", "2403.05678", "cs/0501001"]);
+		expect(second).toHaveLength(3);
+		// The 3 s spacing is for the real arXiv; the fixture needs none.
+		expect(Date.now() - started).toBeLessThan(1_000);
+	});
+
+	it("outside mock mode asks the platform's http port at the arXiv API, and keeps the spacing on the platform clock", async () => {
+		const clock = createFakeClock();
+		const { fetch, ports } = livePorts();
+		const platform = await createPlatform({ env: LOCAL_ENV, clock, productionPorts: ports });
+		const client = createArxivClientFor(platform);
+
+		const first = client.search("agents", { maxResults: 1 });
+		await settle();
+		expect(fetch).toHaveBeenCalledTimes(1);
+		expect(String(fetch.mock.calls[0]?.[0])).toMatch(
+			/^https:\/\/export\.arxiv\.org\/api\/query\?/u,
+		);
+		expect((await first).map((paper) => paper.arxivId)).toEqual(["2401.01234"]);
+
+		const second = client.search("planning", { maxResults: 1 });
+		await settle();
+		clock.advanceBy(2_999);
+		await settle();
+		expect(fetch).toHaveBeenCalledTimes(1);
+		clock.advanceBy(1);
+		await settle();
+		expect(fetch).toHaveBeenCalledTimes(2);
+		await second;
+	});
+
+	it("hands out one shared client, so its cache and its queue are the process's", async () => {
+		setPlatformForTesting(await createPlatform({ env: MOCK_ENV }));
+		setArxivClientForTesting(undefined);
+		try {
+			const [first, second] = await Promise.all([getArxivClient(), getArxivClient()]);
+			expect(first).toBe(second);
+			expect(await getArxivClient()).toBe(first);
+			await first.search("agents", { maxResults: 10 });
+			expect(
+				(await getArxivClient().then((client) => client.getAbstract("2401.01234")))?.title,
+			).toContain("Hierarchical");
+		} finally {
+			setArxivClientForTesting(undefined);
+			setPlatformForTesting(undefined);
+		}
+	});
+
+	it("can be replaced and cleared for tests", async () => {
+		setPlatformForTesting(await createPlatform({ env: MOCK_ENV }));
+		const replacement = { search: vi.fn(), getAbstract: vi.fn() };
+		setArxivClientForTesting(replacement);
+		try {
+			expect(await getArxivClient()).toBe(replacement);
+			setArxivClientForTesting(undefined);
+			expect(await getArxivClient()).not.toBe(replacement);
+		} finally {
+			setArxivClientForTesting(undefined);
+			setPlatformForTesting(undefined);
+		}
+	});
+
+	it("does not keep a client when the platform could not be built", async () => {
+		setPlatformForTesting(undefined);
+		setArxivClientForTesting(undefined);
+		vi.stubEnv("AI_TEST_RUN_MODE", "not-a-mode");
+		try {
+			await expect(getArxivClient()).rejects.toThrow();
+			vi.stubEnv("AI_TEST_RUN_MODE", "mock");
+			expect(await getArxivClient()).toBeDefined();
+		} finally {
+			vi.unstubAllEnvs();
+			setArxivClientForTesting(undefined);
+			setPlatformForTesting(undefined);
 		}
 	});
 });
