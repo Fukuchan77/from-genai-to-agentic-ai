@@ -58,7 +58,14 @@
   - ToU: メタデータの保存と共有は可。e-print（PDF）は自前サーバーから配信しない。arXiv の推奨を示唆しない。
   - 解析: `fast-xml-parser` 5.11.2（2026-09-29 公開、MIT、依存 6、install script なし）。`processEntities` を無効にし、`isArray` で `entry` / `author` / `link` を配列化する。
   - advisory: GHSA-8r6m-32jq-jx6q（修正 5.10.1）と GHSA-gh4j-gqv2-49f6（修正 5.7.0）は 5.11.2 で解消。2026 年の他の advisory の修正版は個別確認していない（UNVERIFIED）。
-- **Evidence**: https://info.arxiv.org/help/api/user-manual.html、https://info.arxiv.org/help/api/tou.html、`npm view fast-xml-parser time --json`。
+- **実測（2026-10-19、`curl` で `export.arxiv.org` に 8 回。10〜15 秒間隔にしても 429 が続いた）**:
+  - **429**: `content-type: text/html`、本文は `Rate exceeded.`（14 バイト）。`Retry-After` は付かない。Atom ではないので解析に回してはならない（クライアントはステータスで先に分岐し、解析に渡さない）。
+  - **503**: `content-type: text/html`、本文は 126 バイトの HTML（`<title>503</title>`）。`Retry-After: 0` が付いた。0 秒の指示は 3 秒の間隔で打ち消される（`client.test.ts` の既存テスト）。
+  - **301**: `http://` は `https://export.arxiv.org/...` へ。`Location` は絶対 URL で、`Retry-After: 0` が付く。
+  - **正常系（1 件）**: 200、`application/atom+xml; charset=utf-8`。応答に約 10 秒かかり、複数件・0 件の取得は 60 秒でタイムアウトした。`arxiv:comment`、`arxiv:primary_category`、`category`、`rel="related"` の PDF リンクが付き、`parse.ts` はそのまま解析できる（`fixtures/arxiv/live-single.xml` と `parse.test.ts`）。
+  - **検索語**: `all:attention is all you need` は OR に展開され、期待した論文を返さなかった。フレーズを求めるなら `ti:"..."` の形が要る。
+  - **未実測**: 複数件・0 件の正常系、HTTP 400 のエラーフィード（429 / 503 / タイムアウトに阻まれた）。リダイレクトの追従はガード付き fetch の挙動を未確認。429 の連続は、混雑または私の連続リクエストが原因かを切り分けていない。
+- **Evidence**: https://info.arxiv.org/help/api/user-manual.html、https://info.arxiv.org/help/api/tou.html、`npm view fast-xml-parser time --json`、上記の `curl`（2026-10-19）。
 
 ### I-6: スプレッドシートと CSV の解析（R6、Req 3.1、3.9）
 
@@ -276,7 +283,7 @@
 - ⚠️ AI SDK はツールの例外を `tool-error` に変換して続行する（ADR-5、確認済み）— mitigation: 例外ではなく Run 単位のラッチと内部 abort で止める。ラッチ後にループが確実に止まることは spike S-1 で確認する。
 - ⚠️ Docker の入力転送（ReadonlyRootfs と Tmpfs）と多重化ストリームは未確認（I-11）— mitigation: spike S-5。失敗時はローカルコンテナを必須にせず、Req 3.8 の無効化経路へ落とす。
 - ⚠️ E2B の型（`onResult`、`logs`）と期限切れエラーが未確認（I-11）— mitigation: spike S-4。
-- ⚠️ arXiv の 429 / 503 と `Retry-After` が未確認（I-5）— mitigation: 指数待機を実装し、fixture で固定する。
+- ⚠️ arXiv の複数件・0 件・HTTP 400 の実応答が未確認（I-5）。429 / 503 / `Retry-After` / 301 は 2026-10-19 に実測した — mitigation: 指数待機は実装済みで、実測の本文を `parse.test.ts` で固定した。
 - ⚠️ MCP の注釈はサーバーが提供する信頼できないヒント（ADR-7）— mitigation: 注釈がない、または `destructive` のものは登録しない。
 - ⚠️ arXiv のレート制限が複数インスタンスで跨る（I-5）— mitigation: 本番の境界に明記する（005）。
 - ❓ 致命的エラーの分類（Req 1.3 の「許可されない操作」）と、パス検査（Req 1.5）の拒否の扱い。Req 1.5 は「エラーを返す」と書くため回復可能として扱うが、Req 1.3 との整合は人が確認する — to resolve in: 人の確認（CL）。
@@ -463,3 +470,21 @@ Rancher Desktop の Docker Engine **29.5.3**（API 1.54、aarch64）で、Engine
 - **ルートをまたいだセッションの共有**: `/api/analysis` が作ったセッションを `DELETE /api/analysis/sessions/[id]` が実際に閉じる（応答ヘッダー `x-analysis-session: released`。もう一度で `absent`）。`/api/analysis` と `/api/analysis/sessions/[id]` は別のバンドルになりえるが、レジストリは `globalThis` の 1 つのホルダーにあるため共有される。204 に本文は無いので、閉じたかどうかをヘッダーで返すようにした（W4 で足した）。
 - **最初の実行は失敗した**: Playwright が `m3-3.ts`（シナリオ）を Node のネイティブ ESM で読み、そこから `sandbox/mock.ts` が import する JSON（`mock-success.json`）に到達して `needs an import attribute of "type: json"` で落ちた。Vitest とバンドラーは気にしない。シナリオが使う定数 `MOCK_ERROR_MARKER` を JSON を読まない `sandbox/mock-marker.ts` に分けて解消した（`analysis/scenarios.test.ts` が、シナリオが `mock.ts` を import しないことを守る）。M3-1 のシナリオが `mcp/chat` を import しても問題なかったのは、そこに JSON が無いからである。
 - 未確認: `next dev`（Turbopack の開発モード）での同じ流れ、firefox / webkit での同じ 5 ケース（W4 の締めの `mise run test:e2e` で 3 エンジン全体を実行する）。
+
+## W5 の実サーバー確認（R-1、23.4、2026-10-19、実測）
+
+`mise` の Node 26.12、`next build`（Next.js 16.4.0、Turbopack）と `next start -p 3100`（`AI_RUN_MODE=mock`）で、`apps/web/e2e/real-server.spec.ts` の `research:` の 3 ケースを chromium で実行した（`pnpm --filter web exec playwright test --project=chromium -g "research"`、3 件成功。ビルドを含めて 42 秒）。
+
+- **事前確認（preflight Step 3.5）**: シェルに `NODE_ENV=development` が漏れていた（`env -u NODE_ENV` で外して実行した）。ポート 3100 に待受は無い。Playwright の 3 エンジン（chromium 1243、firefox 1543、webkit 2359）は導入済み。リポジトリの `.githooks` に `pre-push` は無い（`pre-commit` のみ）。`mock` はキー不要。
+- **`serverExternalPackages` に足した集合は空**。`fast-xml-parser` は Turbopack のバンドルに入ったままビルドと実行が通った。`next.config.ts` は変えていない（理由を書けない追加はしない）。`card` イベント（`"kind":"card"`、`"arxivId":"2401.01234"`）がストリームに現れることが、実ランタイムで arXiv のフィクスチャのフィードを解析できた証拠になる。
+- **確認した内容**: `/api/research` が `mock` で完走する（Supervisor、検索・精読・市場影響の 3 つの子、`data-research-event` の 4 つの `agent`、`data-research-usage`、`data-research-result`）。引用の照合が実サーバーで働く（`未取得の手法 X` の行は除かれ、レポートの末尾に `## 引用の確認` が付く）。部分失敗のテーマでは `調査できなかった観点` に精読の欠落が載る。`maxSubagentCalls: 2` は使用量の状態パートに `"calls":2,"maxCalls":2` として現れ、空のテーマは 400 `invalid-request`。
+- **PROVE**: `parseArxivFeed` を空の配列を返すように壊して同じケースを実行すると、`"kind":"card"` の期待で失敗した（`card` が 1 つも流れない）。壊した変更は戻した。最初の壊し方（常に例外を投げる）は到達不能コードで `next build` の型検査が落ち、サーバーが起動しなかった。到達できる壊し方に直した。
+- **arXiv への実接続は未確認**: `mock` のフィクスチャだけで確かめた。`export.arxiv.org` への実際の応答（429 / 503 / `Retry-After` の実挙動、リダイレクト、ガード付き fetch（リダイレクトを辿らない）との相性）は未実測で、フィクスチャは文書化された形式に基づく。
+- 未確認: `next dev` での同じ流れ、firefox / webkit での同じ 3 ケース（W5 の締めの `mise run test:e2e` で 3 エンジン全体を実行する）。
+
+## W5 の gate 実測（24.2、2026-10-19、実測）
+
+- `env -u NODE_ENV mise run gate`: exit 0、52.1 秒（レビューの修正後）。ルート 419（期待された失敗 1 件）、`@platform/ai-core` 3,278 件成功 / 4 スキップ（W4 の締めは 2,778）、`web` 1,004（959）、`@platform/eval-suite` 7 / 8 スキップ、`Docs: 8 module documents, 110 test references verified`。`tool-risk-declared: scanned 342 FILES`、`TypeScript packages/ai-core/tsconfig.json: 356 files`。
+- 3 エンジンの E2E（`mise run test:e2e`）は 402 件成功（修正の前）。修正後に `research:` の 3 件を chromium で再実行して成功。`check:client-bundle` は成功（24 ファイル、16 名前と 5 センチネル）。
+- ミューテーション: `research/citations.ts` 82.41、`research/budget.ts` 88.89（2 ファイルだけの実行で 83.22、閾値 70）。
+- **arXiv の 429 / 503 / `Retry-After` の実挙動は未実測**で、`fixtures/arxiv/` は文書化された形式と推測に基づく（実 API への接続は `mock` の外でしか確かめられない）。

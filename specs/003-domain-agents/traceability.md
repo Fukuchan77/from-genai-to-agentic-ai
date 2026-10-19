@@ -118,12 +118,12 @@ ID 規約は `tasks.md` の「ID 対応表」を参照する（この spec の p
 
 | Requirement | Design | Task | Test | Commit |
 |---|---|---|---|---|
-| 4.1 | C9 | T-22.3, T-22.4, T-40.4, T-40.7, T-40.8 |  |  |
-| 4.2 | C9, C13 | T-22.4, T-22.5, T-23.3, T-23.4, T-32.2, T-38.3, T-39.1 |  |  |
-| 4.3 | C8 | T-1.2, T-21.1, T-21.3, T-21.4, T-23.1, T-23.4 |  | ee815d5 |
-| 4.4 | C9 | T-22.3, T-40.4 |  |  |
-| 4.5 | C9 | T-22.2, T-22.4, T-22.5, T-24.1, T-32.1, T-38.3, T-40.4 |  |  |
-| 4.6 | C9 | T-22.3, T-22.4, T-23.3, T-32.1, T-40.4 |  |  |
+| 4.1 | C9 | T-22.3, T-22.4, T-40.4, T-40.7, T-40.8 | subagents.test.ts, supervisor.test.ts | 122c075 |
+| 4.2 | C9, C13 | T-22.4, T-22.5, T-23.3, T-23.4, T-32.2, T-38.3, T-39.1 | supervisor.test.ts, scenarios.test.ts, research/route.test.ts | 122c075, 71a9b90 |
+| 4.3 | C8 | T-1.2, T-21.1, T-21.3, T-21.4, T-23.1, T-23.4 | parse.test.ts, client.test.ts, tools.test.ts, platform.test.ts, arxiv-fixtures.test.ts | ee815d5, 122c075, 71a9b90 |
+| 4.4 | C9 | T-22.3, T-40.4 | subagents.test.ts | 122c075 |
+| 4.5 | C9 | T-22.2, T-22.4, T-22.5, T-24.1, T-32.1, T-38.3, T-40.4 | citations.test.ts, supervisor.test.ts, scenarios.test.ts | 122c075 |
+| 4.6 | C9 | T-22.3, T-22.4, T-23.3, T-32.1, T-40.4 | subagents.test.ts, supervisor.test.ts, research/route.test.ts | 122c075, 71a9b90 |
 | 4.7 | C8 | T-2.1, T-21.2, T-21.3, T-23.1, T-24.2, T-40.4 | env-schema.test.ts, feature-requirements.test.ts, load.test.ts | 3af8b69 |
 | 4.8 | C1, C9 | T-2.1, T-22.1, T-22.3, T-22.4, T-23.3, T-24.1, T-32.1, T-32.2, T-37.3, T-40.4 | env-schema.test.ts, feature-requirements.test.ts, load.test.ts | 3af8b69 |
 | 4.9 | C9, C13, C14 | T-5.2, T-22.4, T-23.2, T-23.3, T-32.1, T-32.2, T-35.2, T-35.4 | observer.test.ts | efcde0d |
@@ -195,4 +195,5 @@ ID 規約は `tasks.md` の「ID 対応表」を参照する（この spec の p
 - **plan の記載漏れ**（tasks.md の Boundary の例外 (4)）: `packages/ai-core/src/rag/db/client.pg.test.ts` は plan の Test Strategy が言及するが File Structure Plan に載っていない。13.1・26.2 が M2 の既存ファイルへ 1 ケースを足すだけに限って触れる。
 - **plan の波の割り当てからの調整**: `docs:check` の必須トピックを W1 から W8（40.8）へ、`sessions.ts`・`upload.ts` を W4（19.2、19.3）へ移した（理由は `tasks.md`）。
 - **W4 の出荷時点（2026-10-18）の持ち越し**: W4 の敵対的レビュー（`.sdd/reviews/003-domain-agents-impl-w4-review-2026-10-18.md`）の修正後の fresh な再レビューは未実施。CL-26（修正回数の数え方）は ★ で人の確認が未了。F-14・F-15 は受け入れた制限、F-17 は 004 へ。3.5・3.6 の画面での描画は W7（35.x）、3.3 の実モデルの修正は `local`（L）で未確認、E2B の実機は D で未確認。
+- **W5 の出荷時点（2026-10-19）の持ち越し**: W5 の敵対的レビュー（`.sdd/reviews/003-domain-agents-impl-w5-review-2026-10-19.md`）の修正後の fresh な再レビューは未実施。arXiv の実応答と 429 / 503 / `Retry-After` の実挙動は未実測（フィクスチャは仕様と推測に基づく）。
 - **004 への引き継ぎ**: E2B の外向き通信（CL-21）、外部コンテンツの汚染状態（CL-10）、MCP の注釈を信頼しない前提（ADR-7）。`tasks.md`「004 への引き継ぎ事項」と 40.3 に記録する。

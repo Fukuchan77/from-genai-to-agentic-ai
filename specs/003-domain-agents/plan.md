@@ -44,7 +44,7 @@ M3 は `packages/ai-core` に 8 つの領域（`files/`、`mcp/`、`sandbox/`、
 | CL-23 | Req 6.6 の永続化 | 商品カタログとペルソナ定義は DB（`marketing_products`、`marketing_personas`）に置き、マイグレーションは `packages/ai-core/drizzle/0003_marketing.sql`（ヘルプデスクの `0002_helpdesk.sql` とは別。Wave を分けるため） | |
 | CL-24 | Req 1.3、1.5 の MCP 経由の致命的エラー | 自作サーバーは別プロセスのため、`FatalToolError` は MCP の境界を越えない。サーバーは失敗を例外ではなくツール結果 `{ isError: true, content: [短い文言], _meta: { "agentic-ai/error": { kind: "fatal" \| "recoverable"; code } } }` として返す（`code` は C2 の閉じた語彙。致命的は `not-allowed` など）。クライアントの `adaptMcpTool` は `isError` の結果を `classifyMcpToolResult` で判定し、`trustErrorMeta: true` のサーバー（`filesServerConfig` だけが立てる）の `kind: "fatal"` に限り `FatalToolError` を投げてラッチを立てる（以降は C2 の経路で停止理由 `error`）。学習者向けの文言はクライアントがサーバーの設定（許可ルートのパス）から組み立て、サーバーの文字列をそのまま使わない。`trustErrorMeta` の無いサーバー（GitHub など）の `isError` は回復可能として、要約と次の修正アクションを返す。HTTP の 401 / 403 は従来どおり `auth-failed`。`_meta` がクライアントの `execute` まで届くかは spike S-2 で確かめ、届かなければ `structuredContent` に同じ形を載せる。それも届かなければ `adaptMcpTool` が `tools/call` を自前で呼んで結果を読む（S-2 の退き方と同じ） | ★ |
 | CL-25 | Req 1.1、1.11 と Req 1.9 の両立（外部の MCP ツールの説明文） | 外部のサーバー（GitHub）の説明文は CL-18 の形式を満たさない。そこで `McpServerConfig.descriptions`（ツール名 → CL-18 の形式の説明文。リポジトリのコードに書き、クライアントの要求からは受け付けない）で上書きし、上書きがあればそれを、無ければサーバーの説明文を「実効の説明文」として検査する。外部ツールの入力は Zod ではなく JSON Schema のため、入力の意味の検査は `checkJsonSchemaDescription` が行う（入力の全プロパティに `description` があるか、プロパティ名が実効の説明文に現れること）。`githubServerConfig` は既定の許可リストに載せる読み取り専用ツールの上書きを持つ（ツールの一覧は spike S-6 の結果で決める）。上書きが無く検査に通らないツールは登録せず、`disabledReason` に「説明文の形式」を出す。これにより Req 1.1・1.11 は登録されるすべてのツールで満たし、Req 1.9 は上書きを持つ許可リストのツールで満たす | ★ |
-| CL-26 | Req 3.3、3.4 の修正回数の数え方 | 「修正」は失敗した実行の次の実行である。**修正の許容は失敗ごと**: 1 回の失敗に対して修正の実行は `maxFixAttempts`（既定 3）回までで、**失敗した実行 1 回 + 修正 3 回 = その失敗に最大 4 回の実行**。通算 4 回目（3 回目の修正）が失敗した時点で `attempt-limit` として止め、5 回目の実行は求めない。成功した実行で失敗は終わり、その後の新しい失敗には改めて 3 回の修正がある（分析全体の長さはエージェントのステップ上限が抑える）。表示用の `fixes` は分析全体の修正の合計。plan の「4 回目は実行せず」の「4 回目」は 4 回目の修正（通算 5 回目）を指すと読んだ。通算 3 回の読みなら `maxFixAttempts` を 2 にする（コードの変更は要らない）。レビュー W4 F-3 で、累積の数え方（失敗と成功が交互だと、修正を 1 回も受けていない失敗で止まる）を失敗ごとに改めた | ★ |
+| CL-26 | Req 3.3、3.4 の修正回数の数え方 | 「修正」は失敗した実行の次の実行である。**修正の許容は失敗ごと**: 1 回の失敗に対して修正の実行は `maxFixAttempts`（既定 3）回までで、**失敗した実行 1 回 + 修正 3 回 = その失敗に最大 4 回の実行**。通算 4 回目（3 回目の修正）が失敗した時点で `attempt-limit` として止め、5 回目の実行は求めない。成功した実行で失敗は終わり、その後の新しい失敗には改めて 3 回の修正がある（分析全体の長さはエージェントのステップ上限が抑える）。表示用の `fixes` は分析全体の修正の合計。plan の「4 回目は実行せず」の「4 回目」は 4 回目の修正（通算 5 回目）を指すと読んだ。通算 3 回の読みなら `maxFixAttempts` を 2 にする（コードの変更は要らない）。レビュー W4 F-3 で、累積の数え方（失敗と成功が交互だと、修正を 1 回も受けていない失敗で止まる）を失敗ごとに改めた | 確認済み（2026-10-19）。初回 + 修正 3 回で最大 4 回の実行の読みで確定 |
 
 ## Architecture Overview
 
@@ -292,9 +292,9 @@ flowchart TD
 
 - **Responsibility**: arXiv の Atom API を利用規約（3 秒間隔、単一接続、日単位のキャッシュ）に従って呼び、論文の集合を返す。
 - **Public interface**:
-  - `createArxivClient({ fetcher, clock, cache, options })`: `search(query: string, { maxResults }): Promise<readonly ArxivPaper[]>`、`getAbstract(arxivId: string): Promise<ArxivPaper | undefined>`（キャッシュ済みの集合からだけ返す）。
+  - `createArxivClient({ fetcher, clock, cache?, options? })`: `search(query: string, { maxResults, signal? }): Promise<readonly ArxivPaper[]>`、`getAbstract(arxivId: string): Promise<ArxivPaper | undefined>`（キャッシュ済みの集合からだけ返し、要求は出さない）。`options` は `DEFAULT_ARXIV` に `requestTimeoutMs`（15 秒。固まった接続で単一接続のキューが止まらないため）と `maxRetryWaitMs`（30 秒）を足したもの。再試行は「初回 + `maxRetries`（3）回」、間隔は直前の要求の*終了*から数える。応答サイズ超過だけは再試行しない。`HttpFetcher` は本文を読み切ってから返すため、2 MB の上限は「解析しない」ことしか保証しない。
   - `parseArxivFeed(xml: string): readonly ArxivPaper[]`（`fast-xml-parser`、`processEntities` 無効、`isArray` で `entry`、`author`、`link` を配列にする）。`ArxivPaper` は `{ arxivId（`vN` を除いた形）; title; authors; publishedAt; summary; links }`。
-  - `createResearchTools({ client }): readonly AciTool[]`: `searchArxiv`（`risk: "read-only"`、検索サブエージェント用）と `getPaperAbstract`（`risk: "read-only"`、精読サブエージェント用）。
+  - `createResearchTools({ client, onPapers?, externalContent?, onCall?, onFailure? }): { searchArxiv, getPaperAbstract }`（W5 の実装で配列から名前付きの組に変えた。子ごとに渡すツールが違うため）: `searchArxiv`（`risk: "read-only"`、検索サブエージェント用。要旨は 1,200 文字、著者は 8 名で切る）と `getPaperAbstract`（`risk: "read-only"`、精読サブエージェント用。全文の要旨）。`onPapers` は返した論文をその実行の集合（引用の照合の対象、Req 4.5）へ、`externalContent` は ID だけを CL-10 の記録口へ、`onCall` は Agent Inspector の `tool` イベントへ、`onFailure` は検索の失敗を子へ渡す。
 - **Owns**: 直列キュー（間隔 3 秒、同時 1 接続）、キャッシュ（クエリ単位、有効期間 1 日）、再試行（最大 3 回、`Retry-After` があればそれに従い、無ければ指数待機）、応答サイズの上限、解析。
 - **Does NOT own**: 検索結果の利用と引用の照合（C9）。プロセスをまたぐ速度制限（単一プロセスの学習パスの範囲。複数インスタンスの制御は 005 の本番の境界）。
 - **Requirements**: 1.16、4.3、4.7
@@ -303,10 +303,10 @@ flowchart TD
 
 - **Responsibility**: 階層型リサーチの Supervisor と 3 つのサブエージェントを束ね、呼び出し回数と共有トークン予算を数え、要約だけを返し、引用を照合して、役割ごとのトークン内訳を集計する。
 - **Public interface**:
-  - `runResearch({ theme, model, arxiv, observer, limits, signal }): Promise<ResearchResult>`。`ResearchResult` は `{ report: string; warnings: readonly string[]; missing: readonly { agent; reason }[]; usage: TokenBreakdown; calls: number }`。
+  - `runResearch({ theme, model, arxiv, clock, observer?, limits?, externalContent?, onEvent?, onUsage?, signal }): Promise<ResearchResult>`（`clock` と、画面へ流す `onEvent` / `onUsage` を W5 で足した）。Supervisor のツール集合には `FatalLatch` を渡す（`buildToolSet` が 1 ステップの複数のツール呼び出しを順に実行するため、サブエージェントは 1 つずつ動き、共有予算の残量が正確になる）。サブエージェントが 1 つも結果を返さなければ、Supervisor の文面は使わず「調査できなかった」旨と `missing` だけを返す。共有トークンのうち半分（最大 20,000）を Supervisor の取り分として予約し（`createBudget` の `reserve`、`supervisorReserve`）、サブエージェントには残りだけを渡す。Supervisor の `maxTotalTokens` は予約分と等しく、実行全体は `maxTotalTokens` に収まる（W5 レビュー F-1。CL-17 の「Run 全体の `maxTotalTokens`」を守る）。Supervisor の `maxDurationMs` は「呼び出し回数 × 子の `maxDurationMs` + 120 秒」、ツールの時間上限は「子の `maxDurationMs` + 20 秒」。ツールの時間上限で切られた子は `missing` に載る（F-6）。`getPaperAbstract` は**その実行の検索が取得した論文の集合**からだけ読む（共有キャッシュからは読まない。F-5）。`ResearchResult` は `{ report: string; warnings: readonly string[]; missing: readonly { agent; reason }[]; usage: TokenBreakdown; calls: number }`。
   - `createSubagent(kind: "search" | "reading" | "market", deps): AciTool`: 子の `createGuardedAgent` を内部で作り、入力スキーマ付きのツールとして Supervisor に渡す。戻り値は要約（`SubagentResult`）だけ。
   - `createBudget({ maxCalls, maxTotalTokens })`: `takeCall(): boolean`、`remainingTokens(): number`、`recordUsage(role, usage): void`。残量が 0 の呼び出しは実行せず、予算切れを返す（CL-17）。
-  - `checkCitations(report: string, papers: readonly ArxivPaper[]): { report: string; removed: readonly string[]; warnings: readonly string[] }`（純関数。本文の arXiv ID とリンクを照合する、Req 4.5）。
+  - `checkCitations(report: string, papers: readonly ArxivPaper[]): { report: string; removed: readonly string[]; warnings: readonly string[] }`（純関数。本文の arXiv ID とリンクを照合する、Req 4.5）。集合に無い言及は、一覧・表の行は行ごと、段落は文ごと、同じ文に集合内の論文があるときは言及（と包む括弧）だけを除き、後者には確認を促す警告を付ける。月が不正な裸の ID（`1234.5678`）は ID と見なさず、`arXiv:` ラベル付きは月を問わず ID と見なす。既知のタイトルが ID なしで出る段落と、`et al.` や `(2023)` を持つ ID なしの行には警告だけを付ける（ID もタイトルも付けない言及は検出できない）。警告をレポートの末尾の節にするのは `attachCitationWarnings`。
   - `TokenLedger`（`agents/token-ledger.ts`）: `record(role: string, usage): void`、`breakdown(): { byRole: Record<string, Usage>; total: Usage }`。`RunObserver` から記録する。
 - **Owns**: Supervisor の呼び出し回数カウンタ、共有予算の配分、要約の境界、照合の規則と除去の記録、失敗の `missing` への集約、Agent Inspector 向けのイベント（各イベントに `agent` 名を付ける）、`TokenLedger`。
 - **Does NOT own**: arXiv の通信（C8）。画面（C14）。`createGuardedAgent` の内部（C2 のラッチ経路を含むが、停止条件の設計は M1 のまま）。
@@ -732,6 +732,9 @@ DB に保存しない型は Zod のスキーマを正とし、型は `z.infer` �
 | `packages/ai-core/src/research/supervisor.ts` | Create | `runResearch`（Supervisor、失敗の `missing` への集約、トークン内訳） | C9 |
 | `packages/ai-core/src/research/{tools,budget,citations,subagents,supervisor}.test.ts` | Create | 呼び出し回数の上限、予算切れの子を実行しないこと、未知の arXiv ID の除去、子の失敗でも継続すること、要約の長さ上限、役割別の内訳の合計 | C9 |
 | `packages/ai-core/src/research/index.ts` | Create | `@platform/ai-core/research` の公開 API | C9 |
+| `packages/ai-core/src/research/request-schema.ts`、`request-schema.test.ts` | Create | `POST /api/research` の本文スキーマ（`apps/web` に `zod` が無いため ai-core に置く。ヘルプデスクと同じ） | C13 |
+| `packages/ai-core/src/research/scenarios.test.ts` | Create | m3-4 の台本を本物の Supervisor・サブエージェント・arXiv のフィクスチャで通しで確かめる | C15 |
+| `packages/ai-core/src/mock/arxiv-fixtures.ts`、`arxiv-fixtures.test.ts` | Create | `mock` 用の arXiv の fetcher（フィクスチャを返し、arXiv の API 以外の宛先は拒否する） | C15 |
 
 ### packages/ai-core — helpdesk
 

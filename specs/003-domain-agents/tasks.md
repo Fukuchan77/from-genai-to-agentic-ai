@@ -9,7 +9,7 @@
 
 | ファイル | 内容 |
 |---|---|
-| `tasks.md`（本ファイル） | 表記規約、ID 対応表、進捗、gate への段階的な結線、004 への引き継ぎ事項、**現在の波**（W4）のタスク全文 |
+| `tasks.md`（本ファイル） | 表記規約、ID 対応表、進捗、gate への段階的な結線、004 への引き継ぎ事項、**現在の波**（W5）のタスク全文 |
 | `tasks-w6.md`〜`tasks-w8.md` | 未着手の波のタスク全文。波が現在の波になるとき `tasks.md` へ移す |
 | `tasks-comp-w1.md`〜 | 完了した波の保管先。波の完了時に作る |
 | `traceability.md` | 要件 → 設計 → タスク → テスト → コミット（Test と Commit は `/sdd-ship` が埋める） |
@@ -58,6 +58,7 @@
   (8) W4 の実装で判明した境界外の変更（2026-10-18 に記録。W4 の敵対的レビューの対象にする）。`tooling/vitest/network-guard.ts` と `setup-hermetic.test.ts`（17.8。W1 F-16 の予定どおり、`container` スイートだけ Docker のソケット 3 か所への接続を許す）、`packages/ai-core/src/testing/container-only.ts`・`container-only.test.ts` と `testing/index.ts` の再エクスポート（17.8。F-16 のスキップ補助 `describeContainer`）、`docker/sandbox/requirements.txt`（17.8。依存の全件固定。Dockerfile が読む）。`sandbox/file-name.ts`・`sandbox/docker/fake-socket.ts` は `sandbox/**` の中の追加ファイル。
   (9) W4 の 19.x で判明した境界外の変更（2026-10-18 に記録。W4 の敵対的レビューの対象にする）。`apps/web/lib/server/guard.ts`（`rateLimitRejection` の切り出し。`guardRequest` が使う同じ処理を、本文を自分で読むアップロードのルートが使う）、`apps/web/lib/server/errors.ts`（`provider-unavailable` の `details.guidance` だけをブラウザへ出す。固定文で、サンドボックス無効の案内に使う）、`packages/ai-core/src/sandbox/docker/local.ts`（`createLocalDockerProvider`。`socketPath` を `sandbox/docker/` の外に出さないため）、`analysis/upload-check.ts` の `uploadKindOf` の公開（18.4 が使う）。
   (10) W4 のレビュー（F-7）で記録した境界外の変更。`scripts/check-repo-rules.mjs` と `check-repo-rules.test.mjs`（20.2。`sandbox-import-scope` の `docker.sock` / `socketPath` の検査から、コンテナのテスト基盤の 4 ファイルだけを除く。plan C16 に同期）。レビューの修正で触れた `packages/ai-core/src/aci/fatal.ts`（致命的エラーの語彙に `sandbox-unavailable`）、`config/defaults.ts`（`DEFAULT_SANDBOX.maxSessions`）、`apps/web/lib/server/platform.ts` の `invalidateSandboxSelection`。
+  (11) W5 の実装で判明した境界外の変更（2026-10-19 に記録。W5 の敵対的レビューの対象にする）。`agents/token-ledger.ts`（`usageFromRun`）、`agents/observer.ts`（`forAgent`、`source` の 512 文字の上限）、`agents/index.ts` とそれぞれのテスト（22.3。W1 の敵対的レビュー F-10・F-11 の持ち越し）、`research/request-schema.ts` とそのテスト（23.3。`apps/web` に `zod` がなく、本文スキーマは ai-core に置く。(7) のヘルプデスクと同じ）、`research/scenarios.test.ts`（22.5。m3-4 の通しテスト）、`mock/arxiv-fixtures.ts` とそのテストと `mock/index.ts` の再エクスポート（22.5、23.1。`mock` の arXiv の fetcher。API の URL 以外は拒否）、`research/tools.ts` の `onCall`・`onFailure`、`research/subagents.ts` の `failureReasonOf`、`research/supervisor.ts` の `onUsage`（23.2・23.3。画面へ流す配線と、arXiv に届かない検索を欠落にする規則）。詳細は `pdca/do.md` と plan の C8・C9・File Structure Plan に同期した。
 - **共有ファイルの編集者**（波をまたぐファイルは、列挙したタスクだけが編集し、記載の順に行う。各タスクは前のタスクの完了後に行う。この順序が波をまたぐ依存になるため、W2〜W6 は並行せず、W2 → W3 → W4 → W5 → W6 の順に進める）。
   - `packages/ai-core/package.json`: 1.2 だけ（依存 4 件と `exports` の 8 サブパス。参照先の `index.ts` は各領域の最後のタスクが作る）。
   - `mise.toml`: 6.3（`test:container`、センチネル）→ 11.2（`check:repo-rules --only` に `mcp-import-scope`）→ 13.4（`seed:samples`）→ 17.8（`sandbox:build`）→ 20.2（`check:repo-rules --only` に `sandbox-import-scope`）（この順）。
@@ -166,7 +167,7 @@ W3 の敵対的レビュー（`.sdd/reviews/003-domain-agents-impl-w3-review-202
 
 W4 の敵対的レビュー（`.sdd/reviews/003-domain-agents-impl-w4-review-2026-10-18.md`）のうち、修正せず送ったもの。修正後の fresh な再レビューは未実施。
 
-- CL-26（修正回数の数え方。初回 + 3 回の修正 = 最大 4 回の実行）は ★ のまま。Req 3.3 の読みを人が確認する。別の読みなら `maxFixAttempts` を 2 にする。
+- CL-26（修正回数の数え方。初回 + 3 回の修正 = 最大 4 回の実行）は 2026-10-19 に人が確認し、この読みで確定した（`maxFixAttempts` は 3 のまま）。
 - F-14（`.xls` の検査が OLE2 内の "Book" の UTF-16LE バイト列で通る）と F-15（20 MiB のアップロードのメモリ上のコピーが約 5 つ）は受け入れた制限。F-17（E2B の外向き通信）は 004 へ。
 - F-18（E2B は実行間で状態を保ち、タイムアウトで途中の出力を落とす）は文書化のみ。F-21（接続断で実際の Next.js サーバーが `request.signal` を abort するか）は未検証で、35.x の E2E で確かめる。
 
@@ -188,28 +189,34 @@ _Depends:_ 1.2, 2.1, 4.7
 _Requirements:_ 1.16, 4.3, 4.7
 _Traces:_ REQ-001, REQ-004, C8, C15, ADR-3
 
-- [ ] 21.1 `research/arxiv/types.ts`・`parse.ts` と `fixtures/arxiv/{search-multi,search-single,search-empty,error}.xml`: `ArxivPaper` の Zod スキーマ（`arxivId` は `vN` を除いた形）と、`parseArxivFeed(xml)`（`fast-xml-parser`、`processEntities` 無効、`isArray` で `entry`・`author`・`link` を配列にする）を作る。DOCTYPE を含むフィードは解析せず失敗として扱う + `parse.test.ts` に、複数・1 件のみ（配列化）・空のフィード、エラーのフィード（`entry` に `Error` の要約）、DOCTYPE と実体の展開を試みるフィード、旧形式の ID（`cs/0501001`）と `vN` の除去を先に書く
+- [x] 21.1 `research/arxiv/types.ts`・`parse.ts` と `fixtures/arxiv/{search-multi,search-single,search-empty,error}.xml`: `ArxivPaper` の Zod スキーマ（`arxivId` は `vN` を除いた形）と、`parseArxivFeed(xml)`（`fast-xml-parser`、`processEntities` 無効、`isArray` で `entry`・`author`・`link` を配列にする）を作る。DOCTYPE を含むフィードは解析せず失敗として扱う + `parse.test.ts` に、複数・1 件のみ（配列化）・空のフィード、エラーのフィード（`entry` に `Error` の要約）、DOCTYPE と実体の展開を試みるフィード、旧形式の ID（`cs/0501001`）と `vN` の除去を先に書く
   _Boundary:_ `packages/ai-core/src/research/arxiv/types.ts`, `packages/ai-core/src/research/arxiv/parse.ts`, `packages/ai-core/src/research/arxiv/parse.test.ts`, `packages/ai-core/fixtures/arxiv/search-multi.xml`, `packages/ai-core/fixtures/arxiv/search-single.xml`, `packages/ai-core/fixtures/arxiv/search-empty.xml`, `packages/ai-core/fixtures/arxiv/error.xml`
   _Depends:_ 1.2
   _Requirements:_ 4.3
   _Traces:_ REQ-004, C8, C15, ADR-3
-- [ ] 21.2 (P) `research/arxiv/queue.ts`: `Clock` による 3 秒間隔・同時 1 接続の直列キューを作る + `queue.test.ts`（`FakeClock`）に、間隔の境界値（2,999 ms で待ち、3,000 ms で実行）、並行呼び出しが直列化されること、先行の失敗が後続を止めないことを先に書く
+- [x] 21.2 (P) `research/arxiv/queue.ts`: `Clock` による 3 秒間隔・同時 1 接続の直列キューを作る + `queue.test.ts`（`FakeClock`）に、間隔の境界値（2,999 ms で待ち、3,000 ms で実行）、並行呼び出しが直列化されること、先行の失敗が後続を止めないことを先に書く
   _Boundary:_ `packages/ai-core/src/research/arxiv/queue.ts`, `packages/ai-core/src/research/arxiv/queue.test.ts`
   _Depends:_ none
   _Requirements:_ 4.7
   _Traces:_ REQ-004, C8
-- [ ] 21.3 `research/arxiv/client.ts`: `createArxivClient({ fetcher, clock, cache, options })` の `search(query, { maxResults })` と `getAbstract(arxivId)`（キャッシュ済みの集合からだけ返す）を作る。クエリ単位のキャッシュ（正規化したクエリ、有効期間 1 日）、再試行（最大 3 回、`Retry-After` があれば従い無ければ指数待機、待機は `Clock`）、応答サイズ上限（2 MB）、解析失敗の扱い（失敗として再試行の対象）を持つ。通信は M1 の `HttpFetcher` を使い、ネットワークへ直接接続しない + `client.test.ts` に、キャッシュ命中で通信しないこと、`Retry-After`、3 回で諦めて失敗を返すこと、429 / 503 / 5xx / ネットワーク失敗 / HTTP 400、サイズ超過、空のフィードがエラーでないこと、中断で待機が止まることを先に書く
+- [x] 21.3 `research/arxiv/client.ts`: `createArxivClient({ fetcher, clock, cache, options })` の `search(query, { maxResults })` と `getAbstract(arxivId)`（キャッシュ済みの集合からだけ返す）を作る。クエリ単位のキャッシュ（正規化したクエリ、有効期間 1 日）、再試行（最大 3 回、`Retry-After` があれば従い無ければ指数待機、待機は `Clock`）、応答サイズ上限（2 MB）、解析失敗の扱い（失敗として再試行の対象）を持つ。通信は M1 の `HttpFetcher` を使い、ネットワークへ直接接続しない + `client.test.ts` に、キャッシュ命中で通信しないこと、`Retry-After`、3 回で諦めて失敗を返すこと、429 / 503 / 5xx / ネットワーク失敗 / HTTP 400、サイズ超過、空のフィードがエラーでないこと、中断で待機が止まることを先に書く
   _Boundary:_ `packages/ai-core/src/research/arxiv/client.ts`, `packages/ai-core/src/research/arxiv/client.test.ts`
   _Depends:_ 21.1, 21.2
   _Requirements:_ 4.3, 4.7
   _Traces:_ REQ-004, C8, ADR-3
-- [ ] 21.4 `research/tools.ts`: `createResearchTools({ client })` が `searchArxiv`（検索サブエージェント用）と `getPaperAbstract`（精読サブエージェント用）を `defineAciTool` で定義する。どちらも `risk: "read-only"`、説明文は 4.1 の形式。取得した要旨は外部コンテンツとして `RunObserver` の記録口（5.2）に種別と出所だけを記録する + `tools.test.ts` に、検索結果の各項目（タイトル、著者、公開日、arXiv ID、要旨）、`risk`、説明文が `checkDescription` を通ること、記録口の呼び出し、`getAbstract` が検索結果の集合に無い ID で `undefined` を返すことを先に書く
+- [x] 21.4 `research/tools.ts`: `createResearchTools({ client })` が `searchArxiv`（検索サブエージェント用）と `getPaperAbstract`（精読サブエージェント用）を `defineAciTool` で定義する。どちらも `risk: "read-only"`、説明文は 4.1 の形式。取得した要旨は外部コンテンツとして `RunObserver` の記録口（5.2）に種別と出所だけを記録する + `tools.test.ts` に、検索結果の各項目（タイトル、著者、公開日、arXiv ID、要旨）、`risk`、説明文が `checkDescription` を通ること、記録口の呼び出し、`getAbstract` が検索結果の集合に無い ID で `undefined` を返すことを先に書く
   _Boundary:_ `packages/ai-core/src/research/tools.ts`, `packages/ai-core/src/research/tools.test.ts`
   _Depends:_ 21.3, 4.7, 5.2
   _Requirements:_ 1.16, 4.3
   _Traces:_ REQ-001, REQ-004, C8, CL-10
 
 ### Implementation Notes
+
+- **再試行は「初回 + 3 回 = 最大 4 回の要求」と読んだ**（Req 4.7「最大 3 回まで再試行」。`maxRetries: 3`）。待機は `Retry-After`（秒または HTTP 日付、上限 `maxRetryWaitMs` 30 秒）が先で、無ければ 3 s・6 s・12 s の指数待機。どの待機のあとも、キューが「前の要求の*終了*から 3 秒」を保つ（開始から数える読みより慎重）。400 を含む 200 以外の応答、ネットワークの失敗、解析の失敗、エラーのフィードはすべて再試行の対象。**応答サイズ超過だけは再試行しない**（同じ応答が返るだけのため）。
+- **`HttpFetcher` は本文を文字列で読み切って返す**ため、2 MB の上限は「解析しない」ことしか保証しない（メモリ上の読み込みは止められない）。上限の実効は、ストリームを読む `HttpFetcher` への変更が要る（M1 のポートの変更は M3 の範囲外。005 の本番の境界）。要求ごとの時間切れ（`requestTimeoutMs` 15 秒）を足した: 単一接続のキューが 1 つの固まった接続で止まらないため（計画に無い追加）。
+- **計画からの差**: `createResearchTools` は配列でなく `{ searchArxiv, getPaperAbstract }` を返す（子ごとに渡すツールが違うため）。`onPapers`（実行ごとの論文の集合の収集口。引用の照合 Req 4.5 の「検索サブエージェントが取得した論文の集合」）と `externalContent`（5.2 の記録口）を依存に足した。`getAbstract` は共有キャッシュだけを引き、要求を出さない。キャッシュは `createArxivCache`（既定 200 件、古い順に捨てる）。
+- **フィクスチャは arXiv の文書化された形式から作った**（実測ではない。24.2 と research.md に明記する）。`fast-xml-parser` は `processEntities: false` で実体を展開しないので、5 つの定義済み実体と数値参照だけを 1 回の置換で戻す（二重にデコードしない）。DOCTYPE を含むフィードは解析しない。
+- **PROVE で見つけたもの**: `listOf` が単一要素を包み直していたため、`isArray` を外しても通っていた（冗長）→ `isArray` に一本化。`<id>` の URL 検査はパターン検査と重なり、`errors#` の ID 検査は冗長だったので除いた。キューは、先行の実行中に待っている呼び出しの中断が即時に返ること（`raceWithAbort`）と、`fetcher` が signal を無視しても時間切れで切れること（`raceWithAbort` を外すと殺される）をテストで固定した。等価と判断して残したもの: DOCTYPE 検査の大文字小文字無視フラグ、ループ側の中断検査（最終試行の失敗と中断が同時に来る窓のための保険）。
 
 ---
 
@@ -222,33 +229,38 @@ _Depends:_ 21.4, 5.1, 5.2, 3.3, 1.3
 _Requirements:_ 4.1, 4.2, 4.4, 4.5, 4.6, 4.8, 4.9, 4.10
 _Traces:_ REQ-004, C9, C15, ADR-8
 
-- [ ] 22.1 (P) `research/budget.ts`: `createBudget({ maxCalls, maxTotalTokens })` の `takeCall()`（上限に達したら `false`）、`remainingTokens()`、`recordUsage(role, usage)` を作る。残量が 0 の呼び出しは実行させず、予算切れを返す(CL-17) + `budget.test.ts` に、呼び出し回数の上限の境界、残量 0 の子を**実行しない**こと、役割別の内訳の合計が全体と一致すること、使用量が取れない役割の扱いを先に書く
+- [x] 22.1 (P) `research/budget.ts`: `createBudget({ maxCalls, maxTotalTokens })` の `takeCall()`（上限に達したら `false`）、`remainingTokens()`、`recordUsage(role, usage)` を作る。残量が 0 の呼び出しは実行させず、予算切れを返す(CL-17) + `budget.test.ts` に、呼び出し回数の上限の境界、残量 0 の子を**実行しない**こと、役割別の内訳の合計が全体と一致すること、使用量が取れない役割の扱いを先に書く
   _Boundary:_ `packages/ai-core/src/research/budget.ts`, `packages/ai-core/src/research/budget.test.ts`
   _Depends:_ none
   _Requirements:_ 4.8, 4.10
   _Traces:_ REQ-004, C9, CL-17
-- [ ] 22.2 `research/citations.ts`: `checkCitations(report, papers)` が、本文の arXiv ID とリンク（`arxiv.org/abs/…v2`、`pdf`、`http` / `https` の違いを同一視）を論文の集合と照合し、集合に無い論文への言及を除去して `removed` と警告を返す純関数を作る。ID が付かない論文への言及も警告に載せる + `citations.test.ts` に、集合に無い ID とリンクの除去と警告、版違い（`v2`）の正規化、書式違いの同一視、全論文に ID が付くこと、集合に含まれる言及を壊さないことを先に書く
+- [x] 22.2 `research/citations.ts`: `checkCitations(report, papers)` が、本文の arXiv ID とリンク（`arxiv.org/abs/…v2`、`pdf`、`http` / `https` の違いを同一視）を論文の集合と照合し、集合に無い論文への言及を除去して `removed` と警告を返す純関数を作る。ID が付かない論文への言及も警告に載せる + `citations.test.ts` に、集合に無い ID とリンクの除去と警告、版違い（`v2`）の正規化、書式違いの同一視、全論文に ID が付くこと、集合に含まれる言及を壊さないことを先に書く
   _Boundary:_ `packages/ai-core/src/research/citations.ts`, `packages/ai-core/src/research/citations.test.ts`
   _Depends:_ 21.1
   _Requirements:_ 4.5
   _Traces:_ REQ-004, C9
-- [ ] 22.3 `research/subagents.ts`: `createSubagent(kind, deps)`（`search` / `reading` / `market`）が、子の `createGuardedAgent` を内部で作り、入力スキーマ付きのツール（`AciTool`）として Supervisor に渡す。戻り値は要約（`SubagentResult`、800 文字以内、`paperIds`）だけで、内部のトランスクリプトを返さない。呼び出しの前に予算を確認し、残量 0 なら実行せず予算切れを返す。失敗は名前と理由を返す（例外にしない）。ツールの渡し方は 1.3（S-2）の結果に従う + `subagents.test.ts` に、要約だけが返り内部の文が含まれないこと、要約の長さ上限、予算切れの子を実行しないこと、失敗の名前と理由、子の上限に残量が渡ることを先に書く
+- [x] 22.3 `research/subagents.ts`: `createSubagent(kind, deps)`（`search` / `reading` / `market`）が、子の `createGuardedAgent` を内部で作り、入力スキーマ付きのツール（`AciTool`）として Supervisor に渡す。戻り値は要約（`SubagentResult`、800 文字以内、`paperIds`）だけで、内部のトランスクリプトを返さない。呼び出しの前に予算を確認し、残量 0 なら実行せず予算切れを返す。失敗は名前と理由を返す（例外にしない）。ツールの渡し方は 1.3（S-2）の結果に従う + `subagents.test.ts` に、要約だけが返り内部の文が含まれないこと、要約の長さ上限、予算切れの子を実行しないこと、失敗の名前と理由、子の上限に残量が渡ることを先に書く
   _Boundary:_ `packages/ai-core/src/research/subagents.ts`, `packages/ai-core/src/research/subagents.test.ts`
   _Depends:_ 21.4, 22.1, 3.3, 5.1, 5.2, 1.3
   _Requirements:_ 4.1, 4.4, 4.6, 4.8
   _Traces:_ REQ-004, C9, ADR-8, S-2
-- [ ] 22.4 `research/supervisor.ts` と `research/index.ts`: `runResearch({ theme, model, arxiv, observer, limits, signal })` が、Supervisor を `createGuardedAgent` で作り、3 つのサブエージェントをツールとして渡し、Markdown のレポートを返す。呼び出し回数（既定 8）と共有トークン予算（既定 80,000）を数え、失敗を `missing` に集約してレポートに欠落した観点を明記する（全サブエージェントが失敗した場合は「調査できなかった」旨と `missing` だけを返す）。レポートは `checkCitations` で照合してから返し、`TokenLedger` が役割別（`supervisor` / `search` / `reading` / `market`）の内訳を集計する。各イベントに `agent` 名を付ける。`index.ts` は `@platform/ai-core/research` の公開 API を再エクスポートする + `supervisor.test.ts` に、`mock` の完走、呼び出し回数の上限、トークン予算の尽きた後の扱い、子の失敗でも継続して欠落が明記されること、未知の arXiv ID の除去、内訳の合計、`agent` 付きのイベントの順序、中断を先に書く
+- [x] 22.4 `research/supervisor.ts` と `research/index.ts`: `runResearch({ theme, model, arxiv, observer, limits, signal })` が、Supervisor を `createGuardedAgent` で作り、3 つのサブエージェントをツールとして渡し、Markdown のレポートを返す。呼び出し回数（既定 8）と共有トークン予算（既定 80,000）を数え、失敗を `missing` に集約してレポートに欠落した観点を明記する（全サブエージェントが失敗した場合は「調査できなかった」旨と `missing` だけを返す）。レポートは `checkCitations` で照合してから返し、`TokenLedger` が役割別（`supervisor` / `search` / `reading` / `market`）の内訳を集計する。各イベントに `agent` 名を付ける。`index.ts` は `@platform/ai-core/research` の公開 API を再エクスポートする + `supervisor.test.ts` に、`mock` の完走、呼び出し回数の上限、トークン予算の尽きた後の扱い、子の失敗でも継続して欠落が明記されること、未知の arXiv ID の除去、内訳の合計、`agent` 付きのイベントの順序、中断を先に書く
   _Boundary:_ `packages/ai-core/src/research/supervisor.ts`, `packages/ai-core/src/research/supervisor.test.ts`, `packages/ai-core/src/research/index.ts`
   _Depends:_ 22.2, 22.3
   _Requirements:_ 4.1, 4.2, 4.5, 4.6, 4.8, 4.9, 4.10
   _Traces:_ REQ-004, C9, ADR-8, CL-17
-- [ ] 22.5 `fixtures/scenarios/m3-4.ts`: Supervisor と 3 つの子のシナリオ（検索 → 精読 → 市場影響 → レポート。未知の arXiv ID を含む引用、子の失敗を含む）を作り、`gateway.ts` の `mock` 既定シナリオと `mock/index.ts` の集約に足す。`mock` のシナリオは 4 回の呼び出しで完了する(DEFAULT_RESEARCH の根拠) + `m3-scenarios.test.ts` の期待件数を更新して曖昧な一致がないことを確かめる
+- [x] 22.5 `fixtures/scenarios/m3-4.ts`: Supervisor と 3 つの子のシナリオ（検索 → 精読 → 市場影響 → レポート。未知の arXiv ID を含む引用、子の失敗を含む）を作り、`gateway.ts` の `mock` 既定シナリオと `mock/index.ts` の集約に足す。`mock` のシナリオは 4 回の呼び出しで完了する(DEFAULT_RESEARCH の根拠) + `m3-scenarios.test.ts` の期待件数を更新して曖昧な一致がないことを確かめる
   _Boundary:_ `packages/ai-core/fixtures/scenarios/m3-4.ts`, `packages/ai-core/src/models/gateway.ts`, `packages/ai-core/src/models/gateway.test.ts`, `packages/ai-core/src/mock/index.ts`, `packages/ai-core/src/mock/m3-scenarios.test.ts`
   _Depends:_ 18.5, 22.4
   _Requirements:_ 4.2, 4.5
   _Traces:_ REQ-004, C15
 
 ### Implementation Notes
+
+- **サブエージェントは一度に 1 つ**: Supervisor のツール集合に `FatalLatch` を渡すと、`buildToolSet` が 1 ステップの複数のツール呼び出しを順に実行する（M1 のラッチの副作用）。これで共有トークン予算の残量が正確になる（並行だと 2 つの子が同じ残量を見る）。子の側にはラッチを渡さない（致命的エラーを投げるツールが無く、PROVE で不要と分かった）。Supervisor 自身のトークンは終了時に予算へ足すため、合計は `maxTotalTokens` を Supervisor の使用分だけ超えうる（`runResearch` の説明に明記）。
+- **引用の照合は「行」「文」「語」の順に除く**: 一覧・表の行は丸ごと、段落の文は文ごと、同じ文に集合内の論文があるときは言及（と包む括弧）だけを除き、「内容を確認してください」の警告を付ける。月が不正な裸の ID（`1234.5678`）は ID と見なさず、`arXiv:` ラベル付きなら月を問わず ID と見なす。照合後の本文へ警告の節を足すのは `attachCitationWarnings`（`checkCitations` は本文を変えるだけ）。集合に無い論文を ID も既知のタイトルも付けずに書いた場合は検出できない（`et al.` や `(2023)` を持つ行への警告で補う。plan の Req 4.5 の読みの限界として解説に書く）。
+- **計画に足したもの（境界外の変更、2026-10-19）**: `agents/token-ledger.ts` の `usageFromRun`（W1 F-10。実行の `totalTokens` を台帳の形にし、使用量が無い実行は不明）、`agents/observer.ts` の `forAgent` と `source` の 512 文字上限（W1 F-11）、`research/tools.ts` の `onCall`（Agent Inspector の `tool` イベント）、`research/scenarios.test.ts`（m3-4 の通しテスト）、`mock/arxiv-fixtures.ts` とそのテスト（`mock` の arXiv 用の fetcher。API の URL 以外は拒否）。`createResearchTools` は配列でなく `{ searchArxiv, getPaperAbstract }` を返す。
+- **m3-4 の台本**: 子の呼び出しは「検索 2 回 + 精読 + 市場影響」の 4 回（plan の「4 回で完了」）。Supervisor の台本の照合は `<research-theme>` のタグ込みの文字列（市場影響の子の `<theme>` と部分一致しない）。部分失敗の台本は、精読の子が空の答えで終わる。台本が無いテーマは `mock` でエラー（作り話をしない）。
 
 ---
 
@@ -259,22 +271,22 @@ _Depends:_ 22.5, 19.1, 19.4
 _Requirements:_ 4.2, 4.6, 4.8, 4.9, 4.10
 _Traces:_ REQ-004, C13, R-1
 
-- [ ] 23.1 `platform.ts`: `getArxivClient()` を組み立てる（`HttpFetcher`、`Clock`、キャッシュ。`globalThis` のホルダーで 1 つだけ。`mock` ではフィクスチャを返す fetcher）+ `platform.test.ts` に、実行モード別の組み立て、`mock` で arXiv へ接続しないことを先に足す
+- [x] 23.1 `platform.ts`: `getArxivClient()` を組み立てる（`HttpFetcher`、`Clock`、キャッシュ。`globalThis` のホルダーで 1 つだけ。`mock` ではフィクスチャを返す fetcher）+ `platform.test.ts` に、実行モード別の組み立て、`mock` で arXiv へ接続しないことを先に足す
   _Boundary:_ `apps/web/lib/server/platform.ts`, `apps/web/lib/server/platform.test.ts`
   _Depends:_ 19.1, 21.3
   _Requirements:_ 4.3, 4.7
   _Traces:_ REQ-004, C13
-- [ ] 23.2 `lib/server/domain-stream.ts`: `data-research-event`（`agent` と `kind`: `call` / `tool` / `summary` / `card` / `error`）、`data-research-usage`（状態、`id: "usage"`）、`data-research-result` への写像を足す + `domain-stream.test.ts` に、`agent` 付きのイベントの順序、使用量の状態パートが同じ `id` で上書きされること、結果の `report` が照合後であることを先に足す
+- [x] 23.2 `lib/server/domain-stream.ts`: `data-research-event`（`agent` と `kind`: `call` / `tool` / `summary` / `card` / `error`）、`data-research-usage`（状態、`id: "usage"`）、`data-research-result` への写像を足す + `domain-stream.test.ts` に、`agent` 付きのイベントの順序、使用量の状態パートが同じ `id` で上書きされること、結果の `report` が照合後であることを先に足す
   _Boundary:_ `apps/web/lib/server/domain-stream.ts`, `apps/web/lib/server/domain-stream.test.ts`
   _Depends:_ 19.4, 22.4
   _Requirements:_ 4.9, 4.10
   _Traces:_ REQ-004, C13
-- [ ] 23.3 `POST /api/research`: `z.strictObject`（`theme` 1〜500 文字、`modelId?`、`maxSubagentCalls?` 1〜20）を検査し、ツール非対応のモデルを `capability-unsupported` で拒否し、`runResearch` の進行を `data-research-*` として流す。arXiv に到達できない場合は検索の欠落として `missing` に記録して続行する（Supervisor 自体が起動できないときだけエラー）。中断では `data-research-result` を送らない + `route.test.ts` に、検査順、各拒否のコード、`mock` の完走（レポートに警告、`missing`、内訳）、呼び出し回数の上限の変更、中断を先に書く
+- [x] 23.3 `POST /api/research`: `z.strictObject`（`theme` 1〜500 文字、`modelId?`、`maxSubagentCalls?` 1〜20）を検査し、ツール非対応のモデルを `capability-unsupported` で拒否し、`runResearch` の進行を `data-research-*` として流す。arXiv に到達できない場合は検索の欠落として `missing` に記録して続行する（Supervisor 自体が起動できないときだけエラー）。中断では `data-research-result` を送らない + `route.test.ts` に、検査順、各拒否のコード、`mock` の完走（レポートに警告、`missing`、内訳）、呼び出し回数の上限の変更、中断を先に書く
   _Boundary:_ `apps/web/app/api/research/route.ts`, `apps/web/app/api/research/route.test.ts`
   _Depends:_ 22.5, 23.1, 23.2
   _Requirements:_ 4.2, 4.6, 4.8, 4.9, 4.10
   _Traces:_ REQ-004, C13
-- [ ] 23.4 実サーバー（`mock`）で、`fast-xml-parser` がバンドルされて起動できること、`/api/research` が `mock` で完走することを `real-server.spec.ts` で確かめ、`next.config.ts` の `serverExternalPackages` を必要最小限に更新する。結果を research.md の R-1 に追記する
+- [x] 23.4 実サーバー（`mock`）で、`fast-xml-parser` がバンドルされて起動できること、`/api/research` が `mock` で完走することを `real-server.spec.ts` で確かめ、`next.config.ts` の `serverExternalPackages` を必要最小限に更新する。結果を research.md の R-1 に追記する
   _Boundary:_ `apps/web/next.config.ts`, `apps/web/e2e/real-server.spec.ts`, `specs/003-domain-agents/research.md`
   _Depends:_ 23.3, 20.1
   _Requirements:_ 4.2, 4.3
@@ -282,6 +294,10 @@ _Traces:_ REQ-004, C13, R-1
   _Verify:_ `mise run test:e2e`（実サーバー）が成功する。足した `serverExternalPackages` の理由が research.md にある
 
 ### Implementation Notes
+
+- **ルートは短い**: `guard → モデル（`require: ["tools"]`）→ arXiv クライアント → ストリーム`。`runResearch` に `onEvent`（Agent Inspector）と、新しく足した `onUsage`（子が終わるたびと最後に、トークンの内訳と呼び出し回数を状態パートとして流す）を渡す。使用量の状態パートは `id: "usage"` を上書きする。中断は `runResearch` が投げるため、`data-research-result` は流れない（テストが確かめる）。リクエストの本文スキーマは ai-core の `research/request-schema.ts`（`apps/web` に `zod` が無いため。ヘルプデスクと同じ扱いの境界外の追加）。
+- **arXiv に届かないときは検索の欠落**（Req 4.7 → 4.6）: 検索ツールの失敗（`source-unavailable`）を子が受けて、論文が 1 件も見つからないまま終われば、子の答えの文面にかかわらず「検索できなかった」失敗として `missing` に記録する（`onFailure` を `createResearchTools` に足した。ルートのテストが、arXiv が落ちていても 200 で完走し、2 回の検索の欠落がレポートに載ることを確かめる）。Supervisor 自体が起動できない（モデルの失敗）ときだけ、`provider-unavailable` のエラーパートになる。
+- **実サーバー**: `fast-xml-parser` は外部化せずにバンドルのまま動いた。`next.config.ts` は変えていない（research.md の R-1）。`getArxivClient()` は `globalThis` の 1 つのホルダー（キューとキャッシュを 1 つにするため）。`mock` は 3 秒の間隔を使わず（フィクスチャに間隔は要らない）、`local` / `live` はガード付きの `HttpFetcher`（`AI_RECORD=1` なら arXiv も録画される）。ガード付き fetch は本文を 5 MB まで読んでから返すため、クライアントの 2 MB の上限は「解析しない」ことしか保証しない（M1 のポートの変更は M3 の範囲外）。
 
 ---
 
@@ -292,13 +308,13 @@ _Depends:_ 23.4
 _Requirements:_ 4.5, 4.8, 4.10
 _Traces:_ REQ-004, C16
 
-- [ ] 24.1 `stryker.config.mjs` に `research/citations.ts` と `research/budget.ts` を足す
+- [x] 24.1 `stryker.config.mjs` に `research/citations.ts` と `research/budget.ts` を足す
   _Boundary:_ `stryker.config.mjs`
   _Depends:_ 22.4
   _Requirements:_ 4.5, 4.8
   _Traces:_ REQ-004, C16
   _Verify:_ `mise run test:mutation` の対象に含まれ、閾値 70 を満たす
-- [ ] 24.2 W5 の gate を実測して記録する。`mise run gate` の成功を引用し、所要時間を research.md に追記する。arXiv の 429 / 503 / `Retry-After` の実挙動は未実測であり、フィクスチャは仕様と推測に基づくことを research.md に明記する
+- [x] 24.2 W5 の gate を実測して記録する。`mise run gate` の成功を引用し、所要時間を research.md に追記する。arXiv の 429 / 503 / `Retry-After` の実挙動は未実測であり、フィクスチャは仕様と推測に基づくことを research.md に明記する
   _Boundary:_ `specs/003-domain-agents/research.md`
   _Depends:_ 24.1
   _Requirements:_ 4.7
@@ -306,3 +322,8 @@ _Traces:_ REQ-004, C16
   _Verify:_ `mise run gate` の成功と所要時間を research.md に記録した。W5 の敵対的レビューの記録が `.sdd/reviews/003-domain-agents-impl-w5-review-*.md` にある
 
 ### Implementation Notes
+
+- **結線**: `stryker.config.mjs` に `research/citations.ts` と `research/budget.ts`。この 2 ファイルだけの実行で 83.22（citations 82.41、budget 88.89、閾値 70）。全体の `mise run test:mutation` は未実行。
+- **敵対的レビュー**（`.sdd/reviews/003-domain-agents-impl-w5-review-2026-10-19.md`: REQUEST_CHANGES、HIGH 0、MEDIUM 5、LOW 9）。MEDIUM はすべてテスト先行で直した（Supervisor のトークンが共有予算の外だった F-1、引用照合の見逃しと誤除去 F-2・F-3、精読が共有キャッシュから読めた F-5）。F-4（行・文単位の除去の限界）と LOW の多くは受け入れて解説（40.4）へ送る。修正後の fresh な再レビューは未実施。
+- **実測**: `mise run gate` は exit 0（下の research.md）。3 エンジンの E2E は 402 件成功（chromium / firefox / webkit）。
+- **持ち越し**: arXiv の実応答は 2026-10-19 に一部を実測した（429 は本文 `Rate exceeded.` で `Retry-After` なし、503 は `Retry-After: 0` と HTML 本文、`http://` は 301。1 件の正常系は `fixtures/arxiv/live-single.xml` で固定）。**未実測**: 複数件・0 件の正常系、HTTP 400 のエラーフィード（429 とタイムアウトに阻まれた）、ガード付き fetch のリダイレクト追従。これらのフィクスチャは仕様に基づく（`research.md` I-5）。ガード付き fetch は本文を 5 MB まで読んでから返すため 2 MB の上限は解析の拒否だけ。CL-26 は 2026-10-19 に確定した（初回 + 修正 3 回）。
