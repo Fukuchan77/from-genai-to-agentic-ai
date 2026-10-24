@@ -1274,6 +1274,12 @@ const M3_WORKFLOW_FILES_NOW = [
 	"packages/ai-core/src/helpdesk/planner.ts",
 	"packages/ai-core/src/helpdesk/replanner.ts",
 	"packages/ai-core/src/helpdesk/helpdesk.ts",
+	"packages/ai-core/src/requirements/interview.ts",
+	"packages/ai-core/src/requirements/personas.ts",
+	"packages/ai-core/src/marketing/council.ts",
+	"packages/ai-core/src/marketing/moderator.ts",
+	"packages/ai-core/src/marketing/profile.ts",
+	"packages/ai-core/src/marketing/recommend.ts",
 ];
 
 describe("workflow-no-agent-loop: the real tree", () => {

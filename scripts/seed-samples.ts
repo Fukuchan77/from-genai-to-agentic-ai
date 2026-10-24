@@ -8,7 +8,7 @@
 //
 // `local` / `live` seed the Compose Postgres (`mise run services:up:db` first). `mock` seeds an
 // in-memory database that goes away with this process, so it only shows what a run would do.
-// `--reset` empties the help-desk tables first; the knowledge documents are never removed.
+// `--reset` empties the help-desk and marketing tables first; the knowledge documents are never removed.
 import { registerHooks } from "node:module";
 import { parseArgs } from "node:util";
 
@@ -36,6 +36,7 @@ const { values } = parseArgs({ options: { reset: { type: "boolean", default: fal
 
 const { loadPlatformConfig } = await import("../packages/ai-core/src/config/index.ts");
 const { seedHelpdesk } = await import("../packages/ai-core/src/helpdesk/seed.ts");
+const { seedMarketing } = await import("../packages/ai-core/src/marketing/seed.ts");
 const { createModelGateway } = await import("../packages/ai-core/src/models/index.ts");
 const { createPgliteDatabase, createPostgresDatabase } = await import(
 	"../packages/ai-core/src/rag/db/index.ts"
@@ -79,6 +80,13 @@ async function main(): Promise<void> {
 		}
 		console.log(
 			`ヘルプデスクのチケット: ${result.tickets.inserted} 件を追加、${result.tickets.existing} 件は既にありました。`,
+		);
+		const marketing = await seedMarketing({ db: handle.db, reset: values.reset });
+		console.log(
+			`マーケティングの商品: ${marketing.products.inserted} 件を追加、合計 ${marketing.products.total} 件です。`,
+		);
+		console.log(
+			`マーケティングのペルソナ: ${marketing.personas.inserted} 件を追加、合計 ${marketing.personas.total} 件です。`,
 		);
 	} finally {
 		await handle.close();

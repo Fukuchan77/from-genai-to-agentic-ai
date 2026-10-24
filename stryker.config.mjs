@@ -21,6 +21,8 @@ export default {
 		"packages/ai-core/src/analysis/output-parser.ts",
 		"packages/ai-core/src/research/citations.ts",
 		"packages/ai-core/src/research/budget.ts",
+		"packages/ai-core/src/marketing/moderator.ts",
+		"packages/ai-core/src/marketing/recommend.ts",
 		"packages/ai-core/src/config/run-mode.ts",
 		"packages/ai-core/src/mock/resolve.ts",
 		"packages/ai-core/src/summarize/plan.ts",
