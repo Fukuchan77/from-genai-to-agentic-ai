@@ -17,6 +17,7 @@ import {
 } from "@platform/ai-core/config";
 import { PlatformError } from "@platform/ai-core/errors";
 import { createTicketStore, type TicketStore } from "@platform/ai-core/helpdesk";
+import { type CatalogRepo, createCatalogRepo, seedMarketing } from "@platform/ai-core/marketing";
 import {
 	connectMcpServers,
 	filesServerConfig,
@@ -66,6 +67,7 @@ import {
 	createLexicalRerank,
 	createPgliteDatabase,
 	createPostgresDatabase,
+	KnowledgeBaseUnavailableError,
 	type RagDatabaseHandle,
 } from "@platform/ai-core/rag";
 import { type ArxivClient, createArxivClient } from "@platform/ai-core/research";
@@ -664,6 +666,29 @@ export async function getHelpdeskStore(
 ): Promise<TicketStore> {
 	const [platform, handle] = await Promise.all([getPlatform(), getKnowledgeBase(factories)]);
 	return createTicketStore(handle.db, { clock: platform.clock });
+}
+
+// --- Marketing catalog (plan C13, Req 6.5, 6.6) ---
+
+/**
+ * The product catalog and council personas, on the knowledge base's database. `mock` seeds the
+ * bundled samples into its throwaway PGlite (idempotent), so the screens work out of the box;
+ * `local` and `live` never seed: an empty catalog is `provider-unavailable` pointing at
+ * `mise run seed:samples`.
+ */
+export async function getCatalogRepo(
+	factories: KnowledgeBaseFactories = DEFAULT_KNOWLEDGE_BASE_FACTORIES,
+): Promise<CatalogRepo> {
+	const [platform, handle] = await Promise.all([getPlatform(), getKnowledgeBase(factories)]);
+	const repo = createCatalogRepo(handle.db);
+	if (await repo.isSeeded()) return repo;
+	if (platform.mode === "mock") {
+		await seedMarketing({ db: handle.db });
+		return repo;
+	}
+	throw new KnowledgeBaseUnavailableError(
+		"商品カタログとペルソナが未投入です。`mise run seed:samples` でサンプルデータを投入してから、もう一度実行してください。",
+	);
 }
 
 // --- Sandbox (plan C13, Req 3.7, 3.8, 3.10) ---

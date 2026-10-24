@@ -1,6 +1,13 @@
 import type { AnalysisEvent, AnalysisResult } from "@platform/ai-core/analysis";
 import { DEFAULT_ANALYSIS } from "@platform/ai-core/config";
 import { CREDENTIAL_KINDS, type HelpdeskEvent } from "@platform/ai-core/helpdesk";
+import type {
+	CouncilResult,
+	CouncilTurnEvent,
+	Profile,
+	RecommendResult,
+} from "@platform/ai-core/marketing";
+import type { Question, Requirements, SufficiencyVerdict } from "@platform/ai-core/requirements";
 import type { ResearchEvent, ResearchResult, ResearchUsage } from "@platform/ai-core/research";
 
 // Maps the domain agents' events to UI message stream parts (plan C13, "ストリームのパート"). A state
@@ -248,35 +255,38 @@ export function createResearchStreamer(writer: DomainStreamWriter): (event: Rese
 	};
 }
 
+/** The token breakdown by role and in total, copied field by field (shared by research and council). */
+function tokenBreakdown(usage: ResearchUsage["usage"]) {
+	return {
+		byRole: Object.fromEntries(
+			Object.entries(usage.byRole).map(([role, value]) => [
+				role,
+				value === "unknown"
+					? "unknown"
+					: {
+							inputTokens: value.inputTokens,
+							outputTokens: value.outputTokens,
+							totalTokens: value.totalTokens,
+							calls: value.calls,
+							unknownCalls: value.unknownCalls,
+						},
+			]),
+		),
+		total: {
+			inputTokens: usage.total.inputTokens,
+			outputTokens: usage.total.outputTokens,
+			totalTokens: usage.total.totalTokens,
+		},
+	};
+}
+
 /** The tokens by role and the calls so far, as a state part: each write replaces the one before. */
 export function writeResearchUsage(writer: DomainStreamWriter, report: ResearchUsage): void {
 	const { usage, calls, maxCalls } = report;
 	writer.write({
 		type: "data-research-usage",
 		id: "usage",
-		data: {
-			byRole: Object.fromEntries(
-				Object.entries(usage.byRole).map(([role, value]) => [
-					role,
-					value === "unknown"
-						? "unknown"
-						: {
-								inputTokens: value.inputTokens,
-								outputTokens: value.outputTokens,
-								totalTokens: value.totalTokens,
-								calls: value.calls,
-								unknownCalls: value.unknownCalls,
-							},
-				]),
-			),
-			total: {
-				inputTokens: usage.total.inputTokens,
-				outputTokens: usage.total.outputTokens,
-				totalTokens: usage.total.totalTokens,
-			},
-			calls,
-			maxCalls,
-		},
+		data: { ...tokenBreakdown(usage), calls, maxCalls },
 	});
 }
 
@@ -289,6 +299,192 @@ export function writeResearchResult(writer: DomainStreamWriter, result: Research
 			report: result.report,
 			warnings: [...result.warnings],
 			missing: result.missing.map(({ agent, reason }) => ({ agent, reason })),
+		},
+	});
+}
+
+// --- Requirements interview (Req 5.3, 5.4) ---
+
+function requirementItems(items: Requirements[keyof Requirements]) {
+	return items.map(({ text, personaId }) => ({ text, personaId }));
+}
+
+/** The requirements so far, as a state part: each write replaces the one before (Req 5.3). */
+export function writeRequirementsPreview(
+	writer: DomainStreamWriter,
+	requirements: Requirements,
+): void {
+	writer.write({
+		type: "data-requirements-preview",
+		id: "preview",
+		data: {
+			functional: requirementItems(requirements.functional),
+			nonFunctional: requirementItems(requirements.nonFunctional),
+			constraints: requirementItems(requirements.constraints),
+			unconfirmed: requirementItems(requirements.unconfirmed),
+		},
+	});
+}
+
+/** One round's sufficiency verdict, an event part with one id per round (Req 5.4). */
+export function writeRequirementsJudgement(
+	writer: DomainStreamWriter,
+	round: number,
+	verdict: SufficiencyVerdict,
+): void {
+	writer.write({
+		type: "data-requirements-judgement",
+		id: `judgement-${round}`,
+		data: {
+			round,
+			sufficient: verdict.sufficient,
+			missing: [...verdict.missing],
+			forcedEnd: verdict.forcedEnd,
+		},
+	});
+}
+
+/**
+ * The next round's questions, an event part with one id per round (Req 5.2, 5.5). Each question is
+ * copied by name and its text is clamped like a council statement.
+ */
+export function writeRequirementsQuestions(
+	writer: DomainStreamWriter,
+	round: number,
+	questions: readonly Question[],
+): void {
+	writer.write({
+		type: "data-requirements-questions",
+		id: `questions-${round}`,
+		data: {
+			round,
+			questions: questions.map(({ id, personaId, text }) => ({
+				id,
+				personaId,
+				text: clampText(text),
+			})),
+		},
+	});
+}
+
+// --- Marketing council (Req 6.2, 6.3) ---
+
+/** The longest statement or draft sent to the browser, in characters (code points). */
+export const MAX_COUNCIL_TEXT_CHARACTERS = 4000;
+
+function clampText(text: string): string {
+	const characters = [...text];
+	return characters.length > MAX_COUNCIL_TEXT_CHARACTERS
+		? characters.slice(0, MAX_COUNCIL_TEXT_CHARACTERS).join("")
+		: text;
+}
+
+/**
+ * Returns the function to hand to `runCouncil` as `onTurn`. Each statement is one
+ * `data-council-turn` part (not a `text-delta`) with a running id and the persona's name (Req 6.3).
+ */
+export function createCouncilStreamer(
+	writer: DomainStreamWriter,
+): (event: CouncilTurnEvent) => void {
+	let turns = 0;
+	return (event) => {
+		turns += 1;
+		writer.write({
+			type: "data-council-turn",
+			id: `turn-${turns}`,
+			data: {
+				round: event.round,
+				personaId: event.personaId,
+				personaName: event.personaName,
+				text: clampText(event.text),
+				failed: event.failed,
+			},
+		});
+	};
+}
+
+type CouncilVerdict = NonNullable<CouncilResult["rounds"][number]["verdict"]>;
+
+function councilVerdict(verdict: CouncilVerdict) {
+	return {
+		agreed: verdict.agreed,
+		reason: verdict.reason,
+		remainingObjections: [...verdict.remainingObjections],
+	};
+}
+
+/** One round's agreement verdict, an event part with one id per round (Req 6.2). */
+export function writeCouncilVerdict(
+	writer: DomainStreamWriter,
+	round: number,
+	verdict: CouncilVerdict,
+): void {
+	writer.write({
+		type: "data-council-verdict",
+		id: `verdict-${round}`,
+		data: { round, ...councilVerdict(verdict) },
+	});
+}
+
+/**
+ * The end of a council: the improved draft, why it ended, a per-round summary and the tokens. The
+ * statements and intermediate drafts were streamed as turns, so they are not repeated (Req 6.2).
+ */
+export function writeCouncilResult(writer: DomainStreamWriter, result: CouncilResult): void {
+	writer.write({
+		type: "data-council-result",
+		id: "result",
+		data: {
+			improvedDraft: clampText(result.improvedDraft),
+			endReason: result.endReason,
+			rounds: result.rounds.map((round) => ({
+				round: round.round,
+				statements: round.statements.length,
+				missing: round.missing.map(({ personaId, personaName, reason }) => ({
+					personaId,
+					personaName,
+					reason,
+				})),
+				...(round.verdict ? { verdict: councilVerdict(round.verdict) } : {}),
+			})),
+			usage: tokenBreakdown(result.usage),
+		},
+	});
+}
+
+// --- Marketing profile and recommendation (Req 6.4, 6.5) ---
+
+/** What is known about the shopper, as a state part: each write replaces the one before (Req 6.4). */
+export function writeMarketingProfile(writer: DomainStreamWriter, profile: Profile): void {
+	writer.write({
+		type: "data-marketing-profile",
+		id: "profile",
+		data: {
+			interests: [...profile.interests],
+			budgetYen: profile.budgetYen,
+			concerns: [...profile.concerns],
+		},
+	});
+}
+
+/** The recommended products and how many ids the catalog check dropped (Req 6.5). */
+export function writeMarketingRecommendation(
+	writer: DomainStreamWriter,
+	result: RecommendResult,
+): void {
+	writer.write({
+		type: "data-marketing-recommendation",
+		id: "recommendation",
+		data: {
+			items: result.items.map(({ productId, name, priceYen, reason, overBudget }) => ({
+				productId,
+				name,
+				priceYen,
+				reason,
+				overBudget,
+			})),
+			dropped: result.dropped,
+			...(result.reason === undefined ? {} : { reason: result.reason }),
 		},
 	});
 }

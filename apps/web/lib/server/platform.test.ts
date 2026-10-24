@@ -4,6 +4,7 @@ import path from "node:path";
 import { Readable } from "node:stream";
 import { gzipSync } from "node:zlib";
 import { DEFAULT_SANDBOX } from "@platform/ai-core/config";
+import { createCatalogRepo, seedMarketing } from "@platform/ai-core/marketing";
 import type { McpRegistry, McpServerConfig } from "@platform/ai-core/mcp";
 import { defaultRerankModel, ModelSelectionError } from "@platform/ai-core/models";
 import type {
@@ -13,7 +14,11 @@ import type {
 	WebSearchProvider,
 } from "@platform/ai-core/ports";
 import { createFakeClock, createNodeHttpFetcher } from "@platform/ai-core/ports";
-import { KnowledgeBaseUnavailableError, type RagDatabaseHandle } from "@platform/ai-core/rag";
+import {
+	createPgliteDatabase,
+	KnowledgeBaseUnavailableError,
+	type RagDatabaseHandle,
+} from "@platform/ai-core/rag";
 import { createMockSandboxProvider } from "@platform/ai-core/sandbox";
 import { ARTICLE_FETCH_LIMITS, SourceFetchError } from "@platform/ai-core/summarize";
 import { describe, expect, it, vi } from "vitest";
@@ -24,6 +29,7 @@ import {
 	createMcpRegistry,
 	createPlatform,
 	getArxivClient,
+	getCatalogRepo,
 	getHelpdeskStore,
 	getKnowledgeBase,
 	getMcpRegistry,
@@ -924,6 +930,151 @@ describe("getHelpdeskStore (plan C13, Req 2.6, 2.7)", () => {
 			setPlatformForTesting(undefined);
 		}
 	});
+});
+
+describe("getCatalogRepo (plan C13, Req 6.5, 6.6)", () => {
+	async function withPlatform(env: Record<string, string>) {
+		setPlatformForTesting(await createPlatform({ env }));
+		setKnowledgeBaseForTesting(undefined);
+	}
+
+	function pgliteFactories() {
+		const handles: RagDatabaseHandle[] = [];
+		const factories: KnowledgeBaseFactories = {
+			pglite: async () => {
+				const handle = await createPgliteDatabase();
+				handles.push(handle);
+				return handle;
+			},
+			postgres: async () => {
+				const handle = await createPgliteDatabase();
+				handles.push(handle);
+				return handle;
+			},
+		};
+		return { factories, handles };
+	}
+
+	async function cleanup() {
+		setKnowledgeBaseForTesting(undefined);
+		setPlatformForTesting(undefined);
+	}
+
+	it("seeds the sample catalog and personas in mock mode so the screens work out of the box", async () => {
+		await withPlatform(MOCK_ENV);
+		const { factories, handles } = pgliteFactories();
+		try {
+			const repo = await getCatalogRepo(factories);
+
+			expect(await repo.isSeeded()).toBe(true);
+			expect((await repo.listProducts()).length).toBeGreaterThan(0);
+			expect((await repo.listPersonas()).length).toBeGreaterThan(0);
+			// A second call on the same database neither fails nor duplicates rows.
+			const before = (await repo.listProducts()).length;
+			const again = await getCatalogRepo(factories);
+			expect((await again.listProducts()).length).toBe(before);
+		} finally {
+			await cleanup();
+			await Promise.all(handles.map((handle) => handle.close()));
+		}
+	}, 60_000);
+
+	it("shares the knowledge-base database with the other stores", async () => {
+		await withPlatform(MOCK_ENV);
+		const { factories, handles } = pgliteFactories();
+		try {
+			await getCatalogRepo(factories);
+			await getKnowledgeBase(factories);
+
+			expect(handles).toHaveLength(1);
+		} finally {
+			await cleanup();
+			await Promise.all(handles.map((handle) => handle.close()));
+		}
+	}, 60_000);
+
+	it("does not seed in local mode and answers provider-unavailable pointing at seed:samples", async () => {
+		await withPlatform(LOCAL_ENV);
+		const { factories, handles } = pgliteFactories();
+		try {
+			const failure = await getCatalogRepo(factories).catch((error: unknown) => error);
+
+			expect(failure).toBeInstanceOf(KnowledgeBaseUnavailableError);
+			expect(failure).toMatchObject({ code: "provider-unavailable" });
+			expect((failure as Error).message).toMatch(/mise run seed:samples/);
+			const handle = await getKnowledgeBase(factories);
+			expect(await createCatalogRepo(handle.db).isSeeded()).toBe(false);
+		} finally {
+			await cleanup();
+			await Promise.all(handles.map((handle) => handle.close()));
+		}
+	}, 60_000);
+
+	it("does not seed in live mode either", async () => {
+		await withPlatform({ ...LOCAL_ENV, AI_TEST_RUN_MODE: "live", ANTHROPIC_API_KEY: "changeme" });
+		const { factories, handles } = pgliteFactories();
+		try {
+			const failure = await getCatalogRepo(factories).catch((error: unknown) => error);
+
+			expect(failure).toMatchObject({ code: "provider-unavailable" });
+			expect((failure as Error).message).toMatch(/seed:samples/);
+		} finally {
+			await cleanup();
+			await Promise.all(handles.map((handle) => handle.close()));
+		}
+	}, 60_000);
+
+	it("returns the repo in local mode once the catalog has been seeded", async () => {
+		await withPlatform(LOCAL_ENV);
+		const { factories, handles } = pgliteFactories();
+		try {
+			const handle = await getKnowledgeBase(factories);
+			await seedMarketing({ db: handle.db });
+
+			const repo = await getCatalogRepo(factories);
+
+			expect(await repo.isSeeded()).toBe(true);
+		} finally {
+			await cleanup();
+			await Promise.all(handles.map((handle) => handle.close()));
+		}
+	}, 60_000);
+
+	it("reports an unreachable database with the start-up guidance, and tries again next time", async () => {
+		await withPlatform(LOCAL_ENV);
+		let attempts = 0;
+		const { factories } = fakeFactories({
+			postgres: async () => {
+				attempts += 1;
+				throw new KnowledgeBaseUnavailableError();
+			},
+		});
+		try {
+			const failure = await getCatalogRepo(factories).catch((error: unknown) => error);
+
+			expect(failure).toBeInstanceOf(KnowledgeBaseUnavailableError);
+			expect((failure as Error).message).toMatch(/services:up:db/);
+			await getCatalogRepo(factories).catch(() => undefined);
+			expect(attempts).toBe(2);
+		} finally {
+			await cleanup();
+		}
+	});
+
+	it("does not cache an unseeded failure: seeding afterwards makes the next call succeed", async () => {
+		await withPlatform(LOCAL_ENV);
+		const { factories, handles } = pgliteFactories();
+		try {
+			await getCatalogRepo(factories).catch(() => undefined);
+			const handle = await getKnowledgeBase(factories);
+			await seedMarketing({ db: handle.db });
+
+			await expect(getCatalogRepo(factories)).resolves.toBeDefined();
+		} finally {
+			await cleanup();
+			await Promise.all(handles.map((handle) => handle.close()));
+		}
+	}, 60_000);
 });
 
 describe("getSandboxSelection (plan C13, Req 3.7, 3.8, 3.10)", () => {
