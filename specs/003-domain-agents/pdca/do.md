@@ -328,3 +328,43 @@
 
 - plan.md edits of W5 (C8, C9, file table, the supervisor's token reserve) approved by the user.
 - CL-26 confirmed: first run + 3 fixes = at most 4 runs; `maxFixAttempts` stays 3.
+
+
+## W6 implementation (`/sdd-impl 003-domain-agents`, 2026-10-24)
+
+- Preflight: the gate lane has no external dependency (PREFLIGHT OK). Every command ran as `env -u NODE_ENV mise exec -- …`. Single files run with `vitest run --coverage.enabled=false <path>` (the coverage threshold fails a partial run). Work was fanned out to fresh-context subagents, one task each (25.1 / 26.1 / 26.2 / 26.4 / 26.6, then 25.2 / 26.3, then 25.3 / 26.5, then 25.4 / 26.7, then 27.1 / 27.2 / 27.3 / 27.9, then 27.4 / 27.7 / 27.8, then 27.5 / 27.6); I re-ran each task's tests myself before ticking it. Each subagent had its own scratchpad subdirectory for PROVE after a shared-scratchpad name collision (two agents wrote `mut.py`; no source was damaged — `session.ts` was re-verified).
+
+### 25.x (requirements interview)
+
+- 25.1 session: 37 tests, PROVE 36 stubs (3 survived at first, 2 tests added). 25.2 personas: 26 tests, ~17 stubs (goal limits added). 25.3 interview: 42 tests, ~16 stubs. 25.4 document: 13 tests, 8 stubs; markdown-injection neutralization (a leading `#`, `>`, `-`, digits.).
+- Decisions: `round` = closed rounds; `judgeSufficiency` owns the "sufficient with missing = insufficient" rule; persona IDs are assigned by code.
+
+### 26.x (marketing)
+
+- 26.1 `onRoleOutput`: 10 new tests (28 total), 11 stubs all killed; callback errors swallowed. 26.2 `0003_marketing.sql`: `schema.db.test.ts` 62 tests on PGlite, 12 stubs killed; the `client.pg.test.ts` case is written but **not run** (needs Docker). Deviation: the persona column is `viewpoint` (plan's Data Model), not `instructions` as the task text said.
+- 26.3 catalog/seed: 15 tests, 4 survivors turned into tests. 26.4 moderator: 18 tests, 24 stubs. 26.5 council: 34 tests, 12/15 killed (+1 test), 2 equivalent. 26.6 profile: 35 tests, 36 stubs. 26.7 recommend: 21 tests, 11 stubs.
+
+### 27.x (entrance)
+
+- 27.1 scenarios: M3 went 13/63 → 19/120 scenarios/turns; no ambiguity. 27.2 `getCatalogRepo`: mock auto-seeds, local/live do not (503 + `seed:samples`). 27.3: 7 part writers; per-round ids for judgement/verdict. 27.4–27.8: 28 / 46 / 12 / 34 / 29 route tests. 27.9: `seed-samples.ts` calls `seedMarketing`; run twice in one process, nothing added the second time (no Docker for the real Postgres).
+- Problems met: (1) `check:repo-rules` rejected a non-literal dynamic import in a test (`import(specifier)`); replaced by `vi.resetModules()` + a literal import. (2) The first full gate failed on `check-repo-rules.test.mjs`: the scan-count list needed the 6 new files (37 → 43) — this is task 28.1's job. (3) Route tests that start a PGlite per test hit the 5 s limit under the gate's parallel workers; `vi.setConfig({ testTimeout: 60_000 })`. (4) A second gate run overlapped with a run I had started earlier and produced unrelated timeouts; re-run alone it was green. Lesson: never start two gates at once.
+
+### W6 adversarial review and close (2026-10-24)
+
+- Review `.sdd/reviews/003-domain-agents-impl-w6-review-2026-10-24.md`: REQUEST_CHANGES (0 HIGH, 8 MEDIUM, 15 LOW). Fixed test-first by three parallel subagents on disjoint files (council / requirements / recommend); plan.md synced. Details in the review's Responses and in `tasks.md` Implementation Notes.
+- **The lesson (again)**: ~400 stubs killed during implementation and the reviewer still found whole-run problems — the shared budget not being a ceiling (330 of 100), a double-submit closing a round twice, a second `useChat` turn rejected with 400 because the test hand-built the assistant message. My own invariant test for the budget could only pin the steady-size case; the first call of each kind can still overshoot (documented).
+- Gate after the fixes: exit 0, 76 s (root 419, `@platform/ai-core` 3,673 / 4 skipped, `web` 1,190, `@platform/eval-suite` 7 / 8 skipped, `docs:check` 110 references). Stryker (2 files): 82.89 (84.73 before the fixes). E2E and `test:container` were not run in W6 (no screens yet; E2E for these routes is 35.x).
+
+### Human decisions (2026-10-24)
+
+- Boundary exception (12) of `tasks.md` approved by the user.
+- plan.md additions of W6 approved by the user: the `data-requirements-questions` part, the `/recommend` `text` part (`id: "summary"`), and the Error Handling / CL-12 / CL-17 / `DEFAULT_COUNCIL` / C12 / C13 edits made for the review fixes.
+
+## W6 ship (`/sdd-ship 003-domain-agents`, 2026-10-24)
+
+- Validation: GO. Tasks 25.1–28.2 are `[x]` (22 of 22); boundary exceptions are recorded as (12) in `tasks.md` and were approved by the user; the plan edits were approved by the user; PROVE evidence for every new test is in the sections above.
+- Docker (Rancher Desktop) was reachable. `mise run test:db`: the first run **failed** one existing case (`does not apply a migration twice`: `expected 3 to be 2`) — task 26.2 had added `0003` and updated the applied-names list but not this count, and PGlite could not show it. Root cause fixed (`toBe(3)`, boundary exception (4)); re-run `client.pg.test.ts` 9 passed (executed=18 passed=18 for the lane). Lesson: a Docker-only lane has to be run before a task that writes a pg test is ticked.
+- Real Postgres, throwaway test (deleted afterwards): `seedMarketing` twice → first {products 10, personas 3}, second 0 inserted, totals 10 / 3; `has`, `listPersonas` order and `reset` as expected. `mise run seed:samples` with `AI_RUN_MODE=local` could not run: it needs Ollama for the FAQ embeddings (not started, per the no-provisioning rule).
+- Gate (forced, `TURBO_FORCE=true`, nothing cached): `mise run gate` exit 0, 83 s. root 419; `@platform/ai-core` 3,673 passed / 4 skipped; `web` 1,190; `@platform/eval-suite` 7 / 8 skipped; `docs:check` 110 references; `workflow-no-agent-loop` scanned 43 files.
+- Commits: `1611759` (cooperateByRole hook), `6ff1ea5` (marketing schema, catalog, seed), `1e4401e` (requirements and marketing workflows, m3-5/m3-6), `a5b44ce` (web routes), `0f603a3` (wiring); docs ride in the docs commit.
+- Not run in ship: E2E, `test:container`, full `test:mutation`. Open: no fresh re-review of the review fixes; `tasks-comp-w6.md` migration waits for CI's `ci-status`.

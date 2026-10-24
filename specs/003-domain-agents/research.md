@@ -488,3 +488,12 @@ Rancher Desktop の Docker Engine **29.5.3**（API 1.54、aarch64）で、Engine
 - 3 エンジンの E2E（`mise run test:e2e`）は 402 件成功（修正の前）。修正後に `research:` の 3 件を chromium で再実行して成功。`check:client-bundle` は成功（24 ファイル、16 名前と 5 センチネル）。
 - ミューテーション: `research/citations.ts` 82.41、`research/budget.ts` 88.89（2 ファイルだけの実行で 83.22、閾値 70）。
 - **arXiv の 429 / 503 / `Retry-After` の実挙動は未実測**で、`fixtures/arxiv/` は文書化された形式と推測に基づく（実 API への接続は `mock` の外でしか確かめられない）。
+
+## W6 の実測（2026-10-24）
+
+- `mise run gate`: 終了コード 0。レビュー前 43 秒、レビューの修正後 76 秒（root 419 件、`@platform/ai-core` 3,673 件 / 4 skipped、`web` 1,190 件、`@platform/eval-suite` 7 件 / 8 skipped、`docs:check` は 110 件の参照を確認）。`workflow-no-agent-loop` は 43 ファイルを走査し、W6 の 6 ファイル（`requirements/interview.ts`・`personas.ts`、`marketing/council.ts`・`moderator.ts`・`profile.ts`・`recommend.ts`）を含む（`check-repo-rules.test.mjs` の走査件数の検査を 37 → 43 に更新）。
+- `cooperateByRole` に `onRoleOutput` を足しても M2 のテストは緑のまま（`src/patterns` 110 件、`apps/web` の `app/api/workflows`・`components/workflows` 135 件が追加の前後で緑）。
+- Stryker（`marketing/moderator.ts`、`recommend.ts` の 2 ファイル、閾値 70）: 修正前 84.73、修正後 82.89（`moderator.ts` 83.84、`recommend.ts` 81.82）。
+- 未実施: `mise run test:db`（Docker）で `0003_marketing.sql` を実 Postgres に適用する `client.pg.test.ts` の 1 ケースと、`mise run seed:samples` の実 Postgres での 2 回実行。どちらも書いて PGlite では確かめたが、Docker が無いため人が実行する。
+- 合議の予算は「同程度の大きさの呼び出しが続く限り」の上限である（W6 レビュー F-1）。出力の上限がスタックのどこにも無いため、種類ごとの最初の 1 回は残量を超えうる。
+

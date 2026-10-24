@@ -30,12 +30,12 @@ M3 は `packages/ai-core` に 8 つの領域（`files/`、`mcp/`、`sandbox/`、
 | CL-9 | テストの接尾辞 | Docker が必要なテストは `*.container.test.ts`（`mise run test:container`、Docker がなければ理由付きでスキップ）を新設する。E2B の実機テストは置かず、spike S-4 とハンズオンの記録で確認する | ★ |
 | CL-10 | 004 Req 4.8（外部コンテンツの汚染状態）の扱い | M3 は書き込みと破壊的ツールを登録しない（Req 1.17）ため、外部コンテンツの汚染状態は M3 の実行に影響しない。M3 は `RunObserver` で外部コンテンツ（arXiv の要旨、ファイルの内容、MCP の応答）の取り込みを記録する口だけを置き、判定と遮断は 004 で実装する | |
 | CL-11 | Req 5.1、5.6 の状態 | 要件インタビューの状態（回答、要件、ラウンド数）はセッションのレジストリに置く。要件定義書は Markdown として返し、ダウンロードは同じセッションの内容から生成する | |
-| CL-12 | Req 6.2 の合意判定 | 各ラウンドの終わりに、モデレーターが構造化出力で `agreed`（真偽）、`reason`、`remainingObjections` を返す。`agreed` が真で、かつ全ペルソナの直近の発言に未解決の反対が無いことをコードで確認する。判定が不正なら `generateValidated` で再生成する | ★ |
+| CL-12 | Req 6.2 の合意判定 | 各ラウンドの終わりに、モデレーターが構造化出力で `agreed`（真偽）、`reason`、`remainingObjections` を返す。`agreed` が真で、かつ全ペルソナの直近の発言に未解決の反対が無いことをコードで確認する。そのラウンドで発言が得られなかったペルソナ（失敗、または予算不足で呼ばれなかった）がいるときは、`agreed` が真でも合意とせず、固定の理由を付けて次のラウンドへ進む（上限なら `max-rounds`）。判定が不正なら `generateValidated` で再生成する | ★ |
 | CL-13 | Req 2.3 の差分 | 差分は純関数 `diffPlan(before, after)` が計算する。タスク ID の集合の増減と、同じ ID で依存や説明が変わったものを記録する。ID は計画の生成時に付け直さず、再計画では残るタスクの ID を保つ | |
 | CL-14 | Req 2.4 の上限 | 「ステップ」はタスクの実行 1 回と、計画・再計画の生成 1 回を数える。既定は `DEFAULT_HELPDESK.maxSteps = 12`。上限に達したら残りのタスクを一覧にして `escalated` にはせず、チケットは `open` のまま `stopped_reason = 'step-limit'` を記録して返す（再開は行わない）。中断は `'aborted'` | |
 | CL-15 | Req 6.5 の商品照合 | レコメンドの候補は DB の `marketing_products` からだけ取り、表示の前に商品 ID を照合する。照合できないものを除去し、除去の件数を記録する | |
 | CL-16 | Req 1.1、1.11 の説明文 | 説明文の要素（用途、入力の意味、使用例、「いつ使うか」「いつ使わないか」）は、`defineAciTool` の検査として機械的に確かめる。文言の品質は人の確認（レビュー）で見る | |
-| CL-17 | Req 4.8、4.10 と 002 CL-8 の共有予算 | Supervisor は Run 全体の `maxTotalTokens`（`DEFAULT_RESEARCH.maxTotalTokens`）を持ち、各サブエージェント呼び出しの上限には残量を渡す。残量が 0 の呼び出しは実行せず、Supervisor に予算切れを返す（Req 4.6 の欠落として扱う）。呼び出し回数は Req 4.8 の上限で別に数える。役割別の集計は `TokenLedger` が行う（ADR-8） | |
+| CL-17 | Req 4.8、4.10 と 002 CL-8 の共有予算 | Supervisor は Run 全体の `maxTotalTokens`（`DEFAULT_RESEARCH.maxTotalTokens`）を持ち、各サブエージェント呼び出しの上限には残量を渡す。残量が 0 の呼び出しは実行せず、Supervisor に予算切れを返す（Req 4.6 の欠落として扱う）。呼び出し回数は Req 4.8 の上限で別に数える。役割別の集計は `TokenLedger` が行う（ADR-8）。合議にも同じ考え方を適用し、予算は発言とモデレーターの両方を数える（C12） | |
 | CL-18 | Req 1.1、1.11 の説明文の形式 | 説明文は「用途の 1 文」に続けて `使うとき:`、`使わないとき:`、`例:` の 3 つの見出し行を含む。入力の意味は、入力スキーマの全フィールドに `.describe()` があることで確かめる。`defineAciTool` がこれを検査し、M1 の既存 5 ツールの説明文も同じ形式に改める | |
 | CL-19 | Req 3.5 のグラフと表の受け渡し | E2B と Docker で経路を分けない。サンドボックスに事前投入する Python の補助関数 `show_figure(alt)` と `show_table(df, caption)` が、目印付きの 1 行（`__PNG__:` / `__TABLE__:` + JSON）を標準出力へ書く。ホストは `analysis/output-parser.ts` の純関数でこれを取り出し、サイズと行数を検査して、画面に出す標準出力から除く。E2B の `results[].png` は使わない | |
 | CL-20 | Req 3.8 のコンテナの画像 | ネットワークなし（`NetworkMode: none`）のため実行時に `pip install` できない。pandas、openpyxl、xlrd、matplotlib を含む画像を `docker/sandbox/Dockerfile` から `mise run sandbox:build` で作る（画像名 `agentic-ai-sandbox:local`）。Python 側の版の固定と 24 時間規則の確認は spike S-5 で行う。画像が無いときは、コンテナ実行環境が無いのと同じく分析エージェントを無効にして、ビルドの手順を案内する | ★ |
@@ -347,8 +347,8 @@ flowchart TD
 
 - **Responsibility**: 複数ペルソナのラウンドロビン合議を `cooperateByRole` で進め、ラウンドごとに合意を確定し、会話から利用者プロファイルを逐次更新し、カタログからだけレコメンドを選ぶ。
 - **Public interface**:
-  - `runCouncil({ draft, personas, model, maxRounds, maxTotalTokens, observer, signal }): Promise<CouncilResult>`。`CouncilResult` は `{ improvedDraft; rounds: readonly CouncilRound[]; endReason: "agreed" | "max-rounds" | "budget-exhausted"; usage: TokenBreakdown }`。ラウンドの反復と合意の確定はコード（ワークフロー）で、各役割の発言だけを `cooperateByRole`（M2 の Role-Based Cooperation、役割はツールを持たない）に任せる。合議全体のトークン予算を全ラウンドで共有し、各ラウンドに残量を渡す（CL-17 と同じ考え方。コストの上限は `maxRounds` と `maxTotalTokens` の 2 つ）。`cooperateByRole` の `onRoleOutput` で発言を流す（M2 の API に無ければ、W6 の最初のタスクで追加する）。`council.ts` は `agents/` と `ToolLoopAgent` を直接 import しない（`workflow-no-agent-loop` の対象）。
-  - `judgeAgreement({ model, round, turns, signal }): Promise<{ agreed: boolean; reason: string; remainingObjections: readonly string[] }>`。構造化出力の `agreed` が真でも、`remainingObjections` が空でなければ合意としない（CL-12）。
+  - `runCouncil({ draft, personas, model, maxRounds, maxTotalTokens, observer, onTurn, onRound, signal }): Promise<CouncilResult>`（`onTurn` は発言ごと、`onRound` はラウンドが確定するたびに呼ぶ。`onRound` の例外は無視する）。`CouncilResult` は `{ improvedDraft; rounds: readonly CouncilRound[]; endReason: "agreed" | "max-rounds" | "budget-exhausted"; usage: TokenBreakdown }`。ラウンドの反復と合意の確定はコード（ワークフロー）で、各役割の発言だけを `cooperateByRole`（M2 の Role-Based Cooperation、役割はツールを持たない）に任せる。合議全体のトークン予算を全ラウンドで共有し、各ラウンドに残量を渡す（CL-17 と同じ考え方。コストの上限は `maxRounds` と `maxTotalTokens` の 2 つ）。予算は発言とモデレーターの両方を数える。`maxTotalTokens` の 4 分の 1 をモデレーターのために予約し（W5 の `reserve` と同じ）、各呼び出し（発言 1 名ごとに `cooperateByRole` を 1 回呼ぶ）は、それまでで最大の 1 回分が残っているときだけ始める。上限は、1 回の呼び出しの大きさが事前に分からないため、同程度の大きさの呼び出しが続く限りの上限であり、種類ごとの最初の 1 回は残量を超えうる。`cooperateByRole` の `onRoleOutput` は、W6 の最初のタスクで M2 の API に任意の引数として足した（M2 の公開契約は変えていない）。`council.ts` は `agents/` と `ToolLoopAgent` を直接 import しない（`workflow-no-agent-loop` の対象）。
+  - `judgeAgreement({ model, round, turns, tokenLimit?, signal }): Promise<{ agreed: boolean; reason: string; remainingObjections: readonly string[]; attempts: number }>`。構造化出力の `agreed` が真でも、`remainingObjections` が空でなければ合意としない（CL-12）。`tokenLimit`（入力）は合議の残りのトークンで、再生成はその範囲に収める。`attempts`（出力）は使った試行回数で、合議が 1 回あたりの大きさを見積もるのに使う。
   - `extractProfile({ model, messages, previous, signal }): Promise<Profile>`（関心事、予算、懸念点。新しい値で上書きし、欠けた値で既存を消さない）。
   - `recommend({ model, profile, catalog, message, signal }): Promise<{ items: readonly Recommendation[]; dropped: number }>`。候補は `catalog` からだけ選び、商品 ID を照合して除去する（CL-15、Req 6.5）。
   - `createCatalogRepo(db)`: `listProducts()`、`listPersonas()`、`has(productId)`。
@@ -366,7 +366,7 @@ flowchart TD
   - `lib/server/upload.ts`: `readUpload(request, { maxBytes })`。`Content-Length` と受信バイト数の両方で上限を検査する（CL-7）。
   - `lib/server/domain-stream.ts`: 各ドメインのイベントを `data-*` パートへ写像する（M2 の `rag-stream.ts` と同じ方式）。
   - Route Handler（Interfaces / Contracts の表）。
-- **Owns**: 検査の順序（本文サイズ 413 → 形式 400 → 件数と長さ 400 → `live` のみレート制限 429）、拒否の JSON 形、ストリームの途中のエラーを `code` と日本語の文言だけに変換すること、`request.signal` の伝播、セッションの寿命（接続断とアイドルで破棄）。
+- **Owns**: 検査の順序（本文サイズ 413 → 形式 400 → 件数と長さ 400 → `live` のみレート制限 429。面接の `/messages` の細かい順序は Error Handling「Web」）、面接セッションの同時数の上限 100（超えると 503 `provider-unavailable`。作成時に期限切れを掃除し、タイマーでは掃除しない）、拒否の JSON 形、ストリームの途中のエラーを `code` と日本語の文言だけに変換すること、`request.signal` の伝播、セッションの寿命（接続断とアイドルで破棄）。
 - **Does NOT own**: ドメインの判断（C7、C9、C10、C11、C12）。画面（C14）。認証（005 の境界）。
 - **Requirements**: 1.10（通知の配線）、2.5、3.7、3.9、4.9（伝播）、5.7、6.3
 
@@ -522,7 +522,7 @@ DB に保存しない型は Zod のスキーマを正とし、型は `z.infer` �
 | `POST /api/requirements/sessions/[id]/messages` | `{ answers: { questionId; text（1〜2000 文字） }[]（1〜10 件） }` | UI メッセージストリーム（`data-requirements-*`）。ラウンドの終わりに判定と、次の質問または完了 | 404（セッションなし・破棄済み）、409 `invalid-request`（完了済みのセッション）、400、502 |
 | `GET /api/requirements/sessions/[id]/document` | なし | `text/markdown; charset=utf-8`、`Content-Disposition: attachment; filename="requirements.md"` | 404、409（まだ生成されていない） |
 | `POST /api/marketing/council` | `{ draft: string（1〜2000 文字）; modelId?; maxRounds?: 1〜6; personaIds?: string[]（2〜5 件。省略時は既定の 3 名）}` | UI メッセージストリーム（下表の `data-council-*`） | 400（存在しないペルソナ ID）、503（DB に接続できない・未投入）、502、429 |
-| `POST /api/marketing/recommend` | `{ id; messages: UIMessage[]（user / assistant のみ）; modelId?; profile?: Profile }` | UI メッセージストリーム（`data-marketing-profile`、`data-marketing-recommendation`、本文） | 400、503（未投入）、502 |
+| `POST /api/marketing/recommend` | `{ id; messages: UIMessage[]（user / assistant のみ。assistant は `data-*` と `step-start` のパートを許し、内容は読まない。user はテキストのパートだけ）; modelId?; profile?: Profile }` | UI メッセージストリーム（`data-marketing-profile`、`data-marketing-recommendation`、本文） | 400、503（未投入）、502 |
 
 - **ID と順序**: ストリームのパートの `id` は、同じ `id` で上書きするもの（状態）と、追記するもの（イベント）を分ける。状態は `data-helpdesk-plan`（`id: "plan"`）、`data-helpdesk-progress`（`id: "progress"`）、`data-research-usage`（`id: "usage"`）、`data-requirements-preview`（`id: "preview"`）、`data-marketing-profile`（`id: "profile"`）。イベントは `id` を連番にする。
 - **中断**: すべてのルートが `request.signal` を伝播する。クライアントの停止で LLM 呼び出し、サンドボックスの実行、arXiv の待機が中断し、分析のサンドボックスは破棄される（Req 3.7）。
@@ -546,11 +546,13 @@ DB に保存しない型は Zod のスキーマを正とし、型は `z.infer` �
 | `data-research-result` | イベント | `ResearchResult`（`report` は引用の照合後、`warnings`、`missing`） | レポート（Req 4.2、4.5、4.6） |
 | `data-requirements-preview` | 状態 | `Requirements` | 要件プレビュー（Req 5.3） |
 | `data-requirements-judgement` | イベント | `{ round; sufficient; missing: string[]; forcedEnd: boolean }` | 十分性の判定（Req 5.4） |
+| `data-requirements-questions` | イベント | `{ round; questions: { id; personaId; text }[] }`（`id: "questions-<round>"`、次のラウンドの質問） | 次のラウンドの質問（Req 5.2、5.5） |
 | `data-council-turn` | イベント | `{ round; personaId; personaName; text }`（`text-delta` でなく、1 発言ごとに 1 パート） | ペルソナ名付きの発言（Req 6.3） |
-| `data-council-verdict` | イベント | `CouncilRound['verdict'] & { round }` | ラウンドごとの合意判定（Req 6.2） |
-| `data-council-result` | イベント | `CouncilResult` | 改善後の文案、終了理由（Req 6.2） |
+| `data-council-verdict` | イベント | `CouncilRound['verdict'] & { round }` | ラウンドごとの合意判定（Req 6.2）。各ラウンドの確定の直後（次のラウンドの発言の前）に流れる |
+| `data-council-result` | イベント | `CouncilResult` | 改善後の文案、終了理由（Req 6.2）。最後に流れる（順序: 発言 1、判定 1、発言 2、判定 2、結果） |
 | `data-marketing-profile` | 状態 | `Profile` | プロファイル表示（Req 6.4） |
 | `data-marketing-recommendation` | イベント | `{ items: Recommendation[]; dropped: number }` | レコメンドと、除去の件数（Req 6.5） |
+| `text`（`text-start` / `text-delta` / `text-end`、`id: "summary"`） | — | コードが作る固定の 1 行（「N 件をおすすめします。」、または推薦なしの固定の理由）。`data-marketing-recommendation` の後に書く。モデルの文章は使わない | `/recommend` の本文 |
 
 分析の PNG は 1 件 1 MB まで、表は 200 行までに C7 が切り詰めてから流す。`data-*` は回答テキストとは別のデータパートで、`useChat` の `parts` から縮約する（M2 と同じ方式）。
 
@@ -565,7 +567,7 @@ DB に保存しない型は Zod のスキーマを正とし、型は `z.infer` �
 | `DEFAULT_ARXIV` | `minIntervalMs` 3,000、`maxRetries` 3、`cacheTtlMs` 86,400,000（1 日）、`maxResponseBytes` 2 MB、`maxResults` 10 | ADR-3、Req 4.7 |
 | `DEFAULT_RESEARCH` | `maxSubagentCalls` 8、`maxTotalTokens` 80,000、`subagentSummaryCharacters` 800 | Req 4.4、4.8。トークンは Supervisor と子の合計（CL-17）。`DEFAULT_AGENT_LIMITS` の 50,000 より大きいのは、複数の子を含むため |
 | `DEFAULT_INTERVIEW` | `personaCount` 3、`maxRounds` 5、`maxAnswerCharacters` 2,000 | Req 5.1、5.5 |
-| `DEFAULT_COUNCIL` | `maxRounds` 3、`maxTotalTokens` 50,000、`personaIds` `["marketer-strict", "consumer", "seo-specialist"]`、`maxDraftCharacters` 2,000 | Req 6.1、6.2。ペルソナ ID はシードと一致させる。`maxTotalTokens` は合議全体（全ラウンドの全役割とモデレーター）の共有予算で、値は plan の決定（M2 の `cooperateByRole` の既定と同じ `DEFAULT_AGENT_LIMITS` の 50,000 に合わせた。3 名 × 3 ラウンド + 判定 3 回の想定）。憲章 原則 1 の例外が求めるコスト上限の記録 |
+| `DEFAULT_COUNCIL` | `maxRounds` 3、`maxTotalTokens` 50,000、`personaIds` `["marketer-strict", "consumer", "seo-specialist"]`、`maxDraftCharacters` 2,000 | Req 6.1、6.2。ペルソナ ID はシードと一致させる。`maxTotalTokens` は合議全体（全ラウンドの全役割とモデレーター）の共有予算で、発言とモデレーターの両方を数える。4 分の 1 をモデレーターのために予約し（W5 の `reserve` と同じ）、各呼び出しは、それまでで最大の 1 回分が残っているときだけ始める。呼び出し 1 回の大きさは事前に分からないため、**上限は同程度の大きさの呼び出しが続く限りのもので、種類ごと（発言、判定）の最初の 1 回は残量を超えうる**。値は plan の決定（M2 の `cooperateByRole` の既定と同じ `DEFAULT_AGENT_LIMITS` の 50,000 に合わせた。3 名 × 3 ラウンド + 判定 3 回の想定）。憲章 原則 1 の例外が求めるコスト上限の記録 |
 
 `DEFAULT_RESEARCH` の値の根拠: 3 つの子を 1〜2 回ずつ呼ぶ想定で 8 回。`mock` のシナリオは 4 回で完了し、上限テストは `maxSubagentCalls: 2` に下げて行う（既定に依存しない）。
 
@@ -770,7 +772,7 @@ DB に保存しない型は Zod のスキーマを正とし、型は `z.infer` �
 | `packages/ai-core/src/marketing/seed.ts` | Create | `seedMarketing`（冪等な初期投入） | C12 |
 | `packages/ai-core/src/marketing/{moderator,council,profile,recommend}.test.ts`、`packages/ai-core/src/marketing/{catalog,seed}.db.test.ts` | Create | 反対が残る合意の拒否、ラウンド上限、ラウンドロビンの順序、カタログに無い ID の除去と件数、プロファイルのマージ、初期投入の冪等 | C12 |
 | `packages/ai-core/src/marketing/index.ts` | Create | `@platform/ai-core/marketing` の公開 API | C12 |
-| `packages/ai-core/src/patterns/role-based-cooperation.ts` | Modify | 役割ごとの発言の通知 `onRoleOutput` が無ければ足す（M2 の公開契約は変えず、任意の引数として足す） | C12 |
+| `packages/ai-core/src/patterns/role-based-cooperation.ts` | Modify | 役割ごとの発言の通知 `onRoleOutput` を足した（M2 の公開契約は変えず、任意の引数として足す） | C12 |
 | `packages/ai-core/src/patterns/role-based-cooperation.test.ts` | Modify | 通知の呼び出し順のテストを足す | C12 |
 | `packages/ai-core/src/rag/db/schema.ts` | Modify | `helpdesk_tickets`、`helpdesk_plan_revisions`、`marketing_products`、`marketing_personas` の表を足す | C10 |
 | `packages/ai-core/src/rag/db/schema.db.test.ts` | Modify | 適用後の `information_schema.columns` との照合に M3 の表を足す | C10 |
@@ -1015,7 +1017,9 @@ Vitest はバンドラーを通らないため、`@e2b/code-interpreter`、`@ai-
 
 - 概要が空または 2000 文字超 → 400。ペルソナの構造化出力が壊れている → `generateValidated` で再生成、3 回失敗で 502 `output-invalid`。`personaCount` が範囲外 → 400。
 - 回答が空・2000 文字超・`questionId` が存在しない → 400。セッションが存在しない・アイドルで破棄済み → 404。完了済みのセッションへの回答 → 409。
-- 抽出の失敗 → 直前の要件を保ったまま再生成し、なお失敗なら 502。回答が要件に結び付かない（雑談など）→ 要件を変えず、プレビューはそのまま。未確認事項に項目を足す。
+- 要件の抽出の失敗 → `generateValidated` の再生成（最大 3 回）の後も不正なら 502 `output-invalid`。そのラウンドはコミットされず（セッションは変わらない）、学習者は同じ回答を再送できる。「雑談の回答」（要件に結び付かないもの）は失敗ではなく、要件を変えず、未確認事項に項目を足す。
+- `GET /api/requirements/sessions/[id]` のような**セッションの再取得口は無い**。コミット後にストリームが切れると次の質問を取り直せない（受け入れた制限。学習者は同じ回答を再送するか、新しいセッションを始める）。
+- 面接セッションの同時数の上限は 100（`REQUIREMENTS_MAX_SESSIONS`）。超えると作成が 503 `provider-unavailable`。作成のたびに期限切れを掃除し、タイマーでの掃除はしない。
 - 十分性の判定が矛盾する（`sufficient: true` かつ `missing` が非空）→ 不十分として扱う（コード、Req 5.4）。ラウンド上限に到達 → 強制終了し、「未確認事項」の章に不足項目を列挙して要件定義書を作る（Req 5.6）。`missing` が空で上限に達した場合は、章は空ではなく「なし」と書く。
 - ダウンロード: まだ生成されていない → 409。破棄済み → 404。`Content-Disposition` のファイル名は固定（`requirements.md`、入力由来の文字を含めない）。
 - 面接の途中でクライアントが切断 → セッションはアイドルの破棄まで保持する。再接続して続けられる。
@@ -1024,7 +1028,8 @@ Vitest はバンドラーを通らないため、`@e2b/code-interpreter`、`@ai-
 
 - 文案が空または 2000 文字超、`personaIds` が 2 件未満・6 件以上・存在しない ID → 400。カタログとペルソナが未投入 → 503（`mise run seed:samples` を案内）。
 - 合意の判定が壊れている → `generateValidated` で再生成、なお不正なら 502。`agreed: true` でも `remainingObjections` が非空なら合意としない（CL-12）。最大ラウンドに達した → `endReason: "max-rounds"` で改善後の文案を返す。合議全体の共有トークン予算（`DEFAULT_COUNCIL.maxTotalTokens`）が尽きた → 次のラウンドを始めず、`endReason: "budget-exhausted"` で、それまでの改善後の文案を返す。
-- 1 つのペルソナの発言が失敗 → その発言を欠落として記録し、残りで続行する。全員が失敗した場合は 502。
+- 1 つのペルソナの発言が失敗 → その発言を欠落として記録し、残りで続行する。そのラウンドで発言が得られなかったペルソナ（失敗、または予算不足で呼ばれなかった）がいるときは、モデレーターの `agreed` が真でも合意としない（固定の理由を付けて次のラウンドへ進む。上限なら `max-rounds`、CL-12）。
+- 受け入れた挙動: 判定の出力が再生成後も不正なときは「合意なし」として次へ進む（502 にしない。上の「なお不正なら 502」は `judgeAgreement` 単体の挙動で、合議では「合意なし」に畳む）。全員の発言が失敗したラウンドは 503 `provider-unavailable`。1 名のプロバイダーエラー（`AISDKError`）は合議全体を止める（`cooperateByRole` が再 throw する）。
 - プロファイルの抽出が欠けた値を返す → 既存の値を保つ（上書きは新しい値だけ）。抽出に失敗 → 直前のプロファイルを保ち、画面は更新しない。
 - レコメンドの候補がカタログに無い ID → 除去し、`dropped` の件数を記録して表示する。全件が除去された場合は、推薦なしと理由を返し、カタログ外の商品を作らない（Req 6.5）。予算の上限がある場合に、予算超過の商品は理由に明記する。
 - 中断 → 以降の発言と判定を始めない。
@@ -1032,6 +1037,7 @@ Vitest はバンドラーを通らないため、`@e2b/code-interpreter`、`@ai-
 ### Web（C13、C14）
 
 - すべてのルートの検査順は 413 → 400（形式）→ 400（件数・長さ）→ `live` のみ 429。拒否は LLM・サンドボックス・DB を使う前に行う。
+- `POST /api/requirements/sessions/[id]/messages` の検査順は 404 → 413 → 400（形式）→ 400（未知の `questionId`）→ 409（完了済み）→ 400（以前のラウンドの質問）→ 409（ラウンド実行中のロック）→ 429（`live` のみ）→ capability。ロックは最初の `await` の前に取る（二重送信で同じラウンドが 2 回閉じない）。
 - `capability-unsupported`: ツール非対応のモデルで MCP のチャット・ヘルプデスク・リサーチを呼ぶ、構造化出力に対応しないモデルでヘルプデスク・要件・合議を呼ぶ → LLM を呼ぶ前に 400。
 - ストリームの途中のエラー → `code` と固定の日本語文だけを送る（`toStreamErrorText`）。致命的なツールエラーは停止理由 `error` と学習者向けの文言を `finish` に載せる。
 - 画面: 無効化された分析は入力を無効にして案内を出す。図の `alt` が無いものは描画しない。表は 200 行まで描画し「N 件中 M 件を表示」を出す。ストリームの再接続は行わず、中断した Run は結果なしで終わる。

@@ -147,13 +147,13 @@ ID 規約は `tasks.md` の「ID 対応表」を参照する（この spec の p
 
 | Requirement | Design | Task | Test | Commit |
 |---|---|---|---|---|
-| 5.1 | C11, C13 | T-2.1, T-25.2, T-27.1, T-27.4, T-33.2, T-40.5, T-40.7, T-40.8 | env-schema.test.ts, feature-requirements.test.ts, load.test.ts | 3af8b69 |
-| 5.2 | C11, C13, C14 | T-25.3, T-27.4, T-27.5, T-33.2, T-40.5 |  |  |
-| 5.3 | C11, C13, C14 | T-25.1, T-25.3, T-27.1, T-27.3, T-27.5, T-33.1, T-33.2, T-35.2, T-35.4, T-40.5 |  |  |
-| 5.4 | C11 | T-25.3, T-27.1, T-27.3, T-27.5, T-28.2, T-33.1, T-40.5 |  |  |
-| 5.5 | C11 | T-2.1, T-25.1, T-25.3, T-27.5, T-40.5 | env-schema.test.ts, feature-requirements.test.ts, load.test.ts | 3af8b69 |
-| 5.6 | C11 | T-25.4, T-27.5, T-40.5 |  |  |
-| 5.7 | C11, C13, C14 | T-27.6, T-33.1, T-35.4 |  |  |
+| 5.1 | C11, C13 | T-2.1, T-25.2, T-27.1, T-27.4, T-33.2, T-40.5, T-40.7, T-40.8 | env-schema.test.ts, feature-requirements.test.ts, load.test.ts, personas.test.ts, requirements/request-schema.test.ts, sessions/route.test.ts, requirements/scenarios.test.ts | 3af8b69, 1e4401e, a5b44ce |
+| 5.2 | C11, C13, C14 | T-25.3, T-27.4, T-27.5, T-33.2, T-40.5 | interview.test.ts, sessions/route.test.ts, messages/route.test.ts | 1e4401e, a5b44ce |
+| 5.3 | C11, C13, C14 | T-25.1, T-25.3, T-27.1, T-27.3, T-27.5, T-33.1, T-33.2, T-35.2, T-35.4, T-40.5 | session.test.ts, interview.test.ts, domain-stream.test.ts, messages/route.test.ts, requirements/scenarios.test.ts | 1e4401e, a5b44ce |
+| 5.4 | C11 | T-25.3, T-27.1, T-27.3, T-27.5, T-28.2, T-33.1, T-40.5 | interview.test.ts, domain-stream.test.ts, messages/route.test.ts | 1e4401e, a5b44ce |
+| 5.5 | C11 | T-2.1, T-25.1, T-25.3, T-27.5, T-40.5 | env-schema.test.ts, feature-requirements.test.ts, load.test.ts, session.test.ts, interview.test.ts, messages/route.test.ts | 3af8b69, 1e4401e, a5b44ce |
+| 5.6 | C11 | T-25.4, T-27.5, T-40.5 | document.test.ts, messages/route.test.ts | 1e4401e, a5b44ce |
+| 5.7 | C11, C13, C14 | T-27.6, T-33.1, T-35.4 | document/route.test.ts | a5b44ce |
 
 **検証の計画**（plan より）
 
@@ -170,12 +170,12 @@ ID 規約は `tasks.md` の「ID 対応表」を参照する（この spec の p
 
 | Requirement | Design | Task | Test | Commit |
 |---|---|---|---|---|
-| 6.1 | C12 | T-26.1, T-26.5, T-27.7, T-34.2, T-40.6, T-40.7, T-40.8 |  |  |
-| 6.2 | C12 | T-2.1, T-26.4, T-26.5, T-27.1, T-27.3, T-27.7, T-28.1, T-34.1, T-38.4, T-39.1, T-40.6 | env-schema.test.ts, feature-requirements.test.ts, load.test.ts | 3af8b69 |
-| 6.3 | C12, C13, C14 | T-26.1, T-26.5, T-27.3, T-27.7, T-34.1, T-34.2, T-35.2, T-35.4 |  |  |
-| 6.4 | C12, C13, C14 | T-26.6, T-26.7, T-27.1, T-27.3, T-27.8, T-34.1, T-34.2, T-35.2, T-35.4, T-40.6 |  |  |
-| 6.5 | C12 | T-26.2, T-26.3, T-26.7, T-27.2, T-27.3, T-27.8, T-28.1, T-34.2, T-37.4, T-40.6, T-42.2 |  |  |
-| 6.6 | C12, C15, C16 | T-26.2, T-26.3, T-27.2, T-27.9 |  |  |
+| 6.1 | C12 | T-26.1, T-26.5, T-27.7, T-34.2, T-40.6, T-40.7, T-40.8 | role-based-cooperation.test.ts, council.test.ts, council/route.test.ts | 1611759, 1e4401e, a5b44ce |
+| 6.2 | C12 | T-2.1, T-26.4, T-26.5, T-27.1, T-27.3, T-27.7, T-28.1, T-34.1, T-38.4, T-39.1, T-40.6 | env-schema.test.ts, feature-requirements.test.ts, load.test.ts, moderator.test.ts, council.test.ts, marketing/scenarios.test.ts, council/route.test.ts | 3af8b69, 1e4401e, a5b44ce |
+| 6.3 | C12, C13, C14 | T-26.1, T-26.5, T-27.3, T-27.7, T-34.1, T-34.2, T-35.2, T-35.4 | role-based-cooperation.test.ts, council.test.ts, domain-stream.test.ts, council/route.test.ts | 1611759, 1e4401e, a5b44ce |
+| 6.4 | C12, C13, C14 | T-26.6, T-26.7, T-27.1, T-27.3, T-27.8, T-34.1, T-34.2, T-35.2, T-35.4, T-40.6 | profile.test.ts, recommend.test.ts, recommend/route.test.ts, domain-stream.test.ts, marketing/scenarios.test.ts | 1e4401e, a5b44ce |
+| 6.5 | C12 | T-26.2, T-26.3, T-26.7, T-27.2, T-27.3, T-27.8, T-28.1, T-34.2, T-37.4, T-40.6, T-42.2 | catalog.db.test.ts, recommend.test.ts, platform.test.ts, recommend/route.test.ts | 6ff1ea5, 1e4401e, a5b44ce |
+| 6.6 | C12, C15, C16 | T-26.2, T-26.3, T-27.2, T-27.9 | schema.db.test.ts, client.pg.test.ts (PG), seed.db.test.ts, catalog.db.test.ts, platform.test.ts | 6ff1ea5, a5b44ce, 0f603a3 |
 
 **検証の計画**（plan より）
 
@@ -197,3 +197,4 @@ ID 規約は `tasks.md` の「ID 対応表」を参照する（この spec の p
 - **W4 の出荷時点（2026-10-18）の持ち越し**: W4 の敵対的レビュー（`.sdd/reviews/003-domain-agents-impl-w4-review-2026-10-18.md`）の修正後の fresh な再レビューは未実施。CL-26（修正回数の数え方）は ★ で人の確認が未了。F-14・F-15 は受け入れた制限、F-17 は 004 へ。3.5・3.6 の画面での描画は W7（35.x）、3.3 の実モデルの修正は `local`（L）で未確認、E2B の実機は D で未確認。
 - **W5 の出荷時点（2026-10-19）の持ち越し**: W5 の敵対的レビュー（`.sdd/reviews/003-domain-agents-impl-w5-review-2026-10-19.md`）の修正後の fresh な再レビューは未実施。arXiv の実応答と 429 / 503 / `Retry-After` の実挙動は未実測（フィクスチャは仕様と推測に基づく）。
 - **004 への引き継ぎ**: E2B の外向き通信（CL-21）、外部コンテンツの汚染状態（CL-10）、MCP の注釈を信頼しない前提（ADR-7）。`tasks.md`「004 への引き継ぎ事項」と 40.3 に記録する。
+- **W6 の出荷時点（2026-10-24）の持ち越し**: W6 の敵対的レビュー（`.sdd/reviews/003-domain-agents-impl-w6-review-2026-10-24.md`。REQUEST_CHANGES、MEDIUM 8 件・LOW 15 件）の修正後の fresh な再レビューは未実施。合議の予算は「同程度の大きさの呼び出しが続く限り」の上限で、種類ごとの最初の 1 回は超えうる（F-1）。F-16（既定のラウンド数を定数で確かめるだけのテスト）は 37.x へ。5.x・6.x の画面での確認（5.2〜5.4、5.7、6.3、6.4 の E）は W7（33.x、34.x、35.x）。`test:db`（実 Postgres）は 2026-10-24 に実行済み（`client.pg.test.ts` 9 件、`seedMarketing` の冪等性は使い捨てのデータベースで確認）。`seed:samples` 自体の実 Postgres での実行は Ollama が無く未確認。6.2 の `local`（合意に達する割合）は未実施。

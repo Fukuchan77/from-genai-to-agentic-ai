@@ -59,6 +59,7 @@
   (9) W4 の 19.x で判明した境界外の変更（2026-10-18 に記録。W4 の敵対的レビューの対象にする）。`apps/web/lib/server/guard.ts`（`rateLimitRejection` の切り出し。`guardRequest` が使う同じ処理を、本文を自分で読むアップロードのルートが使う）、`apps/web/lib/server/errors.ts`（`provider-unavailable` の `details.guidance` だけをブラウザへ出す。固定文で、サンドボックス無効の案内に使う）、`packages/ai-core/src/sandbox/docker/local.ts`（`createLocalDockerProvider`。`socketPath` を `sandbox/docker/` の外に出さないため）、`analysis/upload-check.ts` の `uploadKindOf` の公開（18.4 が使う）。
   (10) W4 のレビュー（F-7）で記録した境界外の変更。`scripts/check-repo-rules.mjs` と `check-repo-rules.test.mjs`（20.2。`sandbox-import-scope` の `docker.sock` / `socketPath` の検査から、コンテナのテスト基盤の 4 ファイルだけを除く。plan C16 に同期）。レビューの修正で触れた `packages/ai-core/src/aci/fatal.ts`（致命的エラーの語彙に `sandbox-unavailable`）、`config/defaults.ts`（`DEFAULT_SANDBOX.maxSessions`）、`apps/web/lib/server/platform.ts` の `invalidateSandboxSelection`。
   (11) W5 の実装で判明した境界外の変更（2026-10-19 に記録。W5 の敵対的レビューの対象にする）。`agents/token-ledger.ts`（`usageFromRun`）、`agents/observer.ts`（`forAgent`、`source` の 512 文字の上限）、`agents/index.ts` とそれぞれのテスト（22.3。W1 の敵対的レビュー F-10・F-11 の持ち越し）、`research/request-schema.ts` とそのテスト（23.3。`apps/web` に `zod` がなく、本文スキーマは ai-core に置く。(7) のヘルプデスクと同じ）、`research/scenarios.test.ts`（22.5。m3-4 の通しテスト）、`mock/arxiv-fixtures.ts` とそのテストと `mock/index.ts` の再エクスポート（22.5、23.1。`mock` の arXiv の fetcher。API の URL 以外は拒否）、`research/tools.ts` の `onCall`・`onFailure`、`research/subagents.ts` の `failureReasonOf`、`research/supervisor.ts` の `onUsage`（23.2・23.3。画面へ流す配線と、arXiv に届かない検索を欠落にする規則）。詳細は `pdca/do.md` と plan の C8・C9・File Structure Plan に同期した。
+  (12) W6 の実装で判明した境界外の変更（2026-10-24 に記録。W6 の敵対的レビュー F-7 への対応）。`apps/web` に `zod` がないため、本文スキーマを ai-core に置いた（(7)・(11) と同じ）: `requirements/request-schema.ts`・`messages-schema.ts`、`marketing/request-schema.ts`・`recommend-request-schema.ts` とそれぞれのテスト（27.4、27.5、27.7、27.8）。面接のセッションの型と、別のルートが同じレジストリを引くための取得口 `requirements/web-session.ts`（Route Handler のファイルは handler 以外を export できない。27.4）。`rag/db/index.ts` への `marketingProducts`・`marketingPersonas` の再エクスポート（26.3）。`requirements/index.ts`・`marketing/index.ts` への上記の再エクスポート。`requirements/scenarios.test.ts`・`marketing/scenarios.test.ts`（27.1。m3-5・m3-6 の通しテスト）。`scripts/check-repo-rules.test.mjs` の走査対象の一覧に W6 の 6 ファイルを足した（28.1。W1 F-17）。plan の「ストリームのパート」に `data-requirements-questions` を足し、`domain-stream.ts` に `writeRequirementsQuestions` を足した（27.5 の判断。次のラウンドの質問をストリームで返す部品が表に無かった）。**2026-10-24 に人が承認した**（例外 (12) の全体と、plan に足した `data-requirements-questions` と `/recommend` の `text` パート）。
 - **共有ファイルの編集者**（波をまたぐファイルは、列挙したタスクだけが編集し、記載の順に行う。各タスクは前のタスクの完了後に行う。この順序が波をまたぐ依存になるため、W2〜W6 は並行せず、W2 → W3 → W4 → W5 → W6 の順に進める）。
   - `packages/ai-core/package.json`: 1.2 だけ（依存 4 件と `exports` の 8 サブパス。参照先の `index.ts` は各領域の最後のタスクが作る）。
   - `mise.toml`: 6.3（`test:container`、センチネル）→ 11.2（`check:repo-rules --only` に `mcp-import-scope`）→ 13.4（`seed:samples`）→ 17.8（`sandbox:build`）→ 20.2（`check:repo-rules --only` に `sandbox-import-scope`）（この順）。
@@ -91,7 +92,7 @@
 | W3 ヘルプデスク | 12 純関数とワークフロー部品、13 DB と永続化、14 runHelpdesk、15 HTTP 入口、16 W3 の締め | 完了（2026-10-18） | [tasks-comp-w3.md](tasks-comp-w3.md) |
 | W4 サンドボックス・分析 | 17 サンドボックス提供者、18 データ分析、19 HTTP 入口、20 実サーバー確認と W4 の締め | 完了（2026-10-18） | [tasks-comp-w4.md](tasks-comp-w4.md) |
 | W5 リサーチ | 21 arXiv クライアント、22 Supervisor とサブエージェント、23 HTTP 入口、24 W5 の締め | 完了（2026-10-19） | [tasks-comp-w5.md](tasks-comp-w5.md) |
-| W6 要件・マーケティング | 25 要件インタビュー、26 マーケティング、27 HTTP 入口、28 W6 の締め | 着手中 | [tasks.md](tasks.md) |
+| W6 要件・マーケティング | 25 要件インタビュー、26 マーケティング、27 HTTP 入口、28 W6 の締め | 実装・出荷済み（2026-10-24）。CI の `ci-status` の成功と `tasks-comp-w6.md` への移行は未 | [tasks.md](tasks.md) |
 | W7 画面と E2E | 29 MCP 画面、30 ヘルプデスク画面、31 分析画面、32 リサーチ画面、33 要件画面、34 マーケティング画面、35 トップ導線と E2E、36 W7 の締め | 未着手 | [tasks-w7.md](tasks-w7.md) |
 | W8 評価・解説・統合 | 37 回帰テスト、38 能力テスト、39 `local`・`container` での実測、40 解説、41 トレーサビリティ・ステアリング、42 最終統合 | 未着手 | [tasks-w8.md](tasks-w8.md) |
 
@@ -195,28 +196,32 @@ _Depends:_ 2.1, 4.1
 _Requirements:_ 5.1, 5.2, 5.3, 5.4, 5.5, 5.6
 _Traces:_ REQ-005, C11, ADR-9
 
-- [ ] 25.1 (P) `requirements/session.ts`: 面接の状態（回答、要件、ラウンド数、完了の有無）の型と遷移の純関数を作る(CL-11)。回答が要件に結び付かないとき要件を変えない + `session.test.ts` に、ラウンドの進行、完了後の遷移の拒否、要件を変えない回答、上限到達の判定を先に書く
+- [x] 25.1 (P) `requirements/session.ts`: 面接の状態（回答、要件、ラウンド数、完了の有無）の型と遷移の純関数を作る(CL-11)。回答が要件に結び付かないとき要件を変えない + `session.test.ts` に、ラウンドの進行、完了後の遷移の拒否、要件を変えない回答、上限到達の判定を先に書く
   _Boundary:_ `packages/ai-core/src/requirements/session.ts`, `packages/ai-core/src/requirements/session.test.ts`
   _Depends:_ none
   _Requirements:_ 5.3, 5.5
   _Traces:_ REQ-005, C11, CL-11
-- [ ] 25.2 `requirements/personas.ts`: `generatePersonas({ model, overview, count })` が、想定利用者のペルソナを `generateValidated` で構造化出力として生成する（既定 3、`DEFAULT_INTERVIEW`、範囲 1〜5）。`ToolLoopAgent` を import しない + `personas.test.ts` に、件数の設定、構造化出力が壊れたときの再生成、3 回失敗で `output-invalid` になること、範囲外の件数の拒否を先に書く
+- [x] 25.2 `requirements/personas.ts`: `generatePersonas({ model, overview, count })` が、想定利用者のペルソナを `generateValidated` で構造化出力として生成する（既定 3、`DEFAULT_INTERVIEW`、範囲 1〜5）。`ToolLoopAgent` を import しない + `personas.test.ts` に、件数の設定、構造化出力が壊れたときの再生成、3 回失敗で `output-invalid` になること、範囲外の件数の拒否を先に書く
   _Boundary:_ `packages/ai-core/src/requirements/personas.ts`, `packages/ai-core/src/requirements/personas.test.ts`
   _Depends:_ 25.1
   _Requirements:_ 5.1
   _Traces:_ REQ-005, C11
-- [ ] 25.3 `requirements/interview.ts`: `askRound`（ペルソナごとの質問。不足項目があるときは不足項目に焦点を当てる）、`extractRequirements`（機能・非機能・制約・未確認事項を、各項目に出所のペルソナ ID を付けて抽出する。抽出に失敗したら直前の要件を保つ）、`judgeSufficiency`（`sufficient`・`missing`・`forcedEnd`。構造化出力の `sufficient` が真でも `missing` が空でなければ不十分、上限到達で `forcedEnd`）を作る。`ToolLoopAgent` を import しない + `interview.test.ts` に、不足項目への質問、雑談の回答で要件が変わらず未確認事項に足されること、`sufficient: true` かつ `missing` 非空を不十分とすること、上限未満での継続と上限到達の強制終了、抽出失敗時に直前の要件を保つことを先に書く
+- [x] 25.3 `requirements/interview.ts`: `askRound`（ペルソナごとの質問。不足項目があるときは不足項目に焦点を当てる）、`extractRequirements`（機能・非機能・制約・未確認事項を、各項目に出所のペルソナ ID を付けて抽出する。抽出に失敗したら直前の要件を保つ）、`judgeSufficiency`（`sufficient`・`missing`・`forcedEnd`。構造化出力の `sufficient` が真でも `missing` が空でなければ不十分、上限到達で `forcedEnd`）を作る。`ToolLoopAgent` を import しない + `interview.test.ts` に、不足項目への質問、雑談の回答で要件が変わらず未確認事項に足されること、`sufficient: true` かつ `missing` 非空を不十分とすること、上限未満での継続と上限到達の強制終了、抽出失敗時に直前の要件を保つことを先に書く
   _Boundary:_ `packages/ai-core/src/requirements/interview.ts`, `packages/ai-core/src/requirements/interview.test.ts`
   _Depends:_ 25.1, 25.2
   _Requirements:_ 5.2, 5.3, 5.4, 5.5
   _Traces:_ REQ-005, C11, ADR-9
-- [ ] 25.4 `requirements/document.ts` と `requirements/index.ts`: `renderRequirementDocument(requirements, { forcedEnd, missing })` が固定の章立ての Markdown を作る純関数（上限到達の終了では「未確認事項」の章に `missing` を列挙し、`missing` が空なら「なし」と書く）。`index.ts` は `@platform/ai-core/requirements` の公開 API を再エクスポートする + `document.test.ts` に、固定の章立て、上限到達で未確認事項の章に不足項目が載ること、`missing` が空のとき「なし」、入力由来の文字がファイル名やヘッダーに影響しないこと（本文のみ）を先に書く
+- [x] 25.4 `requirements/document.ts` と `requirements/index.ts`: `renderRequirementDocument(requirements, { forcedEnd, missing })` が固定の章立ての Markdown を作る純関数（上限到達の終了では「未確認事項」の章に `missing` を列挙し、`missing` が空なら「なし」と書く）。`index.ts` は `@platform/ai-core/requirements` の公開 API を再エクスポートする + `document.test.ts` に、固定の章立て、上限到達で未確認事項の章に不足項目が載ること、`missing` が空のとき「なし」、入力由来の文字がファイル名やヘッダーに影響しないこと（本文のみ）を先に書く
   _Boundary:_ `packages/ai-core/src/requirements/document.ts`, `packages/ai-core/src/requirements/document.test.ts`, `packages/ai-core/src/requirements/index.ts`
   _Depends:_ 25.1, 25.3
   _Requirements:_ 5.6
   _Traces:_ REQ-005, C11
 
 ### Implementation Notes
+
+- 面接の状態は `round` を「閉じたラウンド数」とし、`judgeSufficiency` には `state.round + 1` を渡して `closeRound` へそのまま渡す。十分性の規則（`sufficient` でも `missing` が空でなければ不十分）の持ち主は `judgeSufficiency` の 1 か所だけにした。
+- 抽出の失敗は「雑談で要件が変わらない」と区別する（W6 レビュー F-4）。失敗は `StructuredOutputError` を投げ、ルートが `output-invalid` で止めてラウンドを確定しない。
+- ペルソナの ID はコードが `persona-N` と振る。モデルの出力に ID を含めると、スキーマ違反として再生成する。
 
 ---
 
@@ -229,44 +234,48 @@ _Depends:_ 13.1, 2.1
 _Requirements:_ 6.1, 6.2, 6.3, 6.4, 6.5, 6.6
 _Traces:_ REQ-006, C12, C15, ADR-9
 
-- [ ] 26.1 (P) `patterns/role-based-cooperation.ts`: 役割ごとの発言の通知 `onRoleOutput` を任意の引数として足す（M2 の公開契約は変えない）+ `role-based-cooperation.test.ts` に、通知の呼び出し順（ラウンドロビンの順序）、通知を渡さないとき M2 の挙動が変わらないことを先に足す。M2 のテストが緑のままであることを確認する
+- [x] 26.1 (P) `patterns/role-based-cooperation.ts`: 役割ごとの発言の通知 `onRoleOutput` を任意の引数として足す（M2 の公開契約は変えない）+ `role-based-cooperation.test.ts` に、通知の呼び出し順（ラウンドロビンの順序）、通知を渡さないとき M2 の挙動が変わらないことを先に足す。M2 のテストが緑のままであることを確認する
   _Boundary:_ `packages/ai-core/src/patterns/role-based-cooperation.ts`, `packages/ai-core/src/patterns/role-based-cooperation.test.ts`
   _Depends:_ none
   _Requirements:_ 6.1, 6.3
   _Traces:_ REQ-006, C12
-- [ ] 26.2 `drizzle/0003_marketing.sql`・`rag/db/schema.ts` と `fixtures/marketing/{products,personas}.json`: `marketing_products`（`P-` + 3 桁の ID、`price_yen >= 0` の CHECK、`tags text[]`）と `marketing_personas`（`ordinal` の UNIQUE）を作り、Drizzle のスキーマを広げ、初期データ（既定の 3 ペルソナ ID `marketer-strict` / `consumer` / `seo-specialist` を含む）を作る + `schema.db.test.ts` に、M3 の表の `information_schema.columns` との照合と CHECK / UNIQUE を足し、`client.pg.test.ts`（Boundary の例外 (4)）に `0003` を実 Postgres に適用できる 1 ケースを足す
+- [x] 26.2 `drizzle/0003_marketing.sql`・`rag/db/schema.ts` と `fixtures/marketing/{products,personas}.json`: `marketing_products`（`P-` + 3 桁の ID、`price_yen >= 0` の CHECK、`tags text[]`）と `marketing_personas`（`ordinal` の UNIQUE）を作り、Drizzle のスキーマを広げ、初期データ（既定の 3 ペルソナ ID `marketer-strict` / `consumer` / `seo-specialist` を含む）を作る + `schema.db.test.ts` に、M3 の表の `information_schema.columns` との照合と CHECK / UNIQUE を足し、`client.pg.test.ts`（Boundary の例外 (4)）に `0003` を実 Postgres に適用できる 1 ケースを足す
   _Boundary:_ `packages/ai-core/drizzle/0003_marketing.sql`, `packages/ai-core/src/rag/db/schema.ts`, `packages/ai-core/src/rag/db/schema.db.test.ts`, `packages/ai-core/src/rag/db/client.pg.test.ts`, `packages/ai-core/fixtures/marketing/products.json`, `packages/ai-core/fixtures/marketing/personas.json`
   _Depends:_ 13.1
   _Requirements:_ 6.5, 6.6
   _Traces:_ REQ-006, C12, C15, CL-23
   _Verify:_ `mise run gate` が PGlite で成功する。`mise run test:db` で `0003` の適用が成功する（Docker が無ければ人が実行する）
-- [ ] 26.3 `marketing/catalog.ts` と `marketing/seed.ts`: `createCatalogRepo(db)`（`listProducts`、`listPersonas`、`has(productId)`）と、`seedMarketing({ db })`（冪等な初期投入。`reset` は M3 の表だけ）を作る + `catalog.db.test.ts`・`seed.db.test.ts` に、2 回実行しても行が増えないこと、`has` の真偽、ペルソナの順序（`ordinal`）、`reset` の範囲、未投入のときの扱いを先に書く
+- [x] 26.3 `marketing/catalog.ts` と `marketing/seed.ts`: `createCatalogRepo(db)`（`listProducts`、`listPersonas`、`has(productId)`）と、`seedMarketing({ db })`（冪等な初期投入。`reset` は M3 の表だけ）を作る + `catalog.db.test.ts`・`seed.db.test.ts` に、2 回実行しても行が増えないこと、`has` の真偽、ペルソナの順序（`ordinal`）、`reset` の範囲、未投入のときの扱いを先に書く
   _Boundary:_ `packages/ai-core/src/marketing/catalog.ts`, `packages/ai-core/src/marketing/catalog.db.test.ts`, `packages/ai-core/src/marketing/seed.ts`, `packages/ai-core/src/marketing/seed.db.test.ts`
   _Depends:_ 26.2
   _Requirements:_ 6.5, 6.6
   _Traces:_ REQ-006, C12, CL-15, CL-23
-- [ ] 26.4 (P) `marketing/moderator.ts`: `judgeAgreement({ model, round, turns, signal })` が `agreed`・`reason`・`remainingObjections` を `generateValidated` で返す。`agreed` が真でも `remainingObjections` が非空なら合意としない（コードの検査。CL-12）。`ToolLoopAgent` を import しない + `moderator.test.ts` に、反対が残る合意の拒否、`agreed: false`、判定が壊れたときの再生成、再生成が尽きたときの `output-invalid` を先に書く
+- [x] 26.4 (P) `marketing/moderator.ts`: `judgeAgreement({ model, round, turns, signal })` が `agreed`・`reason`・`remainingObjections` を `generateValidated` で返す。`agreed` が真でも `remainingObjections` が非空なら合意としない（コードの検査。CL-12）。`ToolLoopAgent` を import しない + `moderator.test.ts` に、反対が残る合意の拒否、`agreed: false`、判定が壊れたときの再生成、再生成が尽きたときの `output-invalid` を先に書く
   _Boundary:_ `packages/ai-core/src/marketing/moderator.ts`, `packages/ai-core/src/marketing/moderator.test.ts`
   _Depends:_ none
   _Requirements:_ 6.2
   _Traces:_ REQ-006, C12, CL-12, ADR-9
-- [ ] 26.5 `marketing/council.ts`: `runCouncil({ draft, personas, model, maxRounds, maxTotalTokens, observer, signal })` が、ラウンドの反復と合意の確定をコード（ワークフロー）で行い、ラウンドごとに `cooperateByRole`（役割は既定 3 名、ツールなし）で各ペルソナに他のペルソナの発言を踏まえさせ、`onRoleOutput` で発言を通知し、ラウンドの終わりに `judgeAgreement` で合意を確定する。合議全体のトークン予算（`DEFAULT_COUNCIL.maxTotalTokens`）を全ラウンドで共有し、各ラウンドの `budget.maxTotalTokens` に残量を渡す。合意、最大ラウンド（既定 3）、予算切れのいずれかで終了し、`CouncilResult`（`improvedDraft`、`rounds`、`endReason: "agreed" | "max-rounds" | "budget-exhausted"`、`usage`）を返す。`agents/` と `ToolLoopAgent` を直接 import しない（plan「構成の補足」の分類表、`workflow-no-agent-loop` の対象）。1 つのペルソナの発言が失敗したら欠落として記録して続行し、全員が失敗したらエラー + `council.test.ts` に、ラウンドロビンの順序、他者の発言を踏まえること、合意での終了、最大ラウンドでの `max-rounds`、予算切れで次のラウンドを始めず `budget-exhausted` になること、各ラウンドに残量が渡ること、1 名の失敗での継続と全員失敗、中断で後続の発言と判定が始まらないことを先に書く
+- [x] 26.5 `marketing/council.ts`: `runCouncil({ draft, personas, model, maxRounds, maxTotalTokens, observer, signal })` が、ラウンドの反復と合意の確定をコード（ワークフロー）で行い、ラウンドごとに `cooperateByRole`（役割は既定 3 名、ツールなし）で各ペルソナに他のペルソナの発言を踏まえさせ、`onRoleOutput` で発言を通知し、ラウンドの終わりに `judgeAgreement` で合意を確定する。合議全体のトークン予算（`DEFAULT_COUNCIL.maxTotalTokens`）を全ラウンドで共有し、各ラウンドの `budget.maxTotalTokens` に残量を渡す。合意、最大ラウンド（既定 3）、予算切れのいずれかで終了し、`CouncilResult`（`improvedDraft`、`rounds`、`endReason: "agreed" | "max-rounds" | "budget-exhausted"`、`usage`）を返す。`agents/` と `ToolLoopAgent` を直接 import しない（plan「構成の補足」の分類表、`workflow-no-agent-loop` の対象）。1 つのペルソナの発言が失敗したら欠落として記録して続行し、全員が失敗したらエラー + `council.test.ts` に、ラウンドロビンの順序、他者の発言を踏まえること、合意での終了、最大ラウンドでの `max-rounds`、予算切れで次のラウンドを始めず `budget-exhausted` になること、各ラウンドに残量が渡ること、1 名の失敗での継続と全員失敗、中断で後続の発言と判定が始まらないことを先に書く
   _Boundary:_ `packages/ai-core/src/marketing/council.ts`, `packages/ai-core/src/marketing/council.test.ts`
   _Depends:_ 26.1, 26.3, 26.4
   _Requirements:_ 6.1, 6.2, 6.3
   _Traces:_ REQ-006, C12
-- [ ] 26.6 (P) `marketing/profile.ts`: `extractProfile({ model, messages, previous, signal })` が、関心事・予算・懸念点を構造化出力で逐次抽出し、新しい値で上書きして欠けた値で既存を消さない。抽出に失敗したら直前のプロファイルを保つ。`ToolLoopAgent` を import しない + `profile.test.ts` に、欠けた値で既存を消さないこと、新しい値での上書き、抽出失敗時に直前を保つこと、配列のマージを先に書く
+- [x] 26.6 (P) `marketing/profile.ts`: `extractProfile({ model, messages, previous, signal })` が、関心事・予算・懸念点を構造化出力で逐次抽出し、新しい値で上書きして欠けた値で既存を消さない。抽出に失敗したら直前のプロファイルを保つ。`ToolLoopAgent` を import しない + `profile.test.ts` に、欠けた値で既存を消さないこと、新しい値での上書き、抽出失敗時に直前を保つこと、配列のマージを先に書く
   _Boundary:_ `packages/ai-core/src/marketing/profile.ts`, `packages/ai-core/src/marketing/profile.test.ts`
   _Depends:_ none
   _Requirements:_ 6.4
   _Traces:_ REQ-006, C12, ADR-9
-- [ ] 26.7 `marketing/recommend.ts` と `marketing/index.ts`: `recommend({ model, profile, catalog, message, signal })` が、候補を `catalog` からだけ選び、商品 ID と推薦理由を付け、表示の前に商品 ID を照合してカタログに無いものを除去し `dropped` の件数を返す。全件が除去されたときは推薦なしと理由を返す。予算を超える商品は理由に明記する。`index.ts` は `@platform/ai-core/marketing` の公開 API を再エクスポートする + `recommend.test.ts` に、カタログ外 ID の除去と件数、全件除去、カタログ外の商品を作らないこと、予算超過の明記、`has` による照合を先に書く
+- [x] 26.7 `marketing/recommend.ts` と `marketing/index.ts`: `recommend({ model, profile, catalog, message, signal })` が、候補を `catalog` からだけ選び、商品 ID と推薦理由を付け、表示の前に商品 ID を照合してカタログに無いものを除去し `dropped` の件数を返す。全件が除去されたときは推薦なしと理由を返す。予算を超える商品は理由に明記する。`index.ts` は `@platform/ai-core/marketing` の公開 API を再エクスポートする + `recommend.test.ts` に、カタログ外 ID の除去と件数、全件除去、カタログ外の商品を作らないこと、予算超過の明記、`has` による照合を先に書く
   _Boundary:_ `packages/ai-core/src/marketing/recommend.ts`, `packages/ai-core/src/marketing/recommend.test.ts`, `packages/ai-core/src/marketing/index.ts`
   _Depends:_ 26.3, 26.5, 26.6
   _Requirements:_ 6.4, 6.5
   _Traces:_ REQ-006, C12, CL-15
 
 ### Implementation Notes
+
+- 合議の予算は、発言とモデレーターの両方を数え、4 分の 1 をモデレーターのために予約する。1 回の呼び出しの大きさは事前に分からないため、「同程度の呼び出しが続く限りの上限」である（レビュー F-1）。
+- 合意は「全ペルソナの発言がそろったラウンド」だけで認める（CL-12 の拡張。レビュー F-3）。
+- 区切りタグの無害化は、プロンプトに利用者・モデルの文字を入れるすべての箇所で必要だった。プロファイルの `previous`（クライアントが送る値）が漏れていた。
 
 ---
 
@@ -277,47 +286,47 @@ _Depends:_ 25.4, 26.7, 22.5, 23.1, 23.2, 19.3
 _Requirements:_ 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 5.7, 6.1, 6.2, 6.3, 6.4, 6.5, 6.6
 _Traces:_ REQ-005, REQ-006, C13, C15
 
-- [ ] 27.1 `fixtures/scenarios/m3-5.ts` と `m3-6.ts`: ペルソナ・質問・要件の抽出・十分性の判定（不十分 → 十分と、上限到達）のシナリオと、合議の発言・合意の判定（反対が残る → 合意）・プロファイル・レコメンド（カタログ外の ID を含む）のシナリオを作り、`gateway.ts` の `mock` 既定シナリオと `mock/index.ts` の集約に足す + `m3-scenarios.test.ts` の期待件数を更新して曖昧な一致がないことを確かめる
+- [x] 27.1 `fixtures/scenarios/m3-5.ts` と `m3-6.ts`: ペルソナ・質問・要件の抽出・十分性の判定（不十分 → 十分と、上限到達）のシナリオと、合議の発言・合意の判定（反対が残る → 合意）・プロファイル・レコメンド（カタログ外の ID を含む）のシナリオを作り、`gateway.ts` の `mock` 既定シナリオと `mock/index.ts` の集約に足す + `m3-scenarios.test.ts` の期待件数を更新して曖昧な一致がないことを確かめる
   _Boundary:_ `packages/ai-core/fixtures/scenarios/m3-5.ts`, `packages/ai-core/fixtures/scenarios/m3-6.ts`, `packages/ai-core/src/models/gateway.ts`, `packages/ai-core/src/models/gateway.test.ts`, `packages/ai-core/src/mock/index.ts`, `packages/ai-core/src/mock/m3-scenarios.test.ts`
   _Depends:_ 22.5, 25.3, 26.5, 26.7
   _Requirements:_ 5.1, 5.3, 5.4, 6.2, 6.4
   _Traces:_ REQ-005, REQ-006, C15
-- [ ] 27.2 `platform.ts`: `getCatalogRepo()` を組み立てる（DB は M2 の基盤。未投入のとき 503 `provider-unavailable` と `mise run seed:samples` の案内）+ `platform.test.ts` に、実行モード別の組み立てと未投入の扱いを先に足す
+- [x] 27.2 `platform.ts`: `getCatalogRepo()` を組み立てる（DB は M2 の基盤。未投入のとき 503 `provider-unavailable` と `mise run seed:samples` の案内）+ `platform.test.ts` に、実行モード別の組み立てと未投入の扱いを先に足す
   _Boundary:_ `apps/web/lib/server/platform.ts`, `apps/web/lib/server/platform.test.ts`
   _Depends:_ 23.1, 26.3
   _Requirements:_ 6.5, 6.6
   _Traces:_ REQ-006, C13
-- [ ] 27.3 `lib/server/domain-stream.ts`: `data-requirements-preview`（状態、`id: "preview"`）、`data-requirements-judgement`、`data-council-turn`（1 発言ごとに 1 パート）、`data-council-verdict`、`data-council-result`、`data-marketing-profile`（状態、`id: "profile"`）、`data-marketing-recommendation` への写像を足す + `domain-stream.test.ts` に、状態パートの上書き、発言ごとに 1 パートでペルソナ名が付くこと、イベントの連番を先に足す
+- [x] 27.3 `lib/server/domain-stream.ts`: `data-requirements-preview`（状態、`id: "preview"`）、`data-requirements-judgement`、`data-council-turn`（1 発言ごとに 1 パート）、`data-council-verdict`、`data-council-result`、`data-marketing-profile`（状態、`id: "profile"`）、`data-marketing-recommendation` への写像を足す + `domain-stream.test.ts` に、状態パートの上書き、発言ごとに 1 パートでペルソナ名が付くこと、イベントの連番を先に足す
   _Boundary:_ `apps/web/lib/server/domain-stream.ts`, `apps/web/lib/server/domain-stream.test.ts`
   _Depends:_ 23.2, 25.4, 26.5
   _Requirements:_ 5.3, 5.4, 6.2, 6.3, 6.4, 6.5
   _Traces:_ REQ-005, REQ-006, C13
-- [ ] 27.4 `POST /api/requirements/sessions`: `z.strictObject`（`overview` 1〜2000 文字、`modelId?`、`personaCount?` 1〜5、`maxRounds?` 1〜10）を検査し、構造化出力に対応しないモデルを `capability-unsupported` で拒否し、ペルソナを生成して面接のセッション（19.3 のレジストリ）を作り、`{ sessionId, personas, questions }` を返す + `route.test.ts` に、検査順、各拒否、ペルソナの構造化出力が 3 回失敗したときの 502 `output-invalid`、`mock` での完走を先に書く
+- [x] 27.4 `POST /api/requirements/sessions`: `z.strictObject`（`overview` 1〜2000 文字、`modelId?`、`personaCount?` 1〜5、`maxRounds?` 1〜10）を検査し、構造化出力に対応しないモデルを `capability-unsupported` で拒否し、ペルソナを生成して面接のセッション（19.3 のレジストリ）を作り、`{ sessionId, personas, questions }` を返す + `route.test.ts` に、検査順、各拒否、ペルソナの構造化出力が 3 回失敗したときの 502 `output-invalid`、`mock` での完走を先に書く
   _Boundary:_ `apps/web/app/api/requirements/sessions/route.ts`, `apps/web/app/api/requirements/sessions/route.test.ts`
   _Depends:_ 25.2, 27.1, 27.3, 19.3
   _Requirements:_ 5.1, 5.2
   _Traces:_ REQ-005, C13
-- [ ] 27.5 (P) `POST /api/requirements/sessions/[id]/messages`: `{ answers: { questionId; text }[] }`（1〜10 件、各 1〜2000 文字）を検査し、1 ラウンドを進めて `data-requirements-preview` を回答ごとに更新し、`data-requirements-judgement` を返し、不足と上限未満なら追加の質問、十分または上限到達で要件定義書を生成する。存在しない・破棄済みのセッションは 404、完了済みは 409 `invalid-request`、存在しない `questionId` は 400。**別のルートで作ったセッションを参照できる**ことを検査する + `route.test.ts` に、ラウンドの進行、プレビューの更新、判定、上限到達の強制終了、404 / 409 / 400、`/api/requirements/sessions` が作ったセッションに 404 にならないことを先に書く
+- [x] 27.5 (P) `POST /api/requirements/sessions/[id]/messages`: `{ answers: { questionId; text }[] }`（1〜10 件、各 1〜2000 文字）を検査し、1 ラウンドを進めて `data-requirements-preview` を回答ごとに更新し、`data-requirements-judgement` を返し、不足と上限未満なら追加の質問、十分または上限到達で要件定義書を生成する。存在しない・破棄済みのセッションは 404、完了済みは 409 `invalid-request`、存在しない `questionId` は 400。**別のルートで作ったセッションを参照できる**ことを検査する + `route.test.ts` に、ラウンドの進行、プレビューの更新、判定、上限到達の強制終了、404 / 409 / 400、`/api/requirements/sessions` が作ったセッションに 404 にならないことを先に書く
   _Boundary:_ `apps/web/app/api/requirements/sessions/[id]/messages/route.ts`, `apps/web/app/api/requirements/sessions/[id]/messages/route.test.ts`
   _Depends:_ 27.4, 25.3, 25.4
   _Requirements:_ 5.2, 5.3, 5.4, 5.5, 5.6
   _Traces:_ REQ-005, C13, CL-8, CL-11
-- [ ] 27.6 (P) `GET /api/requirements/sessions/[id]/document`: `text/markdown; charset=utf-8` と `Content-Disposition: attachment; filename="requirements.md"`（ファイル名は固定。入力由来の文字を含めない）で要件定義書を返す。まだ生成されていなければ 409、破棄済みは 404 + `route.test.ts` に、ヘッダ、固定のファイル名、409 / 404、本文の章立てを先に書く
+- [x] 27.6 (P) `GET /api/requirements/sessions/[id]/document`: `text/markdown; charset=utf-8` と `Content-Disposition: attachment; filename="requirements.md"`（ファイル名は固定。入力由来の文字を含めない）で要件定義書を返す。まだ生成されていなければ 409、破棄済みは 404 + `route.test.ts` に、ヘッダ、固定のファイル名、409 / 404、本文の章立てを先に書く
   _Boundary:_ `apps/web/app/api/requirements/sessions/[id]/document/route.ts`, `apps/web/app/api/requirements/sessions/[id]/document/route.test.ts`
   _Depends:_ 27.4, 25.4
   _Requirements:_ 5.7
   _Traces:_ REQ-005, C13
-- [ ] 27.7 (P) `POST /api/marketing/council`: `z.strictObject`（`draft` 1〜2000 文字、`modelId?`、`maxRounds?` 1〜6、`personaIds?` 2〜5 件）を検査し、存在しないペルソナ ID を 400、カタログとペルソナが未投入なら 503 で拒否し、`runCouncil` の進行を `data-council-turn` / `data-council-verdict` / `data-council-result` として流す + `route.test.ts` に、検査順、各拒否、`mock` の完走（反対が残る → 合意）、最大ラウンドでの終了、ペルソナ名付きの発言、中断を先に書く
+- [x] 27.7 (P) `POST /api/marketing/council`: `z.strictObject`（`draft` 1〜2000 文字、`modelId?`、`maxRounds?` 1〜6、`personaIds?` 2〜5 件）を検査し、存在しないペルソナ ID を 400、カタログとペルソナが未投入なら 503 で拒否し、`runCouncil` の進行を `data-council-turn` / `data-council-verdict` / `data-council-result` として流す + `route.test.ts` に、検査順、各拒否、`mock` の完走（反対が残る → 合意）、最大ラウンドでの終了、ペルソナ名付きの発言、中断を先に書く
   _Boundary:_ `apps/web/app/api/marketing/council/route.ts`, `apps/web/app/api/marketing/council/route.test.ts`
   _Depends:_ 27.1, 27.2, 27.3, 26.5
   _Requirements:_ 6.1, 6.2, 6.3
   _Traces:_ REQ-006, C13
-- [ ] 27.8 (P) `POST /api/marketing/recommend`: `{ id, messages, modelId?, profile? }` を検査し、会話ごとに `extractProfile` でプロファイルを更新して `data-marketing-profile` を流し、`recommend` の結果（除去の件数を含む）を `data-marketing-recommendation` として流す。未投入は 503 + `route.test.ts` に、プロファイルの逐次更新、カタログ外 ID の除去と `dropped`、全件除去の応答、抽出失敗時に画面の更新がないこと、未投入の 503 を先に書く
+- [x] 27.8 (P) `POST /api/marketing/recommend`: `{ id, messages, modelId?, profile? }` を検査し、会話ごとに `extractProfile` でプロファイルを更新して `data-marketing-profile` を流し、`recommend` の結果（除去の件数を含む）を `data-marketing-recommendation` として流す。未投入は 503 + `route.test.ts` に、プロファイルの逐次更新、カタログ外 ID の除去と `dropped`、全件除去の応答、抽出失敗時に画面の更新がないこと、未投入の 503 を先に書く
   _Boundary:_ `apps/web/app/api/marketing/recommend/route.ts`, `apps/web/app/api/marketing/recommend/route.test.ts`
   _Depends:_ 27.1, 27.2, 27.3, 26.7
   _Requirements:_ 6.4, 6.5
   _Traces:_ REQ-006, C13
-- [ ] 27.9 `scripts/seed-samples.ts` に `seedMarketing` の呼び出しを足す
+- [x] 27.9 `scripts/seed-samples.ts` に `seedMarketing` の呼び出しを足す
   _Boundary:_ `scripts/seed-samples.ts`
   _Depends:_ 13.4, 26.3
   _Requirements:_ 6.6
@@ -325,6 +334,10 @@ _Traces:_ REQ-005, REQ-006, C13, C15
   _Verify:_ `mise run seed:samples` を 2 回実行しても、ヘルプデスクと商品・ペルソナの投入件数が増えない
 
 ### Implementation Notes
+
+- Route Handler は handler 以外を export できないため、本文スキーマとセッションの取得口は ai-core に置いた（例外 (12)）。別のルートが作ったセッションを引くのは `globalThis` のレジストリで、`vi.resetModules()` の後の import で確かめる（非リテラルの動的 import は `mcp-import-scope` が拒否する）。
+- ロックは最初の `await` の前に取る（レビュー F-2）。検査を `await` の前に済ませても、ロックをその後に取ると二重送信が通る。
+- `useChat` が返す履歴には前のターンの `data-*` パートが入る。ルートが出さない形のメッセージをテストで自作すると、この往復を見逃す（レビュー F-6）。実際のストリームから作る。
 
 ---
 
@@ -335,13 +348,13 @@ _Depends:_ 27.9, 27.8, 27.7, 27.6, 27.5
 _Requirements:_ 5.4, 6.2, 6.5
 _Traces:_ REQ-005, REQ-006, C16
 
-- [ ] 28.1 `stryker.config.mjs` に `marketing/moderator.ts` と `marketing/recommend.ts` を足す。`workflow-no-agent-loop` が `requirements/interview.ts`・`personas.ts`、`marketing/council.ts`・`moderator.ts`・`profile.ts`・`recommend.ts` を走査し、違反例で落ちること（6.2 のテスト）を、実ファイルが揃った状態で `mise run check:repo-rules` により確認する
+- [x] 28.1 `stryker.config.mjs` に `marketing/moderator.ts` と `marketing/recommend.ts` を足す。`workflow-no-agent-loop` が `requirements/interview.ts`・`personas.ts`、`marketing/council.ts`・`moderator.ts`・`profile.ts`・`recommend.ts` を走査し、違反例で落ちること（6.2 のテスト）を、実ファイルが揃った状態で `mise run check:repo-rules` により確認する
   _Boundary:_ `stryker.config.mjs`
   _Depends:_ 26.7, 25.4, 6.2
   _Requirements:_ 6.2, 6.5
   _Traces:_ REQ-006, C16
   _Verify:_ `mise run test:mutation` の対象に含まれ、閾値 70 を満たす。`mise run check:repo-rules` が成功する
-- [ ] 28.2 W6 の gate を実測して記録する。`mise run gate` の成功を引用し、所要時間を research.md に追記する。`cooperateByRole` に `onRoleOutput` を足しても M2 のテストが緑であることを併記する
+- [x] 28.2 W6 の gate を実測して記録する。`mise run gate` の成功を引用し、所要時間を research.md に追記する。`cooperateByRole` に `onRoleOutput` を足しても M2 のテストが緑であることを併記する
   _Boundary:_ `specs/003-domain-agents/research.md`
   _Depends:_ 28.1
   _Requirements:_ 5.4
@@ -349,3 +362,6 @@ _Traces:_ REQ-005, REQ-006, C16
   _Verify:_ `mise run gate` の成功と所要時間を research.md に記録した。W6 の敵対的レビューの記録が `.sdd/reviews/003-domain-agents-impl-w6-review-*.md` にある
 
 ### Implementation Notes
+
+- W6 のレビュー（REQUEST_CHANGES、MEDIUM 8 件・LOW 15 件）の指摘は、予算（F-1）、二重送信（F-2）、合意の規則（F-3）、抽出失敗（F-4）、判定の流し方（F-5）、再送の往復（F-6）を中心にテスト先行で直した。対応の記録は `.sdd/reviews/003-domain-agents-impl-w6-review-2026-10-24.md` の「Responses」。修正後の fresh な再レビューは未実施。
+- 行ごとの変異テスト（Stryker）が緑でも、実行全体の不変条件（予算の合計、二重送信、複数ターンの往復）は見つからない。W5 に続き、レビューが見つけた 3 件はいずれも不変条件の側だった。
