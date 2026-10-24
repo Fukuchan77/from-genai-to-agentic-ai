@@ -78,7 +78,11 @@ const ALWAYS_SEARCH = defineScenario({
 	})),
 });
 
-function params(overrides: Partial<RunTaskParams> & Pick<RunTaskParams, "model">): RunTaskParams {
+// `model` is typed separately: spreading `LanguageModel` (a wide union) through `Partial<...>`
+// makes tsc give up with TS2590.
+function params(
+	overrides: Partial<Omit<RunTaskParams, "model">> & { readonly model: RunTaskParams["model"] },
+): RunTaskParams {
 	return {
 		task: TASK,
 		inquiry: "VPN に接続できません。",
