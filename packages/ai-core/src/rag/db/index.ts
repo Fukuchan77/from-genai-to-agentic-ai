@@ -13,6 +13,8 @@ export {
 	HELPDESK_TICKET_STATUSES,
 	helpdeskPlanRevisions,
 	helpdeskTickets,
+	marketingPersonas,
+	marketingProducts,
 	ragChunks,
 	ragDocuments,
 	ragMeta,

@@ -1,13 +1,17 @@
+import { readFile } from "node:fs/promises";
 import { getTableColumns, sql } from "drizzle-orm";
 import type { AnyPgColumn, PgTable } from "drizzle-orm/pg-core";
 import { getTableName } from "drizzle-orm/table";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { DEFAULT_COUNCIL } from "../../config";
 import { PlatformError } from "../../errors";
 import { createPgliteDatabase, createPostgresDatabase, type RagDatabaseHandle } from "./client";
 import { KnowledgeBaseUnavailableError } from "./errors";
 import {
 	helpdeskPlanRevisions,
 	helpdeskTickets,
+	marketingPersonas,
+	marketingProducts,
 	ragChunks,
 	ragDocuments,
 	ragMeta,
@@ -35,6 +39,8 @@ const TABLES: readonly PgTable[] = [
 	ragChunks,
 	helpdeskTickets,
 	helpdeskPlanRevisions,
+	marketingProducts,
+	marketingPersonas,
 ];
 const NOW = new Date("2026-10-12T00:00:00.000Z");
 
@@ -118,7 +124,11 @@ describe("createPgliteDatabase", () => {
 	it("returns a PGlite handle with the migrations applied", async () => {
 		expect(handle.kind).toBe("pglite");
 		const applied = await rows<{ name: string }>(sql`SELECT name FROM rag_migrations`);
-		expect(applied.map((row) => row.name)).toEqual(["0001_rag_schema.sql", "0002_helpdesk.sql"]);
+		expect(applied.map((row) => row.name)).toEqual([
+			"0001_rag_schema.sql",
+			"0002_helpdesk.sql",
+			"0003_marketing.sql",
+		]);
 	});
 
 	it("creates an independent in-memory database per call", async () => {
@@ -602,6 +612,177 @@ describe("helpdesk tables (0002_helpdesk.sql, 003 plan Data Model)", () => {
 		await handle.db.insert(helpdeskTickets).values(ticket());
 
 		await handle.db.execute(sql`TRUNCATE helpdesk_plan_revisions, helpdesk_tickets CASCADE`);
+
+		const documents = await rows<{ id: string }>(sql`SELECT id FROM rag_documents`);
+		expect(documents.map((row) => row.id)).toEqual(["kb:keep.md"]);
+	});
+});
+
+describe("marketing tables (0003_marketing.sql, 003 plan Data Model)", () => {
+	type Product = typeof marketingProducts.$inferInsert;
+	type Persona = typeof marketingPersonas.$inferInsert;
+
+	function product(overrides: Partial<Product> = {}): Product {
+		return {
+			id: "P-001",
+			name: "ワイヤレスイヤホン",
+			category: "オーディオ",
+			priceYen: 4980,
+			description: "ノイズ低減つきの完全ワイヤレスイヤホン。",
+			tags: ["音楽", "通勤"],
+			...overrides,
+		};
+	}
+
+	function persona(overrides: Partial<Persona> = {}): Persona {
+		return {
+			id: "consumer",
+			name: "生活者",
+			viewpoint: "購入を検討する一般の生活者として、分かりやすさと価格の納得感を見る。",
+			ordinal: 1,
+			...overrides,
+		};
+	}
+
+	beforeEach(async () => {
+		await handle.db.execute(sql`TRUNCATE marketing_products, marketing_personas`);
+	});
+
+	describe("marketing_products", () => {
+		it("accepts a well-formed product and reads it back unchanged", async () => {
+			await handle.db.insert(marketingProducts).values(product());
+
+			const [stored] = await handle.db.select().from(marketingProducts);
+			expect(stored).toEqual(product());
+		});
+
+		it.each([
+			["a two-digit number", "P-01"],
+			["a four-digit number", "P-1000"],
+			["a lower-case prefix", "p-001"],
+			["another prefix", "T-001"],
+			["a non-numeric suffix", "P-00A"],
+			["trailing text", "P-001x"],
+			["leading text", "xP-001"],
+		])("rejects an id with %s", async (_name, id) => {
+			expect(await failureOf(handle.db.insert(marketingProducts).values(product({ id })))).toMatch(
+				/marketing_products_id_check/,
+			);
+		});
+
+		it("accepts a price of 0 and rejects a negative price", async () => {
+			await handle.db.insert(marketingProducts).values(product({ priceYen: 0 }));
+
+			expect(
+				await failureOf(
+					handle.db.insert(marketingProducts).values(product({ id: "P-002", priceYen: -1 })),
+				),
+			).toMatch(/marketing_products_price_yen_check/);
+		});
+
+		it("rejects a second row with the same id", async () => {
+			await handle.db.insert(marketingProducts).values(product());
+			expect(await failureOf(handle.db.insert(marketingProducts).values(product()))).toMatch(
+				/marketing_products_pkey/,
+			);
+		});
+
+		it("defaults tags to an empty array and does not accept NULL", async () => {
+			await handle.db.execute(
+				sql`INSERT INTO marketing_products (id, name, category, price_yen, description)
+					VALUES ('P-009', 'n', 'c', 100, 'd')`,
+			);
+			const [stored] = await handle.db.select().from(marketingProducts);
+			expect(stored?.tags).toEqual([]);
+
+			expect(
+				await failureOf(
+					handle.db.execute(
+						sql`INSERT INTO marketing_products (id, name, category, price_yen, description, tags)
+							VALUES ('P-010', 'n', 'c', 100, 'd', NULL)`,
+					),
+				),
+			).toMatch(/null value in column "tags"/);
+		});
+	});
+
+	describe("marketing_personas", () => {
+		it("accepts well-formed personas and returns them in ordinal order", async () => {
+			await handle.db
+				.insert(marketingPersonas)
+				.values([persona({ id: "b", ordinal: 2 }), persona({ id: "a", ordinal: 1 })]);
+
+			const stored = await handle.db
+				.select()
+				.from(marketingPersonas)
+				.orderBy(marketingPersonas.ordinal);
+			expect(stored.map((row) => row.id)).toEqual(["a", "b"]);
+		});
+
+		it("enforces UNIQUE (ordinal)", async () => {
+			await handle.db.insert(marketingPersonas).values(persona());
+
+			expect(
+				await failureOf(handle.db.insert(marketingPersonas).values(persona({ id: "other" }))),
+			).toMatch(/marketing_personas_ordinal_unique/);
+		});
+
+		it("rejects a second row with the same id", async () => {
+			await handle.db.insert(marketingPersonas).values(persona());
+			expect(
+				await failureOf(handle.db.insert(marketingPersonas).values(persona({ ordinal: 2 }))),
+			).toMatch(/marketing_personas_pkey/);
+		});
+	});
+
+	describe("initial data (fixtures/marketing)", () => {
+		async function fixture(name: string): Promise<unknown> {
+			const file = new URL(`../../../fixtures/marketing/${name}.json`, import.meta.url);
+			return JSON.parse(await readFile(file, "utf8"));
+		}
+
+		it("products.json inserts as-is, with catalogue ids in order and a spread of prices", async () => {
+			const products = (await fixture("products")) as Product[];
+
+			await handle.db.insert(marketingProducts).values(products);
+
+			const stored = await handle.db.select().from(marketingProducts).orderBy(marketingProducts.id);
+			expect(stored).toEqual(products);
+			expect(stored.length).toBeGreaterThanOrEqual(8);
+			expect(stored.length).toBeLessThanOrEqual(12);
+			expect(stored.map((row) => row.id)).toEqual(
+				stored.map((_row, index) => `P-${String(index + 1).padStart(3, "0")}`),
+			);
+			// Both sides of a 10,000 yen budget must exist for the budget-excess behaviour.
+			expect(stored.some((row) => row.priceYen > 10_000)).toBe(true);
+			expect(stored.some((row) => row.priceYen < 5_000)).toBe(true);
+			for (const row of stored) expect(row.tags.length).toBeGreaterThan(0);
+		});
+
+		it("personas.json inserts as-is and holds exactly the default council, in order", async () => {
+			const personas = (await fixture("personas")) as Persona[];
+
+			await handle.db.insert(marketingPersonas).values(personas);
+
+			const stored = await handle.db
+				.select()
+				.from(marketingPersonas)
+				.orderBy(marketingPersonas.ordinal);
+			expect(stored).toEqual(personas);
+			expect(stored.map((row) => row.id)).toEqual([...DEFAULT_COUNCIL.personaIds]);
+			expect(stored.map((row) => row.ordinal)).toEqual([1, 2, 3]);
+			for (const row of stored) {
+				expect(row.name.trim()).not.toBe("");
+				expect(row.viewpoint.trim()).not.toBe("");
+			}
+		});
+	});
+
+	it("leaves the helpdesk and rag_* tables alone when the marketing tables are emptied", async () => {
+		await insertDocument("kb:keep.md");
+		await handle.db.insert(marketingProducts).values(product());
+
+		await handle.db.execute(sql`TRUNCATE marketing_products, marketing_personas`);
 
 		const documents = await rows<{ id: string }>(sql`SELECT id FROM rag_documents`);
 		expect(documents.map((row) => row.id)).toEqual(["kb:keep.md"]);

@@ -106,3 +106,33 @@ export const helpdeskPlanRevisions = pgTable(
 	},
 	(table) => [primaryKey({ columns: [table.ticketId, table.revision] })],
 );
+
+// 0003_marketing.sql. The id pattern is the key that recommendations are checked against (003
+// CL-15), so it is a database CHECK as well as a seed convention.
+export const marketingProducts = pgTable(
+	"marketing_products",
+	{
+		id: text("id").primaryKey(),
+		name: text("name").notNull(),
+		category: text("category").notNull(),
+		priceYen: integer("price_yen").notNull(),
+		description: text("description").notNull(),
+		tags: text("tags").array().notNull().default(sql`'{}'`),
+	},
+	(table) => [
+		check("marketing_products_id_check", sql`${table.id} ~ '^P-[0-9]{3}$'`),
+		check("marketing_products_price_yen_check", sql`${table.priceYen} >= 0`),
+	],
+);
+
+// `ordinal` is the round-robin order of the council; `viewpoint` is the role's standpoint.
+export const marketingPersonas = pgTable(
+	"marketing_personas",
+	{
+		id: text("id").primaryKey(),
+		name: text("name").notNull(),
+		viewpoint: text("viewpoint").notNull(),
+		ordinal: integer("ordinal").notNull(),
+	},
+	(table) => [unique("marketing_personas_ordinal_unique").on(table.ordinal)],
+);
