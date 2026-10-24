@@ -2,6 +2,7 @@ import { embed, generateText, jsonSchema, tool } from "ai";
 import { describe, expect, it, vi } from "vitest";
 import { type EnvSource, loadPlatformConfig } from "../config";
 import { PlatformError } from "../errors";
+import { EMPTY_PROFILE, extractProfile } from "../marketing/profile";
 import {
 	M2_1_SAMPLE_QUESTIONS,
 	M2_3_SAMPLE_TASKS,
@@ -11,9 +12,12 @@ import {
 	M3_2_SAMPLE_INQUIRIES,
 	M3_3_SAMPLE_INSTRUCTIONS,
 	M3_4_SAMPLE_THEMES,
+	M3_5_SAMPLE_OVERVIEWS,
+	M3_6_SAMPLE_MESSAGES,
 } from "../mock";
 import type { RecordingStore } from "../mock/recording";
 import { createFakeClock } from "../ports/clock";
+import { generatePersonas } from "../requirements/personas";
 import { createTextStreamModel } from "../testing/mock-models";
 import { defaultModelFor, getModelEntry, listModels } from "./catalog";
 import {
@@ -223,6 +227,31 @@ describe("createModelGateway resolve (mock)", () => {
 		});
 
 		expect(first.toolCalls.map((call) => call.toolName)).toEqual(["searchPapers"]);
+	});
+
+	it("answers the M3-5 persona scenario with three personas through the default mock scenarios", async () => {
+		const gateway = createModelGateway({ config: configFor({}) });
+		const chat = await gateway.resolve({ purpose: "chat" });
+
+		const personas = await generatePersonas({
+			model: chat.model,
+			overview: M3_5_SAMPLE_OVERVIEWS.default,
+		});
+
+		expect(personas.map((persona) => persona.id)).toEqual(["persona-1", "persona-2", "persona-3"]);
+	});
+
+	it("answers the M3-6 profile scenario through the default mock scenarios", async () => {
+		const gateway = createModelGateway({ config: configFor({}) });
+		const chat = await gateway.resolve({ purpose: "chat" });
+
+		const profile = await extractProfile({
+			model: chat.model,
+			previous: EMPTY_PROFILE,
+			messages: [{ role: "user", content: M3_6_SAMPLE_MESSAGES.first }],
+		});
+
+		expect(profile.budgetYen).toBe(10_000);
 	});
 
 	it("binds a separate mock model per purpose and uses injected scenarios", async () => {
