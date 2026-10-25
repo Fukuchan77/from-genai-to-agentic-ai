@@ -23,11 +23,28 @@ export const FIXTURE_NAMES = [
 	"rag-query-no-evidence",
 	"rag-agent-search",
 	"rag-agent-no-search",
+	"helpdesk",
+	"analysis",
+	"analysis-attempt-limit",
+	"research",
+	"research-partial",
+	"requirements",
+	"marketing-council",
+	"marketing-recommend",
+	"mcp-chat",
+	"mcp-chat-error",
 ] as const;
 export type FixtureName = (typeof FIXTURE_NAMES)[number];
 
 /** Generated JSON bodies (`e2e/fixtures/*.json`), the counterpart of the streams above. */
-export const JSON_FIXTURE_NAMES = ["workflows-evaluator-optimizer"] as const;
+export const JSON_FIXTURE_NAMES = [
+	"workflows-evaluator-optimizer",
+	"mcp-servers",
+	"mcp-compare",
+	"analysis-status",
+	"helpdesk-tickets",
+	"requirements-session",
+] as const;
 export type JsonFixtureName = (typeof JSON_FIXTURE_NAMES)[number];
 
 export type ApiPath =
@@ -38,7 +55,41 @@ export type ApiPath =
 	| "/api/rag/ingest"
 	| "/api/rag/query"
 	| "/api/rag/agent"
-	| "/api/workflows";
+	| "/api/workflows"
+	| "/api/helpdesk"
+	| "/api/helpdesk/tickets"
+	| "/api/helpdesk/tickets/[id]"
+	| "/api/analysis"
+	| "/api/analysis/status"
+	| "/api/analysis/sessions/[id]"
+	| "/api/research"
+	| "/api/requirements/sessions"
+	| "/api/requirements/sessions/[id]/messages"
+	| "/api/requirements/sessions/[id]/document"
+	| "/api/marketing/council"
+	| "/api/marketing/recommend"
+	| "/api/mcp/servers"
+	| "/api/mcp/compare"
+	| "/api/mcp/chat";
+
+// A path with a dynamic segment is configured under its `[id]` form; the request's real path is
+// matched exactly first (so a test can still single out one id), then in this normalised form.
+const DYNAMIC_PATHS: readonly (readonly [RegExp, string])[] = [
+	[
+		/^\/api\/requirements\/sessions\/[^/]+\/(messages|document)$/,
+		"/api/requirements/sessions/[id]/$1",
+	],
+	[/^\/api\/analysis\/sessions\/[^/]+$/, "/api/analysis/sessions/[id]"],
+	[/^\/api\/helpdesk\/tickets\/[^/]+$/, "/api/helpdesk/tickets/[id]"],
+];
+
+/** The `ApiPath` form of a request path: the id segment of a dynamic route becomes `[id]`. */
+export function normalizeApiPath(pathname: string): string {
+	for (const [pattern, template] of DYNAMIC_PATHS) {
+		if (pattern.test(pathname)) return pathname.replace(pattern, template);
+	}
+	return pathname;
+}
 
 /** One parsed `data: {...}` event of a UI message stream (`[DONE]` is added back on serialising). */
 export interface SseEvent {
@@ -164,8 +215,25 @@ export function mapEvents(
 }
 
 export interface RecordedRequest {
+	/** The path as requested, e.g. `/api/helpdesk/tickets/T-0001`. */
 	readonly path: string;
+	/** The `ApiPath` it matched, e.g. `/api/helpdesk/tickets/[id]`. */
+	readonly route: string;
+	/** Parsed JSON; the raw text for a body that is not JSON (a multipart upload); null if none. */
 	readonly body: unknown;
+}
+
+/** The text value of a field in a recorded multipart body (`undefined` when it is not there). */
+export function multipartField(body: unknown, name: string): string | undefined {
+	if (typeof body !== "string") return undefined;
+	const pattern = new RegExp(
+		`name="${name}"(?:; filename="[^"]*")?\\r?\\n(?:[^\\r\\n]+\\r?\\n)*\\r?\\n`,
+	);
+	const match = pattern.exec(body);
+	if (match === null) return undefined;
+	const rest = body.slice(match.index + match[0].length);
+	const end = rest.search(/\r?\n--/);
+	return end < 0 ? rest : rest.slice(0, end);
 }
 
 export interface MockApi {
@@ -271,8 +339,19 @@ function installStreamShaper({
 }
 
 function jsonBody(route: Route): unknown {
-	const text = route.request().postData();
-	if (text === null) return null;
+	const request = route.request();
+	let text: string | null = null;
+	try {
+		text = request.postData();
+	} catch {
+		// A binary body has no text form; fall through to the buffer.
+	}
+	if (text === null) {
+		const buffer = request.postDataBuffer();
+		if (buffer === null) return null;
+		text = buffer.toString("utf8");
+	}
+	if ((request.headers()["content-type"] ?? "").includes("multipart/form-data")) return text;
 	try {
 		return JSON.parse(text);
 	} catch {
@@ -294,15 +373,17 @@ export async function mockApi(
 	await page.addInitScript(installStreamShaper, { planHeader: PLAN_HEADER, stateKey: STATE_KEY });
 	await page.route("/api/**", async (route) => {
 		const { pathname } = new URL(route.request().url());
-		const configured = (replies as Record<string, Reply | readonly Reply[] | undefined>)[pathname];
+		const table = replies as Record<string, Reply | readonly Reply[] | undefined>;
+		const key = table[pathname] !== undefined ? pathname : normalizeApiPath(pathname);
+		const configured = table[key];
 		if (configured === undefined) {
 			await route.fulfill({ status: 501, body: `unmocked API path: ${pathname}` });
 			return;
 		}
-		requests.push({ path: pathname, body: jsonBody(route) });
+		requests.push({ path: pathname, route: key, body: jsonBody(route) });
 		const list = Array.isArray(configured) ? configured : [configured];
-		const index = seen.get(pathname) ?? 0;
-		seen.set(pathname, index + 1);
+		const index = seen.get(key) ?? 0;
+		seen.set(key, index + 1);
 		const reply = list[Math.min(index, list.length - 1)] as Reply;
 		if (reply.kind === "json") {
 			await route.fulfill({

@@ -145,6 +145,138 @@ test("workflows: pick an example and run with the keyboard only", async ({ page 
 	await expect(page.getByRole("article", { name: "実行結果: プロンプトチェーン" })).toBeVisible();
 });
 
+// Module 3 screens (plan C14, Req 1.7, 3.1): the main operation of each screen with the keyboard
+// only. The mocked API supplies the response; the point is that every control on the way is
+// reachable and operable.
+
+test("mcp: untick an allowed tool and send the message with the keyboard only", async ({
+	page,
+}) => {
+	const api = await mockApi(page, { "/api/mcp/chat": streamReply("mcp-chat") });
+	await page.goto("/mcp");
+
+	await tabTo(page, "input[type='checkbox'][value='readFile']");
+	await expect(page.getByRole("checkbox", { name: "readFile", exact: true })).toBeChecked();
+	await page.keyboard.press("Space");
+	await expect(page.getByRole("checkbox", { name: "readFile", exact: true })).not.toBeChecked();
+
+	await tabTo(page, "#mcp-input");
+	await page.keyboard.type("許可ルートのファイルを一覧してください。");
+	await tabTo(page, 'button[type="submit"]');
+	await page.keyboard.press("Enter");
+
+	await expect(page.getByRole("log", { name: "会話" })).toContainText("listFiles");
+	const body = api.requests.find((entry) => entry.route === "/api/mcp/chat")?.body as {
+		allow: Record<string, string[]>;
+	};
+	expect(body.allow.files).not.toContain("readFile");
+	expect(body.allow.files).toContain("listFiles");
+});
+
+test("helpdesk: type an inquiry and send it with the keyboard only", async ({ page }) => {
+	await mockApi(page, {
+		"/api/helpdesk": streamReply("helpdesk"),
+		"/api/helpdesk/tickets": jsonReply("helpdesk-tickets"),
+	});
+	await page.goto("/helpdesk");
+
+	await tabTo(page, "textarea");
+	await page.keyboard.type("共有プリンターを追加したいのですが、表示されません。");
+	await tabTo(page, 'button[type="submit"]');
+	await page.keyboard.press("Space");
+
+	await expect(page.getByRole("region", { name: "最終結果" })).toBeVisible();
+});
+
+test("analysis: reach the file input and the instruction, and start the analysis with the keyboard", async ({
+	page,
+}) => {
+	await mockApi(page, { "/api/analysis": streamReply("analysis") });
+	await page.goto("/analysis");
+
+	// A file chooser cannot be driven by key presses in every engine; the input must be focusable
+	// and the file is then set on the focused input.
+	await tabTo(page, "input[type='file']");
+	await expect(page.getByLabel("分析するファイル")).toBeFocused();
+	await page.getByLabel("分析するファイル").setInputFiles({
+		name: "sales.csv",
+		mimeType: "text/csv",
+		buffer: Buffer.from("date,sales\n2026-01-05,120000\n"),
+	});
+	await tabTo(page, "textarea");
+	await page.keyboard.type("月ごとの売上を集計してください");
+	await tabTo(page, 'button[type="submit"]');
+	await page.keyboard.press("Enter");
+
+	await expect(page.getByRole("img", { name: "Monthly sales bar chart" })).toBeVisible();
+});
+
+test("research: type a theme and start the research with the keyboard only", async ({ page }) => {
+	await mockApi(page, { "/api/research": streamReply("research") });
+	await page.goto("/research");
+
+	await tabTo(page, "#research-theme, textarea, input[type='text']");
+	await page.keyboard.type("階層型エージェントの最新動向");
+	await tabTo(page, 'button[type="submit"]');
+	await page.keyboard.press("Enter");
+
+	await expect(page.getByRole("status", { name: "実行の状態" })).toHaveText(
+		"リサーチが完了しました",
+	);
+});
+
+test("requirements: start the interview and answer the round with the keyboard only", async ({
+	page,
+}) => {
+	await mockApi(page, {
+		"/api/requirements/sessions": jsonReply("requirements-session"),
+		"/api/requirements/sessions/[id]/messages": streamReply("requirements"),
+	});
+	await page.goto("/requirements");
+
+	await tabTo(page, "textarea, input[type='text']");
+	await page.keyboard.type("社内の問い合わせを自動で振り分けるチャットボット");
+	await tabTo(page, 'button[type="submit"]');
+	await page.keyboard.press("Enter");
+	await expect(page.getByRole("heading", { name: "第 1 ラウンド" })).toBeVisible();
+
+	await tabTo(page, "fieldset textarea, [role='group'] textarea");
+	await page.keyboard.type("問い合わせの分類に時間がかかります。");
+	await tabTo(page, 'button[type="submit"]');
+	await page.keyboard.press("Space");
+
+	await expect(page.getByRole("region", { name: "十分性の判定" })).toContainText(
+		"情報が不足しています",
+	);
+});
+
+test("marketing: untick a persona with Space, then start the council with the keyboard", async ({
+	page,
+}) => {
+	const api = await mockApi(page, {
+		"/api/marketing/council": streamReply("marketing-council"),
+	});
+	await page.goto("/marketing");
+
+	// The draft field comes before the persona list in the tab order.
+	await tabTo(page, "#council-draft");
+	await expect(page.getByLabel("広告文案", { exact: true })).toBeFocused();
+	await page.keyboard.type("ステンレス保温ボトル 500ml。");
+
+	await tabTo(page, "input[type='checkbox'][aria-label='SEO 担当者']");
+	await page.keyboard.press("Space");
+	await expect(page.getByRole("checkbox", { name: "SEO 担当者" })).not.toBeChecked();
+	await expect(page.getByText("2 / 5 件を選択中")).toBeVisible();
+	await page.keyboard.press("Space");
+	await expect(page.getByRole("checkbox", { name: "SEO 担当者" })).toBeChecked();
+	await tabTo(page, 'button[type="submit"]');
+	await page.keyboard.press("Enter");
+
+	await expect(page.getByRole("region", { name: "合議の結果" })).toBeVisible();
+	const council = api.requests.find((entry) => entry.route === "/api/marketing/council");
+	expect((council?.body as { personaIds: string[] } | undefined)?.personaIds).toHaveLength(3);
+});
+
 interface FocusIndicator {
 	readonly kind: "outline" | "ring" | "none";
 	readonly width: number;
@@ -245,6 +377,7 @@ const TARGETS = [
 	{ path: "/chat", name: "skip link", selector: "a[href='#main']" },
 	{ path: "/chat", name: "navigation link", selector: "nav a" },
 	{ path: "/chat", name: "textarea", selector: "textarea" },
+	{ path: "/marketing", name: "persona checkbox", selector: "fieldset input[type='checkbox']" },
 	{ path: "/chat", name: "model selector", selector: "select, [role='combobox']" },
 	{ path: "/summarize", name: "radio", selector: "input[type='radio']" },
 	{ path: "/summarize", name: "url field", selector: "input[type='url']" },
@@ -255,6 +388,12 @@ const TARGETS = [
 	{ path: "/workflows", name: "workflow name select", selector: "#workflow-name" },
 	{ path: "/workflows", name: "sample button", selector: "section[aria-label='入力例'] button" },
 	{ path: "/workflows", name: "task field", selector: "#workflow-task" },
+	{ path: "/mcp", name: "allow-list checkbox", selector: "input[type='checkbox'][value]" },
+	{ path: "/mcp", name: "message field", selector: "#mcp-input" },
+	{ path: "/helpdesk", name: "inquiry field", selector: "textarea" },
+	{ path: "/analysis", name: "file input", selector: "input[type='file']" },
+	{ path: "/research", name: "theme field", selector: "textarea, input[type='text']" },
+	{ path: "/requirements", name: "overview field", selector: "textarea, input[type='text']" },
 ] as const;
 
 for (const scheme of ["light", "dark"] as const satisfies readonly ColorScheme[]) {
