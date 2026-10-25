@@ -10,6 +10,7 @@ import {
 	setPlatformForTesting,
 	setSandboxForTesting,
 } from "@/lib/server/platform";
+import { verifyOrWriteFixture } from "../../../../../../scripts/e2e/generate-sse-fixtures.mjs";
 import { GET } from "./route";
 
 const KEY = "changeme-e2b-route-secret";
@@ -114,5 +115,16 @@ describe("GET /api/analysis/status", () => {
 		expect(status).toBe(500);
 		expect(text).not.toContain("secret detail");
 		expect(text).not.toContain("engine-path");
+	});
+});
+
+describe("GET /api/analysis/status: generated SSE fixtures used by the E2E specs (JSON bodies)", () => {
+	it("matches the generated SSE fixture (JSON) of an available mock sandbox", async () => {
+		await install(enabled("mock"));
+
+		verifyOrWriteFixture(
+			"analysis-status.json",
+			`${JSON.stringify(JSON.parse((await read()).text), null, "\t")}\n`,
+		);
 	});
 });

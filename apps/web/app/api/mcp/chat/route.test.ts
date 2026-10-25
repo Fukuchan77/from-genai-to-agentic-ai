@@ -20,6 +20,7 @@ import {
 	setMcpRegistryForTesting,
 	setPlatformForTesting,
 } from "@/lib/server/platform";
+import { verifyOrWriteFixture } from "../../../../../../scripts/e2e/generate-sse-fixtures.mjs";
 import { POST } from "./route";
 
 // Every created GuardedAgent's options are recorded, so a test can see the tools and the signal.
@@ -349,5 +350,30 @@ describe("POST /api/mcp/chat — a run in mock mode", () => {
 		expect(created.options[0]?.signal).toBeDefined();
 		controller.abort();
 		expect(created.options[0]?.signal.aborted).toBe(true);
+	});
+});
+
+describe("POST /api/mcp/chat: generated SSE fixtures used by the E2E specs", () => {
+	// The allowed root is a temporary directory whose name differs on every machine; the fixture
+	// carries a fixed stand-in so that it is the same everywhere.
+	const STABLE_ROOT = "/srv/mcp-workspace";
+	const stable = (text: string) => text.replaceAll(root, STABLE_ROOT);
+
+	it("matches the generated SSE fixture of listing the root and reading a file", async () => {
+		await install();
+
+		const response = await POST(chatRequest(M3_1_SAMPLE_TASKS.listAndRead));
+
+		expect(response.status).toBe(200);
+		verifyOrWriteFixture("mcp-chat.sse", stable(await response.text()));
+	});
+
+	it("matches the generated SSE fixture of a run that stops on a path outside the allowed root", async () => {
+		await install();
+
+		const response = await POST(chatRequest(M3_1_SAMPLE_TASKS.outsideRoot));
+
+		expect(response.status).toBe(200);
+		verifyOrWriteFixture("mcp-chat-error.sse", stable(await response.text()));
 	});
 });

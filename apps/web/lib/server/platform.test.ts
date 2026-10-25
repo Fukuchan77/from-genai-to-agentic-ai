@@ -15,6 +15,7 @@ import type {
 } from "@platform/ai-core/ports";
 import { createFakeClock, createNodeHttpFetcher } from "@platform/ai-core/ports";
 import {
+	createKnowledgeStore,
 	createPgliteDatabase,
 	KnowledgeBaseUnavailableError,
 	type RagDatabaseHandle,
@@ -930,6 +931,93 @@ describe("getHelpdeskStore (plan C13, Req 2.6, 2.7)", () => {
 			setPlatformForTesting(undefined);
 		}
 	});
+});
+
+describe("getHelpdeskStore seeds the FAQ in mock mode (W3 carry-over F-8)", () => {
+	function pgliteFactories() {
+		const handles: RagDatabaseHandle[] = [];
+		const open = async () => {
+			const handle = await createPgliteDatabase();
+			handles.push(handle);
+			return handle;
+		};
+		const factories: KnowledgeBaseFactories = { pglite: open, postgres: open };
+		return { factories, handles };
+	}
+
+	async function documentIds(factories: KnowledgeBaseFactories): Promise<string[]> {
+		const handle = await getKnowledgeBase(factories);
+		return (await createKnowledgeStore(handle.db).listDocuments()).map((document) => document.id);
+	}
+
+	async function withPlatform(env: Record<string, string>) {
+		setPlatformForTesting(await createPlatform({ env }));
+		setKnowledgeBaseForTesting(undefined);
+	}
+
+	it("puts the bundled FAQ into the throwaway knowledge base, once, so the sample inquiries find evidence", async () => {
+		await withPlatform(MOCK_ENV);
+		const { factories, handles } = pgliteFactories();
+		try {
+			await getHelpdeskStore(factories);
+			const first = await documentIds(factories);
+			await getHelpdeskStore(factories);
+
+			expect(first.length).toBeGreaterThan(0);
+			expect(first.some((id) => id.includes("vpn-connection"))).toBe(true);
+			expect(await documentIds(factories)).toEqual(first);
+		} finally {
+			setKnowledgeBaseForTesting(undefined);
+			setPlatformForTesting(undefined);
+			await Promise.all(handles.map((handle) => handle.close()));
+		}
+	}, 60_000);
+
+	it.each([
+		["local", LOCAL_ENV],
+		[
+			"live",
+			{
+				VITEST: "1",
+				AI_TEST_RUN_MODE: "live",
+				AI_LIVE_PROVIDER: "openai",
+				OPENAI_API_KEY: "test-key",
+			},
+		],
+	] as const)(
+		"does not touch a knowledge base in %s mode: the learner's own documents stay as they are",
+		async (_, env) => {
+			await withPlatform(env);
+			const { factories, handles } = pgliteFactories();
+			try {
+				await getHelpdeskStore(factories);
+
+				expect(await documentIds(factories)).toEqual([]);
+			} finally {
+				setKnowledgeBaseForTesting(undefined);
+				setPlatformForTesting(undefined);
+				await Promise.all(handles.map((handle) => handle.close()));
+			}
+		},
+		60_000,
+	);
+
+	it("seeds a database only once: what the learner removes afterwards does not come back", async () => {
+		await withPlatform(MOCK_ENV);
+		const { factories, handles } = pgliteFactories();
+		try {
+			await getHelpdeskStore(factories);
+			const handle = await getKnowledgeBase(factories);
+			await createKnowledgeStore(handle.db).reset();
+			await getHelpdeskStore(factories);
+
+			expect(await documentIds(factories)).toEqual([]);
+		} finally {
+			setKnowledgeBaseForTesting(undefined);
+			setPlatformForTesting(undefined);
+			await Promise.all(handles.map((handle) => handle.close()));
+		}
+	}, 60_000);
 });
 
 describe("getCatalogRepo (plan C13, Req 6.5, 6.6)", () => {

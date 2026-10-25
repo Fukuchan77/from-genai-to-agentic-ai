@@ -1,0 +1,10 @@
+data: {"type":"data-analysis-attempt","id":"attempt-1","data":{"index":1,"code":"import pandas as pd\nimport matplotlib.pyplot as plt\n\ndf = pd.read_csv(\"data.csv\")\nmonthly = df.groupby(df[\"date\"].str[:7], as_index=False)[\"sales\"].sum()\nplt.bar(monthly[\"date\"], monthly[\"sales\"])\nplt.title(\"月別売上\")\nshow_figure(\"月別売上の棒グラフ\")\nshow_table(monthly, \"月別売上\")","stdout":"rows: 3\nsummary: sales peaked in 2026-03\n","stderr":""}}
+
+data: {"type":"data-analysis-figure","id":"figure-1","data":{"alt":"Monthly sales bar chart","mediaType":"image/png","base64":"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="}}
+
+data: {"type":"data-analysis-table","id":"table-1","data":{"caption":"Monthly sales","columns":["month","sales"],"rows":[["2026-01",120000],["2026-02",98000],["2026-03",134000]],"totalRows":3}}
+
+data: {"type":"data-analysis-result","id":"result","data":{"status":"succeeded","attempts":1,"fixes":0,"text":"月ごとの売上を集計しました。上の棒グラフと表のとおり、3 月がいちばん多くなっています。"}}
+
+data: [DONE]
+

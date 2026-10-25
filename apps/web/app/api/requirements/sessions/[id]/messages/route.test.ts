@@ -8,9 +8,10 @@ import {
 	type RequirementsSession,
 } from "@platform/ai-core/requirements";
 import { createFakeClock } from "@platform/ai-core/testing";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createPlatform, setPlatformForTesting } from "@/lib/server/platform";
 import { getSessionRegistry, resetSessionRegistriesForTesting } from "@/lib/server/sessions";
+import { verifyOrWriteFixture } from "../../../../../../../../scripts/e2e/generate-sse-fixtures.mjs";
 import { POST as startSession } from "../../route";
 import { POST } from "./route";
 
@@ -115,7 +116,11 @@ function parseParts(text: string): StreamPart[] {
 
 const partsOf = async (response: Response) => parseParts(await response.text());
 const errorOf = async (response: Response) =>
-	(await response.json()).error as { code: string; message: string };
+	(await response.json()).error as {
+		code: string;
+		message: string;
+		details?: { reason?: string };
+	};
 const ofType = (parts: readonly StreamPart[], type: string) =>
 	parts.filter((part) => part.type === type);
 
@@ -408,6 +413,7 @@ describe("POST .../messages: rejections before any model call", () => {
 		const body = await errorOf(response);
 		expect(body.code).toBe("invalid-request");
 		expect(body.message).not.toBe("");
+		expect(body.details).toEqual({ reason: "completed" });
 		expect(modelCalls).toBe(0);
 		expect(sessions().get(id)?.document).toBe("# 要件定義書\n");
 	});
@@ -835,7 +841,9 @@ describe("POST .../messages: failures leave the session consistent", () => {
 		await response.text();
 
 		expect(second.status).toBe(409);
-		expect((await errorOf(second)).code).toBe("invalid-request");
+		const busy = await errorOf(second);
+		expect(busy.code).toBe("invalid-request");
+		expect(busy.details).toEqual({ reason: "busy" });
 		expect(sessions().get(created.sessionId)?.state.answers).toHaveLength(3);
 
 		const done = await playRound(
@@ -982,5 +990,25 @@ describe("POST .../messages: session activity", () => {
 		expect(sessions().get(created.sessionId)).toBeDefined();
 		platformClock.advanceBy(200_001);
 		expect(sessions().get(created.sessionId)).toBeUndefined();
+	});
+});
+
+describe("POST .../messages: generated SSE fixtures used by the E2E specs", () => {
+	it("matches the generated SSE fixture of one round: previews, the judgement and the next questions", async () => {
+		await installPlatform();
+		const spy = vi
+			.spyOn(crypto, "randomUUID")
+			.mockReturnValue("00000000-0000-4000-8000-000000000001");
+		try {
+			const created = await start(M3_5_SAMPLE_OVERVIEWS.default);
+			const texts = M3_5_SAMPLE_ANSWERS.default[0] as readonly string[];
+
+			const response = await send(created.sessionId, answersFor(created.questions, texts));
+
+			expect(response.status).toBe(200);
+			verifyOrWriteFixture("requirements.sse", await response.text());
+		} finally {
+			spy.mockRestore();
+		}
 	});
 });

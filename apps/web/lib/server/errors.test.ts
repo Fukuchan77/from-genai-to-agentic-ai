@@ -120,6 +120,28 @@ describe("toErrorResponse", () => {
 		expect(JSON.parse(text)).toEqual({ error: { code: "provider-unavailable", message: "x" } });
 	});
 
+	it.each(["completed", "busy"])(
+		"keeps the closed reason %s of an invalid-request error",
+		async (reason) => {
+			const text = await toErrorResponse(
+				new PlatformError("invalid-request", "x", { reason, apiKey: SECRET }),
+			).text();
+
+			expect(JSON.parse(text)).toEqual({
+				error: { code: "invalid-request", message: "x", details: { reason } },
+			});
+			expect(text).not.toContain(SECRET);
+		},
+	);
+
+	it("drops a reason of an invalid-request error that is not on the allow-list", async () => {
+		const text = await toErrorResponse(
+			new PlatformError("invalid-request", "x", { reason: "secret-reason" }),
+		).text();
+
+		expect(JSON.parse(text)).toEqual({ error: { code: "invalid-request", message: "x" } });
+	});
+
 	it("keeps a guidance of exactly 500 characters", async () => {
 		const guidance = "あ".repeat(500);
 

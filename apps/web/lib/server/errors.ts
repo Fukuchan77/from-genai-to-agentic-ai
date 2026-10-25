@@ -90,6 +90,9 @@ const PUBLIC_INVALID_REQUEST_REASONS: ReadonlySet<string> = new Set([
 	"embedding-model-changed",
 	"too-many-files",
 	"invalid-file-name",
+	// The two 409s of the requirements interview: finished for good, or a round still in flight.
+	"completed",
+	"busy",
 ]);
 
 function invalidRequestDetails(

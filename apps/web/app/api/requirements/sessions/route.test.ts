@@ -7,9 +7,10 @@ import {
 	REQUIREMENTS_SESSION_IDLE_MS,
 } from "@platform/ai-core/requirements";
 import { createFakeClock } from "@platform/ai-core/testing";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createPlatform, setPlatformForTesting } from "@/lib/server/platform";
 import { getSessionRegistry, resetSessionRegistriesForTesting } from "@/lib/server/sessions";
+import { verifyOrWriteFixture } from "../../../../../../scripts/e2e/generate-sse-fixtures.mjs";
 import { POST } from "./route";
 
 const MOCK_ENV = { VITEST: "1", AI_TEST_RUN_MODE: "mock" } as const;
@@ -420,5 +421,25 @@ describe("POST /api/requirements/sessions: a start in mock mode", () => {
 
 		expect(response.status).toBeGreaterThanOrEqual(500);
 		expect(await response.text()).not.toContain("sk-secret-999");
+	});
+});
+
+describe("POST /api/requirements/sessions: generated SSE fixtures used by the E2E specs (JSON bodies)", () => {
+	it("matches the generated SSE fixture (JSON) of a started interview (a fixed session id)", async () => {
+		await installPlatform();
+		const spy = vi
+			.spyOn(crypto, "randomUUID")
+			.mockReturnValue("00000000-0000-4000-8000-000000000001");
+		try {
+			const response = await POST(post({ overview: M3_5_SAMPLE_OVERVIEWS.default }));
+
+			expect(response.status).toBe(200);
+			verifyOrWriteFixture(
+				"requirements-session.json",
+				`${JSON.stringify(await response.json(), null, "\t")}\n`,
+			);
+		} finally {
+			spy.mockRestore();
+		}
 	});
 });

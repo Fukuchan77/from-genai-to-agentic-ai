@@ -19,6 +19,7 @@ import {
 	setMcpRegistryForTesting,
 	setPlatformForTesting,
 } from "@/lib/server/platform";
+import { verifyOrWriteFixture } from "../../../../../../scripts/e2e/generate-sse-fixtures.mjs";
 import { POST } from "./route";
 
 const created = vi.hoisted(() => ({ signals: [] as AbortSignal[] }));
@@ -268,5 +269,19 @@ describe("POST /api/mcp/compare — the two runs in mock mode", () => {
 		expect(created.signals).toHaveLength(2);
 		controller.abort();
 		expect(created.signals.every((signal) => signal.aborted)).toBe(true);
+	});
+});
+
+describe("POST /api/mcp/compare: generated SSE fixtures used by the E2E specs (JSON bodies)", () => {
+	it("matches the generated SSE fixture (JSON) of the list-and-read comparison", async () => {
+		await install();
+
+		const response = await POST(compareRequest({ task: "list-and-read" }));
+
+		expect(response.status).toBe(200);
+		verifyOrWriteFixture(
+			"mcp-compare.json",
+			`${JSON.stringify(await response.json(), null, "\t")}\n`,
+		);
 	});
 });

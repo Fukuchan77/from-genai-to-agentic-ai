@@ -16,6 +16,7 @@ import {
 	setPlatformForTesting,
 	setSandboxForTesting,
 } from "@/lib/server/platform";
+import { verifyOrWriteFixture } from "../../../../../scripts/e2e/generate-sse-fixtures.mjs";
 import { POST } from "./route";
 
 const MOCK_ENV = { VITEST: "1", AI_TEST_RUN_MODE: "mock" } as const;
@@ -572,5 +573,25 @@ describe("POST /api/analysis: a run in mock mode", () => {
 			code: "unexpected",
 			message: expect.stringContaining("予期しない"),
 		});
+	});
+});
+
+describe("POST /api/analysis: generated SSE fixtures used by the E2E specs", () => {
+	it("matches the generated SSE fixture of a successful analysis with a figure and a table", async () => {
+		await install();
+
+		const response = await POST(post());
+
+		expect(response.status).toBe(200);
+		verifyOrWriteFixture("analysis.sse", await response.text());
+	});
+
+	it("matches the generated SSE fixture of a run that stops at the attempt limit", async () => {
+		await install();
+
+		const response = await POST(post({ instruction: M3_3_SAMPLE_INSTRUCTIONS.attemptLimit }));
+
+		expect(response.status).toBe(200);
+		verifyOrWriteFixture("analysis-attempt-limit.sse", await response.text());
 	});
 });

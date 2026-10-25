@@ -12,6 +12,7 @@ import {
 	setKnowledgeBaseForTesting,
 	setPlatformForTesting,
 } from "@/lib/server/platform";
+import { verifyOrWriteFixture } from "../../../../../../scripts/e2e/generate-sse-fixtures.mjs";
 import { GET } from "./route";
 
 vi.mock("@/lib/server/platform", async (importOriginal) => {
@@ -156,5 +157,19 @@ describe("GET /api/helpdesk/tickets", () => {
 		const { error } = (await response.json()) as { error: { code: string; message: string } };
 		expect(error.code).toBe("provider-unavailable");
 		expect(error.message).toContain("services:up:db");
+	});
+});
+
+describe("GET /api/helpdesk/tickets: generated SSE fixtures used by the E2E specs (JSON bodies)", () => {
+	it("matches the generated SSE fixture (JSON) of a ticket list with resolved, open and escalated tickets", async () => {
+		await seed();
+
+		const response = await GET(get());
+
+		expect(response.status).toBe(200);
+		verifyOrWriteFixture(
+			"helpdesk-tickets.json",
+			`${JSON.stringify(await response.json(), null, "\t")}\n`,
+		);
 	});
 });

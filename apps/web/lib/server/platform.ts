@@ -16,7 +16,7 @@ import {
 	type PlatformConfig,
 } from "@platform/ai-core/config";
 import { PlatformError } from "@platform/ai-core/errors";
-import { createTicketStore, type TicketStore } from "@platform/ai-core/helpdesk";
+import { createTicketStore, FAQ_DIRECTORY, type TicketStore } from "@platform/ai-core/helpdesk";
 import { type CatalogRepo, createCatalogRepo, seedMarketing } from "@platform/ai-core/marketing";
 import {
 	connectMcpServers,
@@ -67,7 +67,9 @@ import {
 	createLexicalRerank,
 	createPgliteDatabase,
 	createPostgresDatabase,
+	ingestDocuments,
 	KnowledgeBaseUnavailableError,
+	listIngestableFiles,
 	type RagDatabaseHandle,
 } from "@platform/ai-core/rag";
 import { type ArxivClient, createArxivClient } from "@platform/ai-core/research";
@@ -665,7 +667,33 @@ export async function getHelpdeskStore(
 	factories: KnowledgeBaseFactories = DEFAULT_KNOWLEDGE_BASE_FACTORIES,
 ): Promise<TicketStore> {
 	const [platform, handle] = await Promise.all([getPlatform(), getKnowledgeBase(factories)]);
+	if (platform.mode === "mock") await ensureMockFaq(platform, handle);
 	return createTicketStore(handle.db, { clock: platform.clock });
+}
+
+/** The throwaway databases whose FAQ was already ingested, so a request does not ingest again. */
+const FAQ_SEEDED = new WeakSet<object>();
+
+/**
+ * `mock` runs on an empty throwaway PGlite, so without this every sample inquiry would be
+ * escalated for lack of evidence (W3 carry-over F-8). Only the FAQ goes in, not the sample tickets,
+ * so the first ticket of a run is still `T-0001`. `local` and `live` never seed: their knowledge
+ * base holds the learner's own documents, and `mise run seed:samples` is the explicit way in.
+ */
+async function ensureMockFaq(
+	platform: Pick<Platform, "gateway" | "clock">,
+	handle: RagDatabaseHandle,
+): Promise<void> {
+	if (FAQ_SEEDED.has(handle.db)) return;
+	await ingestDocuments({
+		db: handle.db,
+		embedding: await resolveKnowledgeEmbedding(platform),
+		source: "knowledge",
+		root: FAQ_DIRECTORY,
+		files: await listIngestableFiles(FAQ_DIRECTORY),
+		clock: platform.clock,
+	});
+	FAQ_SEEDED.add(handle.db);
 }
 
 // --- Marketing catalog (plan C13, Req 6.5, 6.6) ---

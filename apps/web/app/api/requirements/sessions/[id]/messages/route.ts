@@ -1,4 +1,5 @@
 import { DEFAULT_INPUT_LIMITS } from "@platform/ai-core/config";
+import { PlatformError } from "@platform/ai-core/errors";
 import {
 	askRound,
 	closeRound,
@@ -22,6 +23,7 @@ import {
 	GuardError,
 	toErrorResponse,
 	toNotFoundResponse,
+	toPublicError,
 	toStreamErrorText,
 } from "@/lib/server/errors";
 import { type GuardPolicy, guardRequest, rateLimitRejection } from "@/lib/server/guard";
@@ -68,8 +70,14 @@ const UNLIMITED = { check: () => ({ allowed: true as const }) };
 // Sessions with a round in flight: two rounds on one interview would interleave their commits.
 const RUNNING = new WeakSet<RequirementsSession>();
 
-function conflict(message: string): Response {
-	return new Response(JSON.stringify({ error: { code: "invalid-request", message } }), {
+/**
+ * 409 with the shared error shape plus a closed `details.reason` (`completed` | `busy`), which the
+ * panel needs to tell a finished interview from one whose previous answers are still processed. The
+ * body is built by `toPublicError`, so only allow-listed details leave the server.
+ */
+function conflict(reason: "completed" | "busy", message: string): Response {
+	const publicError = toPublicError(new PlatformError("invalid-request", message, { reason }));
+	return new Response(JSON.stringify({ error: publicError }), {
 		status: 409,
 		headers: { "content-type": "application/json; charset=utf-8" },
 	});
@@ -100,7 +108,7 @@ export async function POST(
 		if (answers.some((answer) => !known.has(answer.questionId))) {
 			throw new GuardError("invalid-request", "存在しない質問への回答が含まれています。");
 		}
-		if (session.state.completed) return conflict("この面接はすでに完了しています。");
+		if (session.state.completed) return conflict("completed", "この面接はすでに完了しています。");
 		const currentPrefix = `q-${session.state.round + 1}-`;
 		if (answers.some((answer) => !answer.questionId.startsWith(currentPrefix))) {
 			throw new GuardError("invalid-request", "いまのラウンドの質問にだけ回答できます。");
@@ -108,7 +116,7 @@ export async function POST(
 		// The checks above and this lock have no await between them, and nothing but the lock holder
 		// changes `session.state`, so no other request can slip a round in between (W6 F-2).
 		if (RUNNING.has(session))
-			return conflict("前の回答を処理中です。終わってからもう一度送ってください。");
+			return conflict("busy", "前の回答を処理中です。終わってからもう一度送ってください。");
 		RUNNING.add(session);
 
 		try {

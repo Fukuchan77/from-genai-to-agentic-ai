@@ -8,6 +8,7 @@ import {
 	setArxivClientForTesting,
 	setPlatformForTesting,
 } from "@/lib/server/platform";
+import { verifyOrWriteFixture } from "../../../../../scripts/e2e/generate-sse-fixtures.mjs";
 import { POST } from "./route";
 
 const MOCK_ENV = { VITEST: "1", AI_TEST_RUN_MODE: "mock" } as const;
@@ -439,5 +440,25 @@ describe("POST /api/research: a run in mock mode", () => {
 
 		expect(parts.some((part) => part.type === "error")).toBe(true);
 		expect(resultOf(parts)).toBeUndefined();
+	});
+});
+
+describe("POST /api/research: generated SSE fixtures used by the E2E specs", () => {
+	it("matches the generated SSE fixture of the default theme with a removed-citation warning", async () => {
+		await installPlatform();
+
+		const response = await POST(post({ theme: M3_4_SAMPLE_THEMES.default }));
+
+		expect(response.status).toBe(200);
+		verifyOrWriteFixture("research.sse", await response.text());
+	});
+
+	it("matches the generated SSE fixture of the partial-failure theme with a missing item", async () => {
+		await installPlatform();
+
+		const response = await POST(post({ theme: M3_4_SAMPLE_THEMES.partialFailure }));
+
+		expect(response.status).toBe(200);
+		verifyOrWriteFixture("research-partial.sse", await response.text());
 	});
 });

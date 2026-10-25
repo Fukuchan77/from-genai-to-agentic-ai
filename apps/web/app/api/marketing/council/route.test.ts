@@ -14,6 +14,7 @@ import {
 	setKnowledgeBaseForTesting,
 	setPlatformForTesting,
 } from "@/lib/server/platform";
+import { verifyOrWriteFixture } from "../../../../../../scripts/e2e/generate-sse-fixtures.mjs";
 import { POST } from "./route";
 
 // Each test starts its own in-memory PGlite (about 0.5 s alone, several seconds under the gate's
@@ -557,5 +558,17 @@ describe("POST /api/marketing/council: a council in mock mode", () => {
 
 		expect(parts.some((part) => part.type === "error")).toBe(true);
 		expect(resultOf(parts)).toBeUndefined();
+	});
+});
+
+describe("POST /api/marketing/council: generated SSE fixtures used by the E2E specs", () => {
+	it("matches the generated SSE fixture of the sample draft agreed in round 2", async () => {
+		await installDatabase(false);
+		await installPlatform();
+
+		const response = await POST(post({ draft: DRAFT }));
+
+		expect(response.status).toBe(200);
+		verifyOrWriteFixture("marketing-council.sse", await response.text());
 	});
 });

@@ -17,6 +17,7 @@ import {
 	setKnowledgeBaseForTesting,
 	setPlatformForTesting,
 } from "@/lib/server/platform";
+import { verifyOrWriteFixture } from "../../../../../scripts/e2e/generate-sse-fixtures.mjs";
 import { POST } from "./route";
 
 vi.mock("@/lib/server/platform", async (importOriginal) => {
@@ -481,5 +482,17 @@ describe("POST /api/helpdesk: a run in mock mode", () => {
 		const error = parts.find((part) => part.type === "error");
 		expect(error?.errorText).toBeDefined();
 		expect(error?.errorText).not.toContain("sk-secret-999");
+	});
+});
+
+describe("POST /api/helpdesk: generated SSE fixtures used by the E2E specs", () => {
+	it("matches the generated SSE fixture of a resolved run with a plan revision and its diff", async () => {
+		await ingestFaq();
+		await installPlatform();
+
+		const response = await POST(post({ inquiry: M3_2_SAMPLE_INQUIRIES.replanned }));
+
+		expect(response.status).toBe(200);
+		verifyOrWriteFixture("helpdesk.sse", await response.text());
 	});
 });

@@ -1,0 +1,32 @@
+data: {"type":"start"}
+
+data: {"type":"start-step"}
+
+data: {"type":"tool-input-available","toolCallId":"m3-1/mcp-chat/list-and-read-0-tool-0","toolName":"listFiles","input":{}}
+
+data: {"type":"tool-output-available","toolCallId":"m3-1/mcp-chat/list-and-read-0-tool-0","output":{"ok":true,"data":"許可ルート: /srv/mcp-workspace\nディレクトリ: /srv/mcp-workspace\n[0] notes.txt (ファイル)"}}
+
+data: {"type":"finish-step"}
+
+data: {"type":"start-step"}
+
+data: {"type":"tool-input-available","toolCallId":"m3-1/mcp-chat/list-and-read-1-tool-0","toolName":"readFile","input":{"index":0}}
+
+data: {"type":"tool-output-available","toolCallId":"m3-1/mcp-chat/list-and-read-1-tool-0","output":{"ok":true,"data":"週次ミーティングは金曜日です。"}}
+
+data: {"type":"finish-step"}
+
+data: {"type":"start-step"}
+
+data: {"type":"text-start","id":"m3-1/mcp-chat/list-and-read-2-text"}
+
+data: {"type":"text-delta","id":"m3-1/mcp-chat/list-and-read-2-text","delta":"一覧の先頭のファイルを読みました。内容は上のツールの結果のとおりです。"}
+
+data: {"type":"text-end","id":"m3-1/mcp-chat/list-and-read-2-text"}
+
+data: {"type":"finish-step"}
+
+data: {"type":"finish","finishReason":"stop","messageMetadata":{"run":{"stopReason":"completed","steps":3,"totalTokens":{"input":1420,"output":88,"cacheRead":0,"reasoning":0},"elapsedMs":0,"toolsCalled":["listFiles","readFile"]},"mcp":[{"id":"files","state":"connected","tools":[{"name":"listFiles","risk":"read-only","registered":true},{"name":"readFile","risk":"read-only","registered":true},{"name":"searchFiles","risk":"read-only","registered":true},{"name":"findAndReadFiles","risk":"read-only","registered":true},{"name":"writeFile","risk":"destructive","registered":false,"disabledReason":"許可リストにありません。"},{"name":"deleteFile","risk":"destructive","registered":false,"disabledReason":"許可リストにありません。"}]}]}}
+
+data: [DONE]
+

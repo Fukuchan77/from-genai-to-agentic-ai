@@ -14,6 +14,7 @@ import {
 	setKnowledgeBaseForTesting,
 	setPlatformForTesting,
 } from "@/lib/server/platform";
+import { verifyOrWriteFixture } from "../../../../../../scripts/e2e/generate-sse-fixtures.mjs";
 import { POST } from "./route";
 
 // Each test starts its own in-memory PGlite (about 0.5 s alone, several seconds under the gate's
@@ -605,5 +606,16 @@ describe("POST /api/marketing/recommend: a conversation in mock mode", () => {
 		const parts = await partsOf(await POST(post(first())));
 
 		expect(JSON.stringify(parts)).not.toContain("sk-secret-777");
+	});
+});
+
+describe("POST /api/marketing/recommend: generated SSE fixtures used by the E2E specs", () => {
+	it("matches the generated SSE fixture of the profile, an over-budget recommendation and the text", async () => {
+		await installPlatform();
+
+		const response = await POST(post(first()));
+
+		expect(response.status).toBe(200);
+		verifyOrWriteFixture("marketing-recommend.sse", await response.text());
 	});
 });
