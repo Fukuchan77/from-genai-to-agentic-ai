@@ -561,7 +561,7 @@ describe("runCouncil", () => {
 	});
 
 	it("does not accept an agreement in a round where the budget left a persona out", async () => {
-		// Budget 80 with 25 reserved: a and b fit under 55 (30 each is too big for c after 2 calls).
+		// Budget 100 with a quarter reserved for the moderator: a and b fit, but 30 each is too big for c after 2 calls.
 		const m = scripted({
 			personas: {
 				a: [{ text: say("a", "d"), tokens: 30 }],

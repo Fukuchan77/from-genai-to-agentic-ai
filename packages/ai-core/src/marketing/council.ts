@@ -196,8 +196,8 @@ function safely(action: () => void): void {
  *
  * `improvedDraft`: every persona ends its statement with its own improved draft in a `<draft>` block;
  * the working draft is the last valid block of the round and carries forward when there is none.
- * A persona whose run failed is recorded in `missing` and the others go on (the hand-off of
- * `cooperateByRole` is restarted after it); all personas failing in a round throws
+ * A persona whose run failed is recorded in `missing` and the others go on (each persona is its own
+ * `cooperateByRole` call); all personas failing in a round throws
  * `provider-unavailable`. A moderator answer that stays unparseable counts as "not agreed", and so does an agreement in a
  * round where a persona did not speak (CL-12). The shared budget (`maxTotalTokens`) also covers the
  * moderator: a share is reserved for it, a call starts only when the largest call so far still fits,

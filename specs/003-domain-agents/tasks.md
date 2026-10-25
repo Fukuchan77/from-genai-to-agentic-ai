@@ -179,6 +179,17 @@ W5 の敵対的レビュー（`.sdd/reviews/003-domain-agents-impl-w5-review-202
 - arXiv の実応答と 429 / 503 / `Retry-After` の実挙動は未実測で、フィクスチャは仕様と推測に基づく（research.md に明記）。
 - CL-26 は 2026-10-19 に確定済み（W4 の持ち越しを参照）。
 
+## W6 からの持ち越し
+
+W6 の敵対的レビュー（`.sdd/reviews/003-domain-agents-impl-w6-review-2026-10-24.md`、REQUEST_CHANGES）の修正後の fresh な再レビュー（`...-2026-10-25.md`）は、修正 9 件の成立を確かめ、記録の不備を主に指摘した（REQUEST_CHANGES、ドキュメントのみ）。持ち越し先は次のとおり（括弧内は 1 回目のレビューの番号）。
+
+- 37.x（W8）: 既定のラウンド数を定数だけで確かめるテスト（F-16）を、合意しない下書きで 3 ラウンドと `max-rounds` を確かめるものに直す。予算の INVARIANT テストが skip する組み合わせ（モデレーターが大きいケース。2 回目 F-7）を埋める。`recommend` の往復テストは `readUIMessageStream` で組み立てた assistant メッセージを使う（2 回目 F-8）。
+- 41.x（W8）: `CouncilRound`・`data-council-result` の plan との型の差（F-20）を plan の Data Model とストリームの表に同期する。`council.ts` の PROVE と、Stryker の対象に入れるかの判断（2 回目 F-13）。
+- 35.x（W7）: 確定されなかったラウンドのプレビューを、ストリームのエラー時に破棄する（F-17、2 回目 F-4）。文書は生の HTML を描画しない（F-18）。
+- 40.x（W8、3-6 の解説）: 合議は `cooperateByRole` を 1 役割ずつ呼ぶため、M2 の hand-off は名目上である（2 回目 F-14。plan に記録・承認済み）。
+- 受け入れた制限: モデルの自由記述が対象外の商品や価格に触れうる（F-19）、雑談メモが「未確認事項」に残る（F-22）、`seedMarketing` が id だけで upsert する（F-23）、予算不足で呼ばれなかったペルソナが `missing` に入らない・欠けたラウンドでもモデレーターを呼ぶ（2 回目 F-5、F-6）、`/messages` のロックが module スコープ（2 回目 F-9）、セッション上限の競合と mock / local で枠を埋められること（2 回目 F-10）、council ルートは 429 より前に DB を読む（F-13、2 回目 F-3）。
+- 修正済み（2 回目 F-2、F-11）: plan の矛盾と古いコメント。
+
 ## 現在の波: W6 要件・マーケティング（大タスク 25〜28）
 
 面接のワークフロー、要件定義書、合議（`onRoleOutput` の追加）、プロファイル、レコメンド、`0003_marketing.sql`、カタログ、初期投入、

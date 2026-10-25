@@ -42,6 +42,8 @@ _Traces:_ REQ-001, REQ-002, REQ-004, REQ-006, C16
 
 ### Implementation Notes
 
+- W6 からの持ち越し（tasks.md「W6 からの持ち越し」）: 既定のラウンド数のテスト（F-16）、INVARIANT の skip、recommend の往復テスト。
+
 ---
 
 ## 38. 能力テスト（`local` 専用）
@@ -198,6 +200,8 @@ _Traces:_ REQ-001, REQ-003, REQ-006, C16
   _Traces:_ REQ-003, C16
 
 ### Implementation Notes
+
+- W6 からの持ち越し（tasks.md「W6 からの持ち越し」）: `CouncilRound`・`data-council-result` の型の同期、`council.ts` の PROVE。
 
 ---
 
