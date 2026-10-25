@@ -44,6 +44,36 @@ const MODULES: readonly {
 		description:
 			"ワークフロー 5 種とエージェントのデザインパターンを実行し、途中経過を確かめます。",
 	},
+	{
+		href: "/mcp" as Route,
+		title: "MCP",
+		description: "MCP サーバーのツールを許可リストで絞って読み込み、エージェントに使わせます。",
+	},
+	{
+		href: "/helpdesk" as Route,
+		title: "ヘルプデスク",
+		description: "問い合わせを計画に分けて処理し、計画の修正とチケットの状態を確かめます。",
+	},
+	{
+		href: "/analysis" as Route,
+		title: "データ分析",
+		description: "CSV や Excel をアップロードし、サンドボックスで生成コードを実行して分析します。",
+	},
+	{
+		href: "/research" as Route,
+		title: "リサーチ",
+		description: "Supervisor が専門のサブエージェントを呼び、論文を調べてレポートにまとめます。",
+	},
+	{
+		href: "/requirements" as Route,
+		title: "要件定義",
+		description: "ペルソナの質問に答えながら、要件を整理して要件定義書を作ります。",
+	},
+	{
+		href: "/marketing" as Route,
+		title: "マーケティング",
+		description: "ペルソナの合議で文案を磨き、好みに合う商品をおすすめします。",
+	},
 ];
 
 export default async function HomePage() {
