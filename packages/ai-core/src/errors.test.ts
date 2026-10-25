@@ -1,4 +1,4 @@
-import { describe, expect, expectTypeOf, it } from "vitest";
+import { describe, expect, expectTypeOf, it, vi } from "vitest";
 import { PLATFORM_ERROR_CODES, PlatformError, type PlatformErrorCode } from "./errors";
 
 class ExamplePlatformError extends PlatformError {
@@ -42,5 +42,37 @@ describe("PlatformError", () => {
 			| "source-unavailable"
 			| "output-invalid"
 		>();
+	});
+});
+
+describe("PlatformError across module copies", () => {
+	// Next.js bundles a page and a Route Handler separately, so one process can hold two copies of
+	// this module; an error thrown by one copy must still classify as a PlatformError in the other.
+	async function loadCopy() {
+		vi.resetModules();
+		const errors = await import("./errors");
+		const config = await import("./config/load");
+		return { PlatformError: errors.PlatformError, ConfigError: config.ConfigError };
+	}
+
+	it("recognises a PlatformError and a subclass from another copy", async () => {
+		const first = await loadCopy();
+		const second = await loadCopy();
+		expect(first.PlatformError).not.toBe(second.PlatformError);
+		expect(new first.PlatformError("invalid-request", "x") instanceof second.PlatformError).toBe(
+			true,
+		);
+		expect(new first.ConfigError("x") instanceof second.PlatformError).toBe(true);
+	});
+
+	it("keeps subclass checks exact and refuses plain errors and look-alikes", async () => {
+		const first = await loadCopy();
+		const second = await loadCopy();
+		expect(new first.PlatformError("invalid-request", "x") instanceof second.ConfigError).toBe(
+			false,
+		);
+		expect(new Error("x") instanceof second.PlatformError).toBe(false);
+		expect({ code: "invalid-request", message: "x" } instanceof second.PlatformError).toBe(false);
+		expect((null as unknown as object) instanceof second.PlatformError).toBe(false);
 	});
 });

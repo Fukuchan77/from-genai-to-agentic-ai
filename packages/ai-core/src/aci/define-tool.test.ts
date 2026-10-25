@@ -1,5 +1,5 @@
 import { asSchema, generateText, isStepCount, type Tool } from "ai";
-import { describe, expect, expectTypeOf, it } from "vitest";
+import { describe, expect, expectTypeOf, it, vi } from "vitest";
 import { z } from "zod";
 import { ConfigError } from "../config/load";
 import { createFakeClock, type FakeClock } from "../ports/clock";
@@ -554,5 +554,38 @@ describe("defineAciTool with an external JSON Schema (003 CL-25)", () => {
 		if (bad && !bad.success) expect(bad.error.message).toContain("owner");
 		const good = await schema.validate?.({ owner: "octocat" });
 		expect(good).toEqual({ success: true, value: { owner: "octocat" } });
+	});
+});
+
+describe("isDefinedAciTool across module copies", () => {
+	// Next.js bundles a page and a Route Handler separately, so the same process can hold two
+	// copies of this module. A tool built by one copy must still be accepted by the other.
+	async function loadCopy() {
+		vi.resetModules();
+		return import("./define-tool");
+	}
+
+	function echoTool(copy: Awaited<ReturnType<typeof loadCopy>>) {
+		return copy.defineAciTool({
+			name: "echo",
+			description: describeTool("Echoes the text."),
+			inputSchema: echoSchema,
+			risk: "read-only",
+			execute: ({ text }) => text,
+		});
+	}
+
+	it("accepts a tool that another copy of the module defined", async () => {
+		const first = await loadCopy();
+		const second = await loadCopy();
+		expect(second.isDefinedAciTool(echoTool(first))).toBe(true);
+	});
+
+	it("still refuses a hand-built look-alike and a shallow copy", async () => {
+		const first = await loadCopy();
+		const second = await loadCopy();
+		const defined = echoTool(first);
+		expect(second.isDefinedAciTool({ ...defined })).toBe(false);
+		expect(second.isDefinedAciTool({ name: "echo" })).toBe(false);
 	});
 });

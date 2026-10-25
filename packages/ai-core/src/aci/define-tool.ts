@@ -21,8 +21,44 @@ import {
 
 const TOOL_NAME = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/u;
 
-/** Every object `defineAciTool` returned. Module-private, so nothing else can register a tool. */
-const definedTools = new WeakSet<object>();
+const DEFINED_TOOLS_KEY = Symbol.for("@platform/ai-core/aci/defined-tools");
+
+/**
+ * Every object `defineAciTool` returned. It is kept on `globalThis`, not in a module variable:
+ * Next.js bundles a page and a Route Handler separately, so one process can hold several copies of
+ * this module, and a tool defined by one copy (a registry built while rendering a page) must be
+ * accepted by the others (the `buildToolSet` of a route).
+ *
+ * What is guaranteed: the holder is installed non-writable, non-configurable and non-enumerable,
+ * so it cannot be replaced or deleted after the first copy loads, and a copy that finds a value
+ * which is not a real `WeakSet` throws instead of replacing it. What is not guaranteed: the key is
+ * `Symbol.for`, so code that runs in the process can still call `add` on the shared set (or install
+ * its own holder before any copy loads, if it is a genuine `WeakSet`) and register a look-alike
+ * without the `defineAciTool` checks. Code already in the process is trusted; `buildToolSet` still
+ * re-checks `risk`.
+ */
+const definedTools = sharedDefinedTools();
+
+function sharedDefinedTools(): WeakSet<object> {
+	const holder = globalThis as Record<symbol, unknown>;
+	const existing = holder[DEFINED_TOOLS_KEY];
+	if (existing !== undefined) {
+		if (Object.prototype.toString.call(existing) !== "[object WeakSet]") {
+			throw new ConfigError(
+				"ツールの登録簿（globalThis の @platform/ai-core/aci/defined-tools）が WeakSet ではありません。別のコードが差し替えた可能性があるため、処理を中止します。",
+			);
+		}
+		return existing as WeakSet<object>;
+	}
+	const created = new WeakSet<object>();
+	Object.defineProperty(globalThis, DEFINED_TOOLS_KEY, {
+		value: created,
+		writable: false,
+		configurable: false,
+		enumerable: false,
+	});
+	return created;
+}
 
 /**
  * True only for an object returned by `defineAciTool`; copies and hand-built look-alikes are

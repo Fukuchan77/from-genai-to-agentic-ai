@@ -35,6 +35,10 @@ function assertRegistrable(tools: readonly AnyAciTool[]): void {
 	}
 }
 
+// Module-level on purpose, so it is per module copy (unlike the defined-tool set, which is shared
+// through globalThis). It is safe only while `buildToolSet` and `createGuardedAgent` run in the
+// same copy, which holds today: both are called from one Route Handler. A tool set that crossed
+// bundles would make `fatalLatchOf` return `undefined` (no latch, so Req 1.3 is lost).
 const latchOfToolSet = new WeakMap<object, FatalLatch>();
 
 /**
