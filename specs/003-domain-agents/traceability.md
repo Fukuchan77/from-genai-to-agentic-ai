@@ -19,21 +19,21 @@ ID 規約は `tasks.md` の「ID 対応表」を参照する（この spec の p
 |---|---|---|---|---|
 | 1.1 | C3, C4, C5, C16 | T-4.1, T-4.6, T-4.7, T-4.8, T-7.1, T-8.3, T-9.3, T-40.1, T-40.7, T-40.8, T-41.1, T-41.3, T-42.3 | description-check.test.ts, define-tool.test.ts, tools.test.ts, adapt.test.ts | 70dd437, 077c51e, 9df796f, 7c3c3f9 |
 | 1.2 | C2, C3 | T-1.1, T-4.2, T-4.7, T-4.8 | research.md S-1 (D), input-guide.test.ts, define-tool.test.ts | 70dd437 |
-| 1.3 | C2, C5, C13, C14 | T-1.1, T-3.1, T-3.2, T-3.3, T-7.2, T-9.3, T-10.4, T-29.2, T-35.3, T-37.1, T-40.1 | research.md S-1 (D), fatal.test.ts, tool-set.test.ts, guarded-agent.test.ts, research.md gate 実測 (D), adapt.test.ts, mcp/chat route.test.ts | 70dd437, 7c3c3f9, c710007 |
+| 1.3 | C2, C5, C13, C14 | T-1.1, T-3.1, T-3.2, T-3.3, T-7.2, T-9.3, T-10.4, T-29.2, T-35.3, T-37.1, T-40.1 | research.md S-1 (D), fatal.test.ts, tool-set.test.ts, guarded-agent.test.ts, research.md gate 実測 (D), adapt.test.ts, mcp/chat route.test.ts, ServerStatusList/AllowListEditor/CompareView/McpPanel.test.tsx, mcp.spec.ts, real-server/a11y/keyboard.spec.ts | 70dd437, 7c3c3f9, c710007, 1f6859b, 5208b08, 473c5a4, ac487c1 |
 | 1.4 | C4 | T-8.2, T-8.3, T-11.2, T-42.2 | path.test.ts, tools.test.ts | 9df796f, 2432c19 |
 | 1.5 | C2, C4, C5 | T-3.1, T-8.2, T-8.3, T-9.3, T-11.2, T-37.1, T-40.1, T-42.1, T-42.2 | fatal.test.ts, path.test.ts, tools.test.ts, adapt.test.ts | 70dd437, 9df796f, 7c3c3f9 |
 | 1.6 | C3, C4 | T-4.3, T-4.8, T-8.3 | response-format.test.ts, tools.test.ts | 70dd437, 9df796f |
-| 1.7 | C4, C5, C13, C14 | T-1.2, T-1.3, T-2.1, T-8.1, T-8.4, T-9.4, T-9.5, T-10.2, T-10.3, T-11.1, T-29.1, T-29.2, T-35.1, T-35.5, T-40.1 | research.md S-2/S-3 (D), env-schema.test.ts, feature-requirements.test.ts, load.test.ts, server.test.ts, github.test.ts, connect.test.ts, platform.test.ts, mcp route.test.ts, real-server.spec.ts (E) | ee815d5, 3af8b69, 9df796f, 7c3c3f9, c710007 |
+| 1.7 | C4, C5, C13, C14 | T-1.2, T-1.3, T-2.1, T-8.1, T-8.4, T-9.4, T-9.5, T-10.2, T-10.3, T-11.1, T-29.1, T-29.2, T-35.1, T-35.5, T-40.1 | research.md S-2/S-3 (D), env-schema.test.ts, feature-requirements.test.ts, load.test.ts, server.test.ts, github.test.ts, connect.test.ts, platform.test.ts, mcp route.test.ts, real-server.spec.ts (E), ServerStatusList/AllowListEditor/CompareView/McpPanel.test.tsx, mcp.spec.ts, real-server/a11y/keyboard.spec.ts | ee815d5, 3af8b69, 9df796f, 7c3c3f9, c710007, 1f6859b, 5208b08, 473c5a4, ac487c1 |
 | 1.8 | C5 | T-1.2, T-1.3, T-2.1, T-9.2, T-9.5, T-10.2, T-10.4, T-11.1, T-40.1 | research.md S-2/S-3 (D), env-schema.test.ts, feature-requirements.test.ts, load.test.ts, allow-list.test.ts, connect.test.ts, mcp route.test.ts, real-server.spec.ts (E) | ee815d5, 3af8b69, 7c3c3f9, c710007 |
 | 1.9 | C5 | T-1.2, T-1.4, T-2.1, T-2.2, T-9.4, T-11.3 | research.md S-6 (D), env-schema.test.ts, feature-requirements.test.ts, load.test.ts, gateway.test.ts, github.test.ts | ee815d5, 3af8b69, 7c3c3f9 |
-| 1.10 | C5, C13, C14 | T-9.5, T-10.1, T-10.2, T-10.3, T-11.3, T-29.1, T-29.2, T-35.3 | connect.test.ts, m3-scenarios.test.ts, platform.test.ts, mcp route.test.ts | 7c3c3f9, c710007 |
+| 1.10 | C5, C13, C14 | T-9.5, T-10.1, T-10.2, T-10.3, T-11.3, T-29.1, T-29.2, T-35.3 | connect.test.ts, m3-scenarios.test.ts, platform.test.ts, mcp route.test.ts, ServerStatusList/AllowListEditor/CompareView/McpPanel.test.tsx, mcp.spec.ts, real-server/a11y/keyboard.spec.ts | 7c3c3f9, c710007, 1f6859b, 5208b08, 473c5a4, ac487c1 |
 | 1.11 | C3, C16 | T-4.1, T-4.6, T-4.7, T-7.1, T-8.3, T-9.3 | description-check.test.ts, define-tool.test.ts, tools.test.ts, adapt.test.ts | 70dd437, 077c51e, 4121998, 9df796f, 7c3c3f9 |
-| 1.12 | C3, C4, C13 | T-4.5, T-4.8, T-8.3, T-10.1, T-10.5, T-29.1, T-38.1, T-38.5, T-39.1, T-40.1 | high-level-compare.test.ts, tools.test.ts, m3-scenarios.test.ts, mcp/compare route.test.ts | 70dd437, 9df796f, c710007 |
+| 1.12 | C3, C4, C13 | T-4.5, T-4.8, T-8.3, T-10.1, T-10.5, T-29.1, T-38.1, T-38.5, T-39.1, T-40.1 | high-level-compare.test.ts, tools.test.ts, m3-scenarios.test.ts, mcp/compare route.test.ts, ServerStatusList/AllowListEditor/CompareView/McpPanel.test.tsx, mcp.spec.ts | 70dd437, 9df796f, c710007, 1f6859b, 5208b08, 473c5a4, ac487c1 |
 | 1.13 | C3 | T-4.4, T-4.8, T-8.3 | short-id.test.ts, think-tool.test.ts, tools.test.ts | 70dd437, 9df796f |
 | 1.14 | C3 | T-4.4, T-4.8, T-10.4 | short-id.test.ts, think-tool.test.ts, mcp/chat route.test.ts | 70dd437, c710007 |
-| 1.15 | C1, C5, C13 | T-2.1, T-9.5, T-10.3, T-10.4, T-29.1 | env-schema.test.ts, feature-requirements.test.ts, load.test.ts, connect.test.ts, mcp route.test.ts | 3af8b69, 7c3c3f9, c710007 |
+| 1.15 | C1, C5, C13 | T-2.1, T-9.5, T-10.3, T-10.4, T-29.1 | env-schema.test.ts, feature-requirements.test.ts, load.test.ts, connect.test.ts, mcp route.test.ts, ServerStatusList/AllowListEditor/CompareView/McpPanel.test.tsx, mcp.spec.ts | 3af8b69, 7c3c3f9, c710007, 1f6859b, 5208b08, 473c5a4, ac487c1 |
 | 1.16 | C2, C4, C5, C16 | T-1.3, T-4.7, T-6.2, T-8.3, T-9.1, T-9.3, T-11.2, T-21.4, T-40.1 | research.md S-2/S-3 (D), define-tool.test.ts, check-repo-rules.test.mjs, tools.test.ts, risk.test.ts, adapt.test.ts | 70dd437, 077c51e, 4121998, 9df796f, 7c3c3f9, 2432c19 |
-| 1.17 | C4, C5, C16 | T-1.4, T-6.2, T-8.3, T-8.4, T-9.1, T-9.5, T-10.4, T-11.2, T-29.1, T-40.1 | research.md S-6 (D), check-repo-rules.test.mjs, server.test.ts, risk.test.ts, connect.test.ts, mcp/chat route.test.ts | 077c51e, 9df796f, 7c3c3f9, c710007, 2432c19 |
+| 1.17 | C4, C5, C16 | T-1.4, T-6.2, T-8.3, T-8.4, T-9.1, T-9.5, T-10.4, T-11.2, T-29.1, T-40.1 | research.md S-6 (D), check-repo-rules.test.mjs, server.test.ts, risk.test.ts, connect.test.ts, mcp/chat route.test.ts, ServerStatusList/AllowListEditor/CompareView/McpPanel.test.tsx, mcp.spec.ts | 077c51e, 9df796f, 7c3c3f9, c710007, 2432c19, 1f6859b, 5208b08, 473c5a4, ac487c1 |
 
 **検証の計画**（plan より）
 
@@ -62,11 +62,11 @@ ID 規約は `tasks.md` の「ID 対応表」を参照する（この spec の p
 |---|---|---|---|---|
 | 2.1 | C10 | T-12.1, T-12.4, T-13.2, T-14.1, T-15.1, T-15.3, T-37.2, T-40.2, T-40.7, T-40.8 | plan-schema.test.ts, planner.test.ts, ticket-store.db.test.ts, helpdesk.test.ts, api/helpdesk/route.test.ts | 1a0ff4c, 2f07038, 7f1351f |
 | 2.2 | C10 | T-12.2, T-12.6, T-14.1, T-16.1, T-40.2 | scheduler.test.ts, run.test.ts, helpdesk.test.ts, check-repo-rules.test.mjs | 1a0ff4c, dea6909 |
-| 2.3 | C10 | T-12.1, T-12.5, T-13.2, T-14.1, T-15.1, T-15.3, T-15.4, T-16.1, T-30.1, T-40.2 | plan-schema.test.ts, replanner.test.ts, ticket-store.db.test.ts, helpdesk.test.ts, api/helpdesk/**/route.test.ts | 1a0ff4c, 2f07038, 7f1351f, dea6909 |
-| 2.4 | C1, C10 | T-2.1, T-12.6, T-13.2, T-14.1, T-15.3, T-30.1, T-40.2 | env-schema.test.ts, feature-requirements.test.ts, load.test.ts, helpdesk tests (ticket-store.db.test.ts, helpdesk.test.ts, plan-schema.test.ts, planner.test.ts) | 3af8b69, 1a0ff4c |
-| 2.5 | C13, C14 | T-15.2, T-15.3, T-30.1, T-30.2, T-35.2, T-35.3, T-36.1 | domain-stream.test.ts, api/helpdesk/route.test.ts | 7f1351f |
-| 2.6 | C10 | T-13.1, T-13.2, T-14.1, T-15.2, T-15.3, T-15.4, T-16.2, T-30.1, T-30.2, T-37.2, T-40.2 | schema.db.test.ts, client.pg.test.ts (PG), ticket-store.db.test.ts, helpdesk.test.ts, domain-stream.test.ts, api/helpdesk/**/route.test.ts | 1a0ff4c, 7f1351f |
-| 2.7 | C10 | T-13.1, T-13.2, T-14.1, T-15.3, T-15.4, T-30.1, T-30.2, T-37.2, T-40.2 | schema.db.test.ts, client.pg.test.ts (PG), ticket-store.db.test.ts, helpdesk.test.ts, api/helpdesk/**/route.test.ts | 1a0ff4c, 7f1351f |
+| 2.3 | C10 | T-12.1, T-12.5, T-13.2, T-14.1, T-15.1, T-15.3, T-15.4, T-16.1, T-30.1, T-40.2 | plan-schema.test.ts, replanner.test.ts, ticket-store.db.test.ts, helpdesk.test.ts, api/helpdesk/**/route.test.ts, PlanDashboard/TicketList/HelpdeskPanel.test.tsx, helpdesk.spec.ts | 1a0ff4c, 2f07038, 7f1351f, dea6909, 1f6859b, 5208b08, 473c5a4 |
+| 2.4 | C1, C10 | T-2.1, T-12.6, T-13.2, T-14.1, T-15.3, T-30.1, T-40.2 | env-schema.test.ts, feature-requirements.test.ts, load.test.ts, helpdesk tests (ticket-store.db.test.ts, helpdesk.test.ts, plan-schema.test.ts, planner.test.ts), PlanDashboard/TicketList/HelpdeskPanel.test.tsx, helpdesk.spec.ts | 3af8b69, 1a0ff4c, 1f6859b, 5208b08, 473c5a4 |
+| 2.5 | C13, C14 | T-15.2, T-15.3, T-30.1, T-30.2, T-35.2, T-35.3, T-36.1 | domain-stream.test.ts, api/helpdesk/route.test.ts, PlanDashboard/TicketList/HelpdeskPanel.test.tsx, helpdesk.spec.ts, real-server/a11y/keyboard.spec.ts | 7f1351f, 1f6859b, 5208b08, 473c5a4 |
+| 2.6 | C10 | T-13.1, T-13.2, T-14.1, T-15.2, T-15.3, T-15.4, T-16.2, T-30.1, T-30.2, T-37.2, T-40.2 | schema.db.test.ts, client.pg.test.ts (PG), ticket-store.db.test.ts, helpdesk.test.ts, domain-stream.test.ts, api/helpdesk/**/route.test.ts, PlanDashboard/TicketList/HelpdeskPanel.test.tsx, helpdesk.spec.ts | 1a0ff4c, 7f1351f, 1f6859b, 5208b08, 473c5a4 |
+| 2.7 | C10 | T-13.1, T-13.2, T-14.1, T-15.3, T-15.4, T-30.1, T-30.2, T-37.2, T-40.2 | schema.db.test.ts, client.pg.test.ts (PG), ticket-store.db.test.ts, helpdesk.test.ts, api/helpdesk/**/route.test.ts, PlanDashboard/TicketList/HelpdeskPanel.test.tsx, helpdesk.spec.ts | 1a0ff4c, 7f1351f, 1f6859b, 5208b08, 473c5a4 |
 | 2.8 | C10 | T-12.3, T-13.2, T-14.1, T-15.3, T-40.2 | credentials.test.ts, ticket-store.db.test.ts, helpdesk.test.ts, api/helpdesk/route.test.ts | 1a0ff4c, 7f1351f |
 | 2.9 | C10, C15, C16 | T-13.3, T-13.4 | seed.db.test.ts; `mise run seed:samples` twice on Docker Postgres (5 added, then 0) | 1a0ff4c, b67826d |
 | 2.10 | C10 | T-2.1, T-12.1, T-12.4, T-14.1, T-15.3, T-16.1, T-40.2 | env-schema.test.ts, feature-requirements.test.ts, load.test.ts, helpdesk tests (ticket-store.db.test.ts, helpdesk.test.ts, plan-schema.test.ts, planner.test.ts) | 3af8b69, 1a0ff4c |
@@ -89,15 +89,15 @@ ID 規約は `tasks.md` の「ID 対応表」を参照する（この spec の p
 
 | Requirement | Design | Task | Test | Commit |
 |---|---|---|---|---|
-| 3.1 | C6, C7, C13 | T-1.2, T-1.5, T-1.6, T-6.1, T-17.4, T-17.7, T-17.8, T-18.4, T-19.6, T-20.1, T-35.5, T-39.2, T-40.3, T-40.7, T-40.8 | research.md S-4 (D), research.md S-5 (D), provider.test.ts, mock.test.ts, agent.test.ts, analysis route.test.ts, real-server.spec.ts (E) | ee815d5, 077c51e, 8510c68, 0114cd7, 748cd84 |
+| 3.1 | C6, C7, C13 | T-1.2, T-1.5, T-1.6, T-6.1, T-17.4, T-17.7, T-17.8, T-18.4, T-19.6, T-20.1, T-35.5, T-39.2, T-40.3, T-40.7, T-40.8 | research.md S-4 (D), research.md S-5 (D), provider.test.ts, mock.test.ts, agent.test.ts, analysis route.test.ts, real-server.spec.ts (E), UploadForm/SandboxNotice/AttemptList/FigureView/TableView/AnalysisPanel.test.tsx, analysis.spec.ts, real-server/a11y/keyboard.spec.ts | ee815d5, 077c51e, 8510c68, 0114cd7, 748cd84, 1f6859b, 5208b08, 473c5a4 |
 | 3.2 | C6, C16 | T-1.5, T-1.6, T-6.1, T-6.2, T-6.3, T-17.4, T-17.5, T-17.6, T-17.7, T-17.8, T-20.2, T-40.3 | research.md S-4 (D), research.md S-5 (D), check-repo-rules.test.mjs, check-client-bundle.test.mjs, provider.test.ts, provider.container.test.ts (C), engine.test.ts, tar.test.ts, check-repo-rules.test.mjs | 077c51e, 8510c68 |
 | 3.3 | C7 | T-18.3, T-18.4, T-18.5, T-38.2, T-39.1, T-40.3 | attempts.test.ts, run-python-tool.test.ts, agent.test.ts, scenarios.test.ts | 0114cd7 |
-| 3.4 | C2, C7 | T-3.3, T-18.3, T-18.4, T-31.1, T-35.3, T-40.3 | guarded-agent.test.ts, run-python-tool.test.ts, agent.test.ts, analysis route.test.ts | 70dd437, 0114cd7, 748cd84 |
-| 3.5 | C7, C13, C14 | T-18.2, T-18.4, T-19.4, T-19.6, T-20.2, T-31.2, T-31.3, T-35.2, T-35.3, T-36.1, T-40.3 | output-parser.test.ts, prelude.test.ts, domain-stream.test.ts, analysis route.test.ts | 0114cd7, 748cd84 |
-| 3.6 | C7, C14 | T-18.3, T-18.4, T-19.4, T-19.6, T-31.1, T-31.3, T-35.3 | attempts.test.ts, agent.test.ts, domain-stream.test.ts, analysis route.test.ts | 0114cd7, 748cd84 |
-| 3.7 | C6, C13 | T-2.1, T-17.3, T-19.3, T-19.6, T-19.7, T-20.1, T-31.3, T-40.3 | env-schema.test.ts, feature-requirements.test.ts, load.test.ts, lifecycle.test.ts, sessions.test.ts, analysis route.test.ts, sessions/[id]/route.test.ts, real-server.spec.ts (E) | 3af8b69, 8510c68, 748cd84 |
-| 3.8 | C6, C13, C14 | T-1.5, T-1.6, T-2.1, T-2.2, T-17.2, T-17.6, T-17.7, T-17.8, T-19.1, T-19.5, T-19.6, T-20.3, T-31.1, T-31.3, T-35.3, T-35.5, T-39.2, T-40.3, T-41.1, T-41.2, T-41.4 | research.md S-4 (D), research.md S-5 (D), env-schema.test.ts, feature-requirements.test.ts, load.test.ts, gateway.test.ts, select.test.ts, local.test.ts, probe.test.ts, platform.test.ts, status/route.test.ts | 3af8b69, 8510c68, 748cd84 |
-| 3.9 | C7, C13 | T-2.1, T-18.1, T-19.2, T-19.6, T-20.2, T-31.1, T-40.3, T-42.1, T-42.2 | env-schema.test.ts, feature-requirements.test.ts, load.test.ts, upload-check.test.ts, upload.test.ts, analysis route.test.ts | 3af8b69, 0114cd7, 748cd84 |
+| 3.4 | C2, C7 | T-3.3, T-18.3, T-18.4, T-31.1, T-35.3, T-40.3 | guarded-agent.test.ts, run-python-tool.test.ts, agent.test.ts, analysis route.test.ts, UploadForm/SandboxNotice/AttemptList/FigureView/TableView/AnalysisPanel.test.tsx, analysis.spec.ts, real-server/a11y/keyboard.spec.ts | 70dd437, 0114cd7, 748cd84, 1f6859b, 5208b08, 473c5a4 |
+| 3.5 | C7, C13, C14 | T-18.2, T-18.4, T-19.4, T-19.6, T-20.2, T-31.2, T-31.3, T-35.2, T-35.3, T-36.1, T-40.3 | output-parser.test.ts, prelude.test.ts, domain-stream.test.ts, analysis route.test.ts, UploadForm/SandboxNotice/AttemptList/FigureView/TableView/AnalysisPanel.test.tsx, analysis.spec.ts, real-server/a11y/keyboard.spec.ts | 0114cd7, 748cd84, 1f6859b, 5208b08, 473c5a4 |
+| 3.6 | C7, C14 | T-18.3, T-18.4, T-19.4, T-19.6, T-31.1, T-31.3, T-35.3 | attempts.test.ts, agent.test.ts, domain-stream.test.ts, analysis route.test.ts, UploadForm/SandboxNotice/AttemptList/FigureView/TableView/AnalysisPanel.test.tsx, analysis.spec.ts, real-server/a11y/keyboard.spec.ts | 0114cd7, 748cd84, 1f6859b, 5208b08, 473c5a4 |
+| 3.7 | C6, C13 | T-2.1, T-17.3, T-19.3, T-19.6, T-19.7, T-20.1, T-31.3, T-40.3 | env-schema.test.ts, feature-requirements.test.ts, load.test.ts, lifecycle.test.ts, sessions.test.ts, analysis route.test.ts, sessions/[id]/route.test.ts, real-server.spec.ts (E), UploadForm/SandboxNotice/AttemptList/FigureView/TableView/AnalysisPanel.test.tsx, analysis.spec.ts | 3af8b69, 8510c68, 748cd84, 1f6859b, 5208b08, 473c5a4 |
+| 3.8 | C6, C13, C14 | T-1.5, T-1.6, T-2.1, T-2.2, T-17.2, T-17.6, T-17.7, T-17.8, T-19.1, T-19.5, T-19.6, T-20.3, T-31.1, T-31.3, T-35.3, T-35.5, T-39.2, T-40.3, T-41.1, T-41.2, T-41.4 | research.md S-4 (D), research.md S-5 (D), env-schema.test.ts, feature-requirements.test.ts, load.test.ts, gateway.test.ts, select.test.ts, local.test.ts, probe.test.ts, platform.test.ts, status/route.test.ts, UploadForm/SandboxNotice/AttemptList/FigureView/TableView/AnalysisPanel.test.tsx, analysis.spec.ts, real-server/a11y/keyboard.spec.ts | 3af8b69, 8510c68, 748cd84, 1f6859b, 5208b08, 473c5a4 |
+| 3.9 | C7, C13 | T-2.1, T-18.1, T-19.2, T-19.6, T-20.2, T-31.1, T-40.3, T-42.1, T-42.2 | env-schema.test.ts, feature-requirements.test.ts, load.test.ts, upload-check.test.ts, upload.test.ts, analysis route.test.ts, UploadForm/SandboxNotice/AttemptList/FigureView/TableView/AnalysisPanel.test.tsx, analysis.spec.ts | 3af8b69, 0114cd7, 748cd84, 1f6859b, 5208b08, 473c5a4 |
 | 3.10 | C6, C15 | T-6.1, T-6.4, T-17.1, T-18.4, T-18.5 | m3-scenarios.test.ts, mock.test.ts, scenarios.test.ts, m3-scenarios.test.ts | 077c51e, 8510c68, 0114cd7 |
 
 **検証の計画**（plan より）
@@ -119,15 +119,15 @@ ID 規約は `tasks.md` の「ID 対応表」を参照する（この spec の p
 | Requirement | Design | Task | Test | Commit |
 |---|---|---|---|---|
 | 4.1 | C9 | T-22.3, T-22.4, T-40.4, T-40.7, T-40.8 | subagents.test.ts, supervisor.test.ts | 122c075 |
-| 4.2 | C9, C13 | T-22.4, T-22.5, T-23.3, T-23.4, T-32.2, T-38.3, T-39.1 | supervisor.test.ts, scenarios.test.ts, research/route.test.ts | 122c075, 71a9b90 |
+| 4.2 | C9, C13 | T-22.4, T-22.5, T-23.3, T-23.4, T-32.2, T-38.3, T-39.1 | supervisor.test.ts, scenarios.test.ts, research/route.test.ts, AgentInspector/UsageBreakdown/ReportView/ResearchPanel.test.tsx, research.spec.ts | 122c075, 71a9b90, 1f6859b, 5208b08, 473c5a4 |
 | 4.3 | C8 | T-1.2, T-21.1, T-21.3, T-21.4, T-23.1, T-23.4 | parse.test.ts, client.test.ts, tools.test.ts, platform.test.ts, arxiv-fixtures.test.ts | ee815d5, 122c075, 71a9b90 |
 | 4.4 | C9 | T-22.3, T-40.4 | subagents.test.ts | 122c075 |
-| 4.5 | C9 | T-22.2, T-22.4, T-22.5, T-24.1, T-32.1, T-38.3, T-40.4 | citations.test.ts, supervisor.test.ts, scenarios.test.ts | 122c075 |
-| 4.6 | C9 | T-22.3, T-22.4, T-23.3, T-32.1, T-40.4 | subagents.test.ts, supervisor.test.ts, research/route.test.ts | 122c075, 71a9b90 |
+| 4.5 | C9 | T-22.2, T-22.4, T-22.5, T-24.1, T-32.1, T-38.3, T-40.4 | citations.test.ts, supervisor.test.ts, scenarios.test.ts, AgentInspector/UsageBreakdown/ReportView/ResearchPanel.test.tsx, research.spec.ts | 122c075, 1f6859b, 5208b08, 473c5a4 |
+| 4.6 | C9 | T-22.3, T-22.4, T-23.3, T-32.1, T-40.4 | subagents.test.ts, supervisor.test.ts, research/route.test.ts, AgentInspector/UsageBreakdown/ReportView/ResearchPanel.test.tsx, research.spec.ts | 122c075, 71a9b90, 1f6859b, 5208b08, 473c5a4 |
 | 4.7 | C8 | T-2.1, T-21.2, T-21.3, T-23.1, T-24.2, T-40.4 | env-schema.test.ts, feature-requirements.test.ts, load.test.ts | 3af8b69 |
-| 4.8 | C1, C9 | T-2.1, T-22.1, T-22.3, T-22.4, T-23.3, T-24.1, T-32.1, T-32.2, T-37.3, T-40.4 | env-schema.test.ts, feature-requirements.test.ts, load.test.ts | 3af8b69 |
-| 4.9 | C9, C13, C14 | T-5.2, T-22.4, T-23.2, T-23.3, T-32.1, T-32.2, T-35.2, T-35.4 | observer.test.ts | efcde0d |
-| 4.10 | C9, C14 | T-2.1, T-5.1, T-5.2, T-22.1, T-22.4, T-23.2, T-23.3, T-32.1, T-35.4, T-40.4 | env-schema.test.ts, feature-requirements.test.ts, load.test.ts, token-ledger.test.ts, observer.test.ts | 3af8b69, efcde0d |
+| 4.8 | C1, C9 | T-2.1, T-22.1, T-22.3, T-22.4, T-23.3, T-24.1, T-32.1, T-32.2, T-37.3, T-40.4 | env-schema.test.ts, feature-requirements.test.ts, load.test.ts, AgentInspector/UsageBreakdown/ReportView/ResearchPanel.test.tsx, research.spec.ts | 3af8b69, 1f6859b, 5208b08, 473c5a4 |
+| 4.9 | C9, C13, C14 | T-5.2, T-22.4, T-23.2, T-23.3, T-32.1, T-32.2, T-35.2, T-35.4 | observer.test.ts, AgentInspector/UsageBreakdown/ReportView/ResearchPanel.test.tsx, research.spec.ts, real-server/a11y/keyboard.spec.ts | efcde0d, 1f6859b, 5208b08, 473c5a4 |
+| 4.10 | C9, C14 | T-2.1, T-5.1, T-5.2, T-22.1, T-22.4, T-23.2, T-23.3, T-32.1, T-35.4, T-40.4 | env-schema.test.ts, feature-requirements.test.ts, load.test.ts, token-ledger.test.ts, observer.test.ts, AgentInspector/UsageBreakdown/ReportView/ResearchPanel.test.tsx, research.spec.ts, real-server/a11y/keyboard.spec.ts | 3af8b69, efcde0d, 1f6859b, 5208b08, 473c5a4 |
 
 **検証の計画**（plan より）
 
@@ -147,13 +147,13 @@ ID 規約は `tasks.md` の「ID 対応表」を参照する（この spec の p
 
 | Requirement | Design | Task | Test | Commit |
 |---|---|---|---|---|
-| 5.1 | C11, C13 | T-2.1, T-25.2, T-27.1, T-27.4, T-33.2, T-40.5, T-40.7, T-40.8 | env-schema.test.ts, feature-requirements.test.ts, load.test.ts, personas.test.ts, requirements/request-schema.test.ts, sessions/route.test.ts, requirements/scenarios.test.ts | 3af8b69, 1e4401e, a5b44ce |
-| 5.2 | C11, C13, C14 | T-25.3, T-27.4, T-27.5, T-33.2, T-40.5 | interview.test.ts, sessions/route.test.ts, messages/route.test.ts | 1e4401e, a5b44ce |
-| 5.3 | C11, C13, C14 | T-25.1, T-25.3, T-27.1, T-27.3, T-27.5, T-33.1, T-33.2, T-35.2, T-35.4, T-40.5 | session.test.ts, interview.test.ts, domain-stream.test.ts, messages/route.test.ts, requirements/scenarios.test.ts | 1e4401e, a5b44ce |
-| 5.4 | C11 | T-25.3, T-27.1, T-27.3, T-27.5, T-28.2, T-33.1, T-40.5 | interview.test.ts, domain-stream.test.ts, messages/route.test.ts | 1e4401e, a5b44ce |
+| 5.1 | C11, C13 | T-2.1, T-25.2, T-27.1, T-27.4, T-33.2, T-40.5, T-40.7, T-40.8 | env-schema.test.ts, feature-requirements.test.ts, load.test.ts, personas.test.ts, requirements/request-schema.test.ts, sessions/route.test.ts, requirements/scenarios.test.ts, RequirementsPreview/DocumentDownload/InterviewPanel.test.tsx, requirements.spec.ts | 3af8b69, 1e4401e, a5b44ce, 1f6859b, 5208b08, 473c5a4 |
+| 5.2 | C11, C13, C14 | T-25.3, T-27.4, T-27.5, T-33.2, T-40.5 | interview.test.ts, sessions/route.test.ts, messages/route.test.ts, RequirementsPreview/DocumentDownload/InterviewPanel.test.tsx, requirements.spec.ts | 1e4401e, a5b44ce, 1f6859b, 5208b08, 473c5a4 |
+| 5.3 | C11, C13, C14 | T-25.1, T-25.3, T-27.1, T-27.3, T-27.5, T-33.1, T-33.2, T-35.2, T-35.4, T-40.5 | session.test.ts, interview.test.ts, domain-stream.test.ts, messages/route.test.ts, requirements/scenarios.test.ts, RequirementsPreview/DocumentDownload/InterviewPanel.test.tsx, requirements.spec.ts, real-server/a11y/keyboard.spec.ts | 1e4401e, a5b44ce, 1f6859b, 5208b08, 473c5a4 |
+| 5.4 | C11 | T-25.3, T-27.1, T-27.3, T-27.5, T-28.2, T-33.1, T-40.5 | interview.test.ts, domain-stream.test.ts, messages/route.test.ts, RequirementsPreview/DocumentDownload/InterviewPanel.test.tsx, requirements.spec.ts | 1e4401e, a5b44ce, 1f6859b, 5208b08, 473c5a4 |
 | 5.5 | C11 | T-2.1, T-25.1, T-25.3, T-27.5, T-40.5 | env-schema.test.ts, feature-requirements.test.ts, load.test.ts, session.test.ts, interview.test.ts, messages/route.test.ts | 3af8b69, 1e4401e, a5b44ce |
 | 5.6 | C11 | T-25.4, T-27.5, T-40.5 | document.test.ts, messages/route.test.ts | 1e4401e, a5b44ce |
-| 5.7 | C11, C13, C14 | T-27.6, T-33.1, T-35.4 | document/route.test.ts | a5b44ce |
+| 5.7 | C11, C13, C14 | T-27.6, T-33.1, T-35.4 | document/route.test.ts, RequirementsPreview/DocumentDownload/InterviewPanel.test.tsx, requirements.spec.ts, real-server/a11y/keyboard.spec.ts | a5b44ce, 1f6859b, 5208b08, 473c5a4 |
 
 **検証の計画**（plan より）
 
@@ -170,11 +170,11 @@ ID 規約は `tasks.md` の「ID 対応表」を参照する（この spec の p
 
 | Requirement | Design | Task | Test | Commit |
 |---|---|---|---|---|
-| 6.1 | C12 | T-26.1, T-26.5, T-27.7, T-34.2, T-40.6, T-40.7, T-40.8 | role-based-cooperation.test.ts, council.test.ts, council/route.test.ts | 1611759, 1e4401e, a5b44ce |
-| 6.2 | C12 | T-2.1, T-26.4, T-26.5, T-27.1, T-27.3, T-27.7, T-28.1, T-34.1, T-38.4, T-39.1, T-40.6 | env-schema.test.ts, feature-requirements.test.ts, load.test.ts, moderator.test.ts, council.test.ts, marketing/scenarios.test.ts, council/route.test.ts | 3af8b69, 1e4401e, a5b44ce |
-| 6.3 | C12, C13, C14 | T-26.1, T-26.5, T-27.3, T-27.7, T-34.1, T-34.2, T-35.2, T-35.4 | role-based-cooperation.test.ts, council.test.ts, domain-stream.test.ts, council/route.test.ts | 1611759, 1e4401e, a5b44ce |
-| 6.4 | C12, C13, C14 | T-26.6, T-26.7, T-27.1, T-27.3, T-27.8, T-34.1, T-34.2, T-35.2, T-35.4, T-40.6 | profile.test.ts, recommend.test.ts, recommend/route.test.ts, domain-stream.test.ts, marketing/scenarios.test.ts | 1e4401e, a5b44ce |
-| 6.5 | C12 | T-26.2, T-26.3, T-26.7, T-27.2, T-27.3, T-27.8, T-28.1, T-34.2, T-37.4, T-40.6, T-42.2 | catalog.db.test.ts, recommend.test.ts, platform.test.ts, recommend/route.test.ts | 6ff1ea5, 1e4401e, a5b44ce |
+| 6.1 | C12 | T-26.1, T-26.5, T-27.7, T-34.2, T-40.6, T-40.7, T-40.8 | role-based-cooperation.test.ts, council.test.ts, council/route.test.ts, CouncilTimeline/ProfileView/CouncilPanel/RecommendPanel.test.tsx, marketing.spec.ts | 1611759, 1e4401e, a5b44ce, 1f6859b, 5208b08, 473c5a4 |
+| 6.2 | C12 | T-2.1, T-26.4, T-26.5, T-27.1, T-27.3, T-27.7, T-28.1, T-34.1, T-38.4, T-39.1, T-40.6 | env-schema.test.ts, feature-requirements.test.ts, load.test.ts, moderator.test.ts, council.test.ts, marketing/scenarios.test.ts, council/route.test.ts, CouncilTimeline/ProfileView/CouncilPanel/RecommendPanel.test.tsx, marketing.spec.ts | 3af8b69, 1e4401e, a5b44ce, 1f6859b, 5208b08, 473c5a4 |
+| 6.3 | C12, C13, C14 | T-26.1, T-26.5, T-27.3, T-27.7, T-34.1, T-34.2, T-35.2, T-35.4 | role-based-cooperation.test.ts, council.test.ts, domain-stream.test.ts, council/route.test.ts, CouncilTimeline/ProfileView/CouncilPanel/RecommendPanel.test.tsx, marketing.spec.ts, real-server/a11y/keyboard.spec.ts | 1611759, 1e4401e, a5b44ce, 1f6859b, 5208b08, 473c5a4 |
+| 6.4 | C12, C13, C14 | T-26.6, T-26.7, T-27.1, T-27.3, T-27.8, T-34.1, T-34.2, T-35.2, T-35.4, T-40.6 | profile.test.ts, recommend.test.ts, recommend/route.test.ts, domain-stream.test.ts, marketing/scenarios.test.ts, CouncilTimeline/ProfileView/CouncilPanel/RecommendPanel.test.tsx, marketing.spec.ts, real-server/a11y/keyboard.spec.ts | 1e4401e, a5b44ce, 1f6859b, 5208b08, 473c5a4 |
+| 6.5 | C12 | T-26.2, T-26.3, T-26.7, T-27.2, T-27.3, T-27.8, T-28.1, T-34.2, T-37.4, T-40.6, T-42.2 | catalog.db.test.ts, recommend.test.ts, platform.test.ts, recommend/route.test.ts, CouncilTimeline/ProfileView/CouncilPanel/RecommendPanel.test.tsx, marketing.spec.ts | 6ff1ea5, 1e4401e, a5b44ce, 1f6859b, 5208b08, 473c5a4 |
 | 6.6 | C12, C15, C16 | T-26.2, T-26.3, T-27.2, T-27.9 | schema.db.test.ts, client.pg.test.ts (PG), seed.db.test.ts, catalog.db.test.ts, platform.test.ts | 6ff1ea5, a5b44ce, 0f603a3 |
 
 **検証の計画**（plan より）
@@ -198,3 +198,4 @@ ID 規約は `tasks.md` の「ID 対応表」を参照する（この spec の p
 - **W5 の出荷時点（2026-10-19）の持ち越し**: W5 の敵対的レビュー（`.sdd/reviews/003-domain-agents-impl-w5-review-2026-10-19.md`）の修正後の fresh な再レビューは未実施。arXiv の実応答と 429 / 503 / `Retry-After` の実挙動は未実測（フィクスチャは仕様と推測に基づく）。
 - **004 への引き継ぎ**: E2B の外向き通信（CL-21）、外部コンテンツの汚染状態（CL-10）、MCP の注釈を信頼しない前提（ADR-7）。`tasks.md`「004 への引き継ぎ事項」と 40.3 に記録する。
 - **W6 の出荷時点（2026-10-24）の持ち越し**: W6 の敵対的レビュー（`.sdd/reviews/003-domain-agents-impl-w6-review-2026-10-24.md`。REQUEST_CHANGES、MEDIUM 8 件・LOW 15 件）の修正後の fresh な再レビューは未実施。合議の予算は「同程度の大きさの呼び出しが続く限り」の上限で、種類ごとの最初の 1 回は超えうる（F-1）。F-16（既定のラウンド数を定数で確かめるだけのテスト）は 37.x へ。5.x・6.x の画面での確認（5.2〜5.4、5.7、6.3、6.4 の E）は W7（33.x、34.x、35.x）。`test:db`（実 Postgres）は 2026-10-24 に実行済み（`client.pg.test.ts` 9 件、`seedMarketing` の冪等性は使い捨てのデータベースで確認）。`seed:samples` 自体の実 Postgres での実行は Ollama が無く未確認。6.2 の `local`（合意に達する割合）は未実施。
+- **W7 の出荷時点（2026-10-25）の持ち越し**: W7 の敵対的レビュー（`.sdd/reviews/003-domain-agents-impl-w7-review-2026-10-25.md`。REQUEST_CHANGES、HIGH 1 件・MEDIUM 9 件・LOW 10 件）の修正後の fresh な再レビューは未実施。画面での確認（2.5 の「状態変化から 1 秒以内」、3.5・3.6 の描画）は E2E（35.x）で済んだ。F-11（実サーバーでブラウザの切断が `request.signal` を abort するか。W4 F-21）は、モックのサンドボックスが速すぎて観測できず未検証。F-17・F-18 は 40.x へ。F-7（複数のモジュールコピーでの `instanceof PlatformError`）は HTTP 経由では再現できず、単体テストだけが守る。E2E の `/helpdesk` は、他の spec が先に知識ベースを埋めると FAQ の投入そのものは判別できない（投入の保証は `platform.test.ts`）。Stryker は W7 では実行していない。

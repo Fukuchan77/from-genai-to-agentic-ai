@@ -213,6 +213,7 @@ flowchart TD
   - `ToolRuntime` に任意の `fatal: FatalLatch` を足す（省略時は M1 と同じ挙動）。
 - **Owns**: 分類の規則、学習者向け文言の形式（許可ルートを含む文言を含む）、ラッチの 1 件保持。`aci/define-tool.ts` のラッチを立てる処理（`defineAciTool` が投げられたエラーを結果に変換するため、ここでしか分類できない）、`aci/tool-set.ts` のラッチ後の拒否（ラッチがあるときはツール呼び出しを 1 件ずつ実行し、同じステップの残りも拒否する）、`buildToolSet` が `runtime.fatal` を記録して `fatalLatchOf(tools)` で返す経路。`agents/guarded-agent.ts` のラッチ経路（ツールセットのラッチの取得、使用済みのラッチの拒否、`stopWhen` にラッチの状態だけを読む条件を足す、`finalise` の先頭での判定）と、そのテスト。停止は内部 `AbortController` ではなく `stopWhen` で行う（spike S-1。abort は `stream` の `finish` と `onEnd` を落とす）。呼び出し側はラッチを `buildToolSet` の `runtime.fatal` に渡すだけでよい。
 - **Does NOT own**: 停止理由の語彙（`STOP_REASONS` は変えない。`error` は既存の `deriveStopReason` の分岐で到達する）。`ToolFailureKind` の `fatal` を戻り値として使うこと（使わない）。UI の表示（C14）。
+- **複数のモジュールコピー**（W7 の実サーバー確認で判明）: Next.js はページと Route Handler を別のバンドルにするため、1 プロセスに同じモジュールが複数のコピーとして存在する。コピーをまたいで成り立たせる必要があるものは、モジュール内の変数でなく `globalThis` の `Symbol.for` キーに置く。(1) `defineAciTool` が返したことの印（`aci/define-tool.ts` の `WeakSet`）は、置き換え不可・削除不可の `globalThis` のホルダーに持ち、本物の `WeakSet` 以外が既にあれば `ConfigError` で拒否する。あるコピーが作ったツール（ページが作った MCP レジストリ）を、別のコピーの `buildToolSet` が受け入れる。保証するのは、ホルダーを置き換えられないことと、`defineAciTool` を通らない偽物が `WeakSet` に入らない限り通らないことで、保証しないのは、同じプロセスの任意のコードが `Symbol.for` で `add` することと、先に自前の `WeakSet` を入れること（プロセス内のコードは信頼する前提。`buildToolSet` は `risk` を再検査する）。(2) `PlatformError` は `Symbol.for` の印と `Symbol.hasInstance` を持ち、別コピーのエラーでも `instanceof PlatformError` が成り立つ（エラーの分類のためで、セキュリティ境界ではない。サブクラスの `instanceof` はコピーごと）。(3) `aci/tool-set.ts` の `latchOfToolSet`（`WeakMap`）はコピーごとで、`buildToolSet` と `createGuardedAgent` が同じコピーで動くことに依存する。ツールセットがバンドルをまたぐ構成にするときは `globalThis` に移す。
 - **Requirements**: 1.3、1.5、3.4（`attempt-limit` の停止）
 
 ### C3 ACI 設計の検査と補助（`aci/`）
@@ -361,7 +362,7 @@ flowchart TD
 
 - **Responsibility**: 6 組の Route Handler で入力を検査し、ドメインの部品を組み立て、学習者のセッションを保持し、結果をストリームへ写像する。
 - **Public interface**:
-  - `lib/server/platform.ts` の拡張: `getSandboxSelection()`、`getMcpRegistry()`、`getHelpdeskStore()`、`getArxivClient()`、`getCatalogRepo()`。すべての組み立てはこの 1 ファイルで行う（M2 と同じ）。
+  - `lib/server/platform.ts` の拡張: `getSandboxSelection()`、`getMcpRegistry()`、`getHelpdeskStore()`、`getArxivClient()`、`getCatalogRepo()`。すべての組み立てはこの 1 ファイルで行う（M2 と同じ）。`getHelpdeskStore()` は `mock` のときだけ同梱の FAQ を知識ベースに投入する（`ensureMockFaq`。同じ DB には 1 回。サンプルのチケットは入れず、最初のチケットは `T-0001`。`getCatalogRepo()` の `mock` の投入と同じ考え方で、これが無いと実サーバーの `mock` ではサンプルの問い合わせがすべて根拠なしでエスカレーションされる。W3 の持ち越し F-8）。`local`・`live` は学習者の文書を持つので投入せず、`mise run seed:samples` を使う。
   - `lib/server/sessions.ts`: `createSessionRegistry<T>({ clock, idleTimeoutMs })` が `get(id)`、`create(id, factory)`、`touch(id)`、`dispose(id)` を持つ。アイドルの破棄は `Clock` で数える。**レジストリの実体（分析、要件の各セッション用）は `platform.ts` と同じ `globalThis` のホルダーに 1 つだけ保持する**（`getSessionRegistries()`）。Route Handler はルートごとに別のバンドルになりえ、dev ではモジュールが再読み込みされるため、モジュールスコープの変数では、あるルートが作ったセッションを別のルートが見つけられない。 実装は `getSessionRegistries()` ではなく `getSessionRegistry(name, options)`（名前ごとに 1 つ）。サンドボックスは `getSandboxSelection()` の `SandboxRegistry`（上限 `DEFAULT_SANDBOX.maxSessions` = 8、超えたら使っていない最古を閉じ、全部使用中なら 503）。選択が実行時に外れた（`sandbox-unavailable`）ときは `invalidateSandboxSelection()` が掃除を止めて全セッションを閉じ、次の要求が選び直す。接続断（`request.signal` の abort）はそのセッションのサンドボックスを**即座に**閉じる（Req 3.7 の「接続が途絶えた状態を含むアイドル」を、毎回ファイルを送り直す前提で、即時の破棄と読んだ。Next.js の実サーバーで切断が `request.signal` を abort するかは未確認）。
   - `lib/server/upload.ts`: `readUpload(request, { maxBytes })`。`Content-Length` と受信バイト数の両方で上限を検査する（CL-7）。
   - `lib/server/domain-stream.ts`: 各ドメインのイベントを `data-*` パートへ写像する（M2 の `rag-stream.ts` と同じ方式）。
@@ -376,6 +377,8 @@ flowchart TD
 - **Public interface**: `/mcp`、`/helpdesk`、`/analysis`、`/research`、`/requirements`、`/marketing` の各ページ（サーバーで初期値を取得して渡す）。部品は File Structure Plan を参照。
 - **Owns**: 表示、入力、キーボード操作、`aria-live` の更新、画像の `alt`、表の行上限の表示、ダッシュボードの 3 項目（「現在のタスク」「完了タスク」「修正された計画」）の描画、無効化された分析の案内の表示。
 - **Does NOT own**: 判断と検査（サーバーで行う）。LLM の呼び出し。ストリームのパートの定義（C13）。サンドボックスの直接の操作。
+- **クライアントの部品は設定を import しない**（W7）: クライアントのコンポーネントが `@platform/ai-core/config` を import すると、その `index` が環境変数スキーマを引き込み、秘密変数の名前がブラウザのバンドルに入る（`check:client-bundle` が検出）。上限や既定値はページ（サーバー）から props で渡す（`FigureView` の `maxBytes`、`TableView` の `maxRows`、`AnalysisPanel` の `limits`、各パネルの文字数の上限）。サンプルの入力文はクライアントの部品に書き写さず、ページが `@platform/ai-core/mock` の定数から渡す方針とする（`helpdesk`・`research` は現状書き写しており、40.x で直す）。
+- **確定していない結果は隠す**（W6 F-17、W7 F-3）: 合議は、実行が `data-council-result` なしで終わった（失敗・停止）とき、判定の届いていないラウンドの発言を隠す。エラーバナーの表示とは切り離す。ヘルプデスクの計画の差分は、`onData` で版ごとに計画を記録して `revision - 1` と対にする（描画のまとまりに依存しない）。
 - **Requirements**: 1.7（許可リストと状態の表示）、1.10（通知の表示）、2.5、3.5、3.6、4.9、5.3、5.7、6.3、6.4
 
 ### C15 fixtures とシナリオ（`packages/ai-core/fixtures/`、`src/mock/`）
@@ -405,6 +408,7 @@ flowchart TD
   - `packages/eval-suite/tests/`: 回帰（gate）と能力（`local`）のテスト（Test Strategy 参照）。
 - **Owns**: 規則の実装とテスト、タスクの定義、評価テストの配置、解説（`docs/modules/3-1`〜`3-6`、`docs/phases/phase-3.md`、`docs/modules/index.md`）、ステアリング（`.sdd/steering/tech.md`、`structure.md`）、`AGENTS.md` の状態、`specs/curriculum/changes-from-drafts.md` への実測の差分。
 - **Does NOT own**: 実機の実行結果（人が hands-on の記録として追記する）。ドメインの実装。
+- **生成した E2E fixture は Biome の対象外**（W7）: `apps/web/e2e/fixtures` は各ルートのテストが実際の応答から書き出す生成物で、`JSON.stringify` の出力は Biome の整形と一致しないため、`biome.json` の `includes` から外す。fixture が古ければ、各ルートのテストが `is stale` で失敗する。
 - **Requirements**: 1.16、1.17（規則）、2.9、6.6（初期投入の入口）、001 Req 7（解説）
 
 ## Data Model
@@ -519,7 +523,7 @@ DB に保存しない型は Zod のスキーマを正とし、型は `z.infer` �
 | `DELETE /api/analysis/sessions/[id]` | なし | 204（本文なし）。サンドボックスを破棄する（Req 3.7）。存在しない ID も 204（冪等）。閉じたかどうかを応答ヘッダー `x-analysis-session: released \| absent` で返す（実サーバーの確認が読む。W4 で足した） | 400（ID の形式） |
 | `POST /api/research` | `{ theme: string（1〜500 文字）; modelId?; maxSubagentCalls?: 1〜20 }` | UI メッセージストリーム（下表の `data-research-*`）。最後に `data-research-result` | 400、`capability-unsupported`、`source-unavailable`（arXiv に到達できない場合も、検索の欠落として `missing` に記録して続行するため、ここで返すのは Supervisor 自体が起動できないときだけ）、429 |
 | `POST /api/requirements/sessions` | `{ overview: string（1〜2000 文字）; modelId?; personaCount?: 1〜5; maxRounds?: 1〜10 }` | JSON `{ sessionId; personas: Persona[]; questions: Question[] }` | 400、502 `output-invalid`（ペルソナの構造化出力が 3 回失敗）、429 |
-| `POST /api/requirements/sessions/[id]/messages` | `{ answers: { questionId; text（1〜2000 文字） }[]（1〜10 件） }` | UI メッセージストリーム（`data-requirements-*`）。ラウンドの終わりに判定と、次の質問または完了 | 404（セッションなし・破棄済み）、409 `invalid-request`（完了済みのセッション）、400、502 |
+| `POST /api/requirements/sessions/[id]/messages` | `{ answers: { questionId; text（1〜2000 文字） }[]（1〜10 件） }` | UI メッセージストリーム（`data-requirements-*`）。ラウンドの終わりに判定と、次の質問または完了 | 404（セッションなし・破棄済み）、409 `invalid-request`（`error.details.reason` が `completed` = 完了済みのセッション、`busy` = 前の回答を処理中）、400、502 |
 | `GET /api/requirements/sessions/[id]/document` | なし | `text/markdown; charset=utf-8`、`Content-Disposition: attachment; filename="requirements.md"` | 404、409（まだ生成されていない） |
 | `POST /api/marketing/council` | `{ draft: string（1〜2000 文字）; modelId?; maxRounds?: 1〜6; personaIds?: string[]（2〜5 件。省略時は既定の 3 名）}` | UI メッセージストリーム（下表の `data-council-*`） | 400（存在しないペルソナ ID）、503（DB に接続できない・未投入）、502、429 |
 | `POST /api/marketing/recommend` | `{ id; messages: UIMessage[]（user / assistant のみ。assistant は `data-*` と `step-start` のパートを許し、内容は読まない。user はテキストのパートだけ）; modelId?; profile?: Profile }` | UI メッセージストリーム（`data-marketing-profile`、`data-marketing-recommendation`、本文） | 400、503（未投入）、502 |
@@ -1016,7 +1020,7 @@ Vitest はバンドラーを通らないため、`@e2b/code-interpreter`、`@ai-
 ### 要件インタビュー（C11、C13）
 
 - 概要が空または 2000 文字超 → 400。ペルソナの構造化出力が壊れている → `generateValidated` で再生成、3 回失敗で 502 `output-invalid`。`personaCount` が範囲外 → 400。
-- 回答が空・2000 文字超・`questionId` が存在しない → 400。セッションが存在しない・アイドルで破棄済み → 404。完了済みのセッションへの回答 → 409。
+- 回答が空・2000 文字超・`questionId` が存在しない → 400。セッションが存在しない・アイドルで破棄済み → 404。完了済みのセッションへの回答 → 409（`details.reason: "completed"`）。ラウンド実行中の二重送信 → 409（`details.reason: "busy"`）。`reason` は公開 details の許可リスト（`lib/server/errors.ts`）にある固定の 2 値だけで、画面は `completed` のときだけ完了とみなし、`busy` または `reason` のない 409 は面接を続けたまま再送信を促す。
 - 要件の抽出の失敗 → `generateValidated` の再生成（最大 3 回）の後も不正なら 502 `output-invalid`。そのラウンドはコミットされず（セッションは変わらない）、学習者は同じ回答を再送できる。「雑談の回答」（要件に結び付かないもの）は失敗ではなく、要件を変えず、未確認事項に項目を足す。
 - `GET /api/requirements/sessions/[id]` のような**セッションの再取得口は無い**。コミット後にストリームが切れると次の質問を取り直せない（受け入れた制限。学習者は同じ回答を再送するか、新しいセッションを始める）。
 - 面接セッションの同時数の上限は 100（`REQUIREMENTS_MAX_SESSIONS`）。超えると作成が 503 `provider-unavailable`。作成のたびに期限切れを掃除し、タイマーでの掃除はしない。

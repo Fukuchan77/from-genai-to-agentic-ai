@@ -497,3 +497,13 @@ Rancher Desktop の Docker Engine **29.5.3**（API 1.54、aarch64）で、Engine
 - 未実施: `mise run test:db`（Docker）で `0003_marketing.sql` を実 Postgres に適用する `client.pg.test.ts` の 1 ケースと、`mise run seed:samples` の実 Postgres での 2 回実行。どちらも書いて PGlite では確かめたが、Docker が無いため人が実行する。
 - 合議の予算は「同程度の大きさの呼び出しが続く限り」の上限である（W6 レビュー F-1）。出力の上限がスタックのどこにも無いため、種類ごとの最初の 1 回は残量を超えうる。
 
+
+## W7 の実測（36.1、2026-10-25、実測）
+
+- `env -u NODE_ENV TURBO_FORCE=true mise run gate`（キャッシュなし）: exit 0、87.9 秒（レビューの修正後）。root 419（期待された失敗 1 件）、`@platform/ai-core` 3,681 件成功 / 4 スキップ（W6 の締めは 3,673）、`web` 1,660（1,190）、`@platform/eval-suite` 7 / 8 スキップ、`Docs: 8 module documents, 110 test references verified`。`workflow-no-agent-loop` は 43 ファイル、`mcp-import-scope`・`sandbox-import-scope` は 647 ファイルを走査した。
+- `env -u NODE_ENV mise run test:e2e`（3 エンジン）: exit 0、735 件成功（chromium 245 / firefox 245 / webkit 245、スキップ 0）、3 分 27 秒。W6 の締めは E2E が 402 件（W5 時点）で、W7 が 6 画面の spec、axe（light / dark）、キーボード、実サーバーのページ単位の確認を足した。
+- `env -u NODE_ENV mise run check:client-bundle`: 成功（32 ファイル、16 名前と 5 センチネル。`E2B_API_KEY`・`GITHUB_TOKEN` のセンチネルを含む）。
+- **E2E が見つけた実バグ 3 件**（いずれも修正済み。`tasks.md` 例外 (13)）。(1) `/mcp` のページが先に描画されると、ページ側のバンドルが作った MCP レジストリのツールを、Route Handler 側の `buildToolSet` が「`defineAciTool` で定義されていない」として拒否した（`define-tool.ts` の `WeakSet` がモジュール内の変数で、Next.js ではページとルートが別のコピーになる）。(2) `FigureView`・`TableView` の `@platform/ai-core/config` の import が、環境変数スキーマの秘密名（`LANGFUSE_*`）をブラウザのバンドルに引き込んだ（`client-bundle` が検出）。(3) マーケティングのペルソナのチェックボックスのフォーカス表示が 1px だった（3:1 検査が検出）。
+- WebKit の Playwright は、multipart の `postData()` にファイルの中身を含めない（ヘッダーと空の本文だけ）。`analysis.spec.ts` はファイル名をすべてのエンジンで、中身を WebKit 以外で確かめる。
+- **W7 の敵対的レビュー**（`.sdd/reviews/003-domain-agents-impl-w7-review-2026-10-25.md`）: REQUEST_CHANGES（HIGH 1 / MEDIUM 9 / LOW 10）。修正と記録は同ファイルの「Responses」を参照。
+- **未実測・未検証**: 実サーバーでブラウザの切断が `request.signal` を abort するか（W4 F-21）。モックのサンドボックスが数ミリ秒で終わり、abort を観測できなかった（raw `http` で応答ヘッダーの直後にソケットを切る試みは、25 回中 25 回とも `released` で、abort の前に実行が終わっていた）。遅いモックのシナリオか、分析のストリームに間隔を指定する手段が要る。Stryker の W7 の対象は無い（画面のコンポーネントは対象外）。

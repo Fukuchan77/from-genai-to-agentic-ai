@@ -60,6 +60,7 @@
   (10) W4 のレビュー（F-7）で記録した境界外の変更。`scripts/check-repo-rules.mjs` と `check-repo-rules.test.mjs`（20.2。`sandbox-import-scope` の `docker.sock` / `socketPath` の検査から、コンテナのテスト基盤の 4 ファイルだけを除く。plan C16 に同期）。レビューの修正で触れた `packages/ai-core/src/aci/fatal.ts`（致命的エラーの語彙に `sandbox-unavailable`）、`config/defaults.ts`（`DEFAULT_SANDBOX.maxSessions`）、`apps/web/lib/server/platform.ts` の `invalidateSandboxSelection`。
   (11) W5 の実装で判明した境界外の変更（2026-10-19 に記録。W5 の敵対的レビューの対象にする）。`agents/token-ledger.ts`（`usageFromRun`）、`agents/observer.ts`（`forAgent`、`source` の 512 文字の上限）、`agents/index.ts` とそれぞれのテスト（22.3。W1 の敵対的レビュー F-10・F-11 の持ち越し）、`research/request-schema.ts` とそのテスト（23.3。`apps/web` に `zod` がなく、本文スキーマは ai-core に置く。(7) のヘルプデスクと同じ）、`research/scenarios.test.ts`（22.5。m3-4 の通しテスト）、`mock/arxiv-fixtures.ts` とそのテストと `mock/index.ts` の再エクスポート（22.5、23.1。`mock` の arXiv の fetcher。API の URL 以外は拒否）、`research/tools.ts` の `onCall`・`onFailure`、`research/subagents.ts` の `failureReasonOf`、`research/supervisor.ts` の `onUsage`（23.2・23.3。画面へ流す配線と、arXiv に届かない検索を欠落にする規則）。詳細は `pdca/do.md` と plan の C8・C9・File Structure Plan に同期した。
   (12) W6 の実装で判明した境界外の変更（2026-10-24 に記録。W6 の敵対的レビュー F-7 への対応）。`apps/web` に `zod` がないため、本文スキーマを ai-core に置いた（(7)・(11) と同じ）: `requirements/request-schema.ts`・`messages-schema.ts`、`marketing/request-schema.ts`・`recommend-request-schema.ts` とそれぞれのテスト（27.4、27.5、27.7、27.8）。面接のセッションの型と、別のルートが同じレジストリを引くための取得口 `requirements/web-session.ts`（Route Handler のファイルは handler 以外を export できない。27.4）。`rag/db/index.ts` への `marketingProducts`・`marketingPersonas` の再エクスポート（26.3）。`requirements/index.ts`・`marketing/index.ts` への上記の再エクスポート。`requirements/scenarios.test.ts`・`marketing/scenarios.test.ts`（27.1。m3-5・m3-6 の通しテスト）。`scripts/check-repo-rules.test.mjs` の走査対象の一覧に W6 の 6 ファイルを足した（28.1。W1 F-17）。plan の「ストリームのパート」に `data-requirements-questions` を足し、`domain-stream.ts` に `writeRequirementsQuestions` を足した（27.5 の判断。次のラウンドの質問をストリームで返す部品が表に無かった）。**2026-10-24 に人が承認した**（例外 (12) の全体と、plan に足した `data-requirements-questions` と `/recommend` の `text` パート）。
+  (13) W7 の実装で判明した境界外の変更（2026-10-25 に記録。**2026-10-25 に人が承認した**（例外 (13) の全体。plan への同期も同日に行った: C2・C13・C14・C16 と、409 の `details.reason`）。W7 の敵対的レビュー F-10 への対応）。(a) 35.2: 新しいルートの `route.test.ts` 12 本に「generated SSE fixture」のケースを足した（fixture は各ルートのテストが実際の応答から書き出す流儀で、`scripts/e2e/generate-sse-fixtures.mjs` 単体では生成できない。既存の fixture には差分なし）。`.json` の fixture 5 本（`analysis-status`、`helpdesk-tickets`、`mcp-compare`、`mcp-servers`、`requirements-session`）を足した。要件のセッション ID は `crypto.randomUUID` を固定値に差し替えて決定的にし、MCP の許可ルート（`mkdtemp` の一時ディレクトリ）は `/srv/mcp-workspace` に置換した（置換以外の加工はない）。(b) `biome.json`: 生成した fixture（`apps/web/e2e/fixtures`）を対象から外した。`JSON.stringify` の出力は Biome の整形と一致せず、生成物を手で整形しない規則と衝突するため。(c) 35.5 の実サーバー確認で見つかった実バグ: `/mcp` のページが先に描画されると、ページ側のバンドルが作った MCP レジストリのツールを、Route Handler 側のバンドルの `buildToolSet` が「`defineAciTool` で定義されていない」として 400 で拒否した。`packages/ai-core/src/aci/define-tool.ts` の定義済みツールの印を `globalThis` の `Symbol.for` キーの `WeakSet` に移した（テスト付き。モジュールが複数コピーになる前提の 2 コピーのテスト）。(d) `FigureView`・`TableView` が上限のために `@platform/ai-core/config` を import し、その `index` が環境変数スキーマの秘密名（`LANGFUSE_*`）をブラウザのバンドルに引き込んだ（`client-bundle` が検出）。上限を props にし、ページ（サーバー）から渡す形にした（`AnalysisPanel` の `limits`）。(e) `CouncilPanel` のペルソナのチェックボックスにフォーカスの輪郭（2px 以上）を足した（`keyboard.spec.ts` の 3:1 検査が検出）。(f) W7 の敵対的レビュー（`.sdd/reviews/003-domain-agents-impl-w7-review-2026-10-25.md`、REQUEST_CHANGES）の修正で触れた範囲。F-1: `apps/web/lib/server/platform.ts` の `getHelpdeskStore` が `mock` のときだけ FAQ を投入する（`ensureMockFaq`。サンプルのチケットは入れず、最初のチケットは `T-0001` のまま。`local`・`live` は投入しない）。F-4: 要件のメッセージ API の 409 に `error.details.reason`（`completed` / `busy`）を足した（`messages/route.ts`、`lib/server/errors.ts` の公開 details の許可リスト）。F-6: `aci/define-tool.ts` の定義済みツールの印を、置き換え不可・削除不可の `globalThis` のホルダーにし、本物の `WeakSet` 以外は拒否する（`define-tool-holder.test.ts`）。F-7: `errors.ts` の `PlatformError` に `Symbol.for` の印と `Symbol.hasInstance` を足し、ページとルートで別コピーになったモジュール間でも `instanceof PlatformError` が成り立つようにした（エラーの分類のためで、セキュリティ境界ではない）。`aci/tool-set.ts` の `latchOfToolSet` はコメントだけ（組み立てとエージェントの生成が同じコピーにある前提）。F-8: `mcp-servers.json` を手書きの値ではなく本物の `connectMcpServers` から生成する形にし、`e2e/mcp.spec.ts` の文言を製品の文言に直した。
 - **共有ファイルの編集者**（波をまたぐファイルは、列挙したタスクだけが編集し、記載の順に行う。各タスクは前のタスクの完了後に行う。この順序が波をまたぐ依存になるため、W2〜W6 は並行せず、W2 → W3 → W4 → W5 → W6 の順に進める）。
   - `packages/ai-core/package.json`: 1.2 だけ（依存 4 件と `exports` の 8 サブパス。参照先の `index.ts` は各領域の最後のタスクが作る）。
   - `mise.toml`: 6.3（`test:container`、センチネル）→ 11.2（`check:repo-rules --only` に `mcp-import-scope`）→ 13.4（`seed:samples`）→ 17.8（`sandbox:build`）→ 20.2（`check:repo-rules --only` に `sandbox-import-scope`）（この順）。
@@ -93,7 +94,7 @@
 | W4 サンドボックス・分析 | 17 サンドボックス提供者、18 データ分析、19 HTTP 入口、20 実サーバー確認と W4 の締め | 完了（2026-10-18） | [tasks-comp-w4.md](tasks-comp-w4.md) |
 | W5 リサーチ | 21 arXiv クライアント、22 Supervisor とサブエージェント、23 HTTP 入口、24 W5 の締め | 完了（2026-10-19） | [tasks-comp-w5.md](tasks-comp-w5.md) |
 | W6 要件・マーケティング | 25 要件インタビュー、26 マーケティング、27 HTTP 入口、28 W6 の締め | 完了（2026-10-25 に移行） | [tasks-comp-w6.md](tasks-comp-w6.md) |
-| W7 画面と E2E | 29 MCP 画面、30 ヘルプデスク画面、31 分析画面、32 リサーチ画面、33 要件画面、34 マーケティング画面、35 トップ導線と E2E、36 W7 の締め | 着手中 | [tasks.md](tasks.md) |
+| W7 画面と E2E | 29 MCP 画面、30 ヘルプデスク画面、31 分析画面、32 リサーチ画面、33 要件画面、34 マーケティング画面、35 トップ導線と E2E、36 W7 の締め | 実装完了（2026-10-25。例外 (13) は承認済み。CI の `ci-status` 待ち） | [tasks.md](tasks.md) |
 | W8 評価・解説・統合 | 37 回帰テスト、38 能力テスト、39 `local`・`container` での実測、40 解説、41 トレーサビリティ・ステアリング、42 最終統合 | 未着手 | [tasks-w8.md](tasks-w8.md) |
 
 **波の依存**（plan「Implementation Waves」）: 波は spike・W1 → W2 → W3 → W4 → W5 → W6 → W7 → W8 の順に 1 つずつ進め、波の間では並行しない。
@@ -190,6 +191,15 @@ W6 の敵対的レビュー（`.sdd/reviews/003-domain-agents-impl-w6-review-202
 - 受け入れた制限: モデルの自由記述が対象外の商品や価格に触れうる（F-19）、雑談メモが「未確認事項」に残る（F-22）、`seedMarketing` が id だけで upsert する（F-23）、予算不足で呼ばれなかったペルソナが `missing` に入らない・欠けたラウンドでもモデレーターを呼ぶ（2 回目 F-5、F-6）、`/messages` のロックが module スコープ（2 回目 F-9）、セッション上限の競合と mock / local で枠を埋められること（2 回目 F-10）、council ルートは 429 より前に DB を読む（F-13、2 回目 F-3）。
 - 修正済み（2 回目 F-2、F-11）: plan の矛盾と古いコメント。
 
+## W7 からの持ち越し
+
+W7 の敵対的レビュー（`.sdd/reviews/003-domain-agents-impl-w7-review-2026-10-25.md`、REQUEST_CHANGES）の修正後の fresh な再レビューは未実施。
+
+- F-11（実サーバーで、ブラウザの切断が `request.signal` を abort するか。W4 F-21 の続き）: モックのサンドボックスが速すぎて観測できない。遅いモックのシナリオか、分析のストリームの間隔の指定が要る。42.x の前に決める。
+- F-17（入力例と上限の重複）・F-18（未投入の判定を文言でなく `details` で行う）: 40.x（W8）で扱う。
+- 例外 (13) の人の事後承認と plan への同期は 2026-10-25 に完了した。
+- 受け入れた制限: `/recommend` の再試行の送信本文に重複がないことは、`useChat` をモックしたテストでは確かめていない。F-7 は HTTP 経由で再現できず、単体テストだけが守る。
+
 ## 現在の波: W7 画面と E2E（大タスク 29〜36）
 
 6 つの画面（`/mcp`、`/helpdesk`、`/analysis`、`/research`、`/requirements`、`/marketing`）、ダッシュボード、Agent Inspector、プレビュー、SSE fixture の生成、
@@ -209,18 +219,22 @@ _Depends:_ 10.5
 _Requirements:_ 1.3, 1.7, 1.10, 1.12, 1.15, 1.17
 _Traces:_ REQ-001, C14
 
-- [ ] 29.1 (P) `components/mcp/{ServerStatusList,AllowListEditor,CompareView}.tsx` + 各 `*.test.tsx`: サーバーごとの状態（`connected` / `unavailable` と理由）、読み込んだツールと拒否したツール（`write` / `destructive` / 注釈なし・説明文の形式の理由）、許可リストの編集（20 個の上限の表示）、高水準と低レベルの比較（ステップ数・トークン数・比率、失敗した側の表示）を作る。通知は `aria-live`、キーボードで操作できる。テストは `aria-live`、拒否の理由の表示、20 個の上限、キーボード操作を検査する
+- [x] 29.1 (P) `components/mcp/{ServerStatusList,AllowListEditor,CompareView}.tsx` + 各 `*.test.tsx`: サーバーごとの状態（`connected` / `unavailable` と理由）、読み込んだツールと拒否したツール（`write` / `destructive` / 注釈なし・説明文の形式の理由）、許可リストの編集（20 個の上限の表示）、高水準と低レベルの比較（ステップ数・トークン数・比率、失敗した側の表示）を作る。通知は `aria-live`、キーボードで操作できる。テストは `aria-live`、拒否の理由の表示、20 個の上限、キーボード操作を検査する
   _Boundary:_ `apps/web/components/mcp/ServerStatusList.tsx`, `apps/web/components/mcp/AllowListEditor.tsx`, `apps/web/components/mcp/CompareView.tsx`, `apps/web/components/mcp/ServerStatusList.test.tsx`, `apps/web/components/mcp/AllowListEditor.test.tsx`, `apps/web/components/mcp/CompareView.test.tsx`
   _Depends:_ 10.3, 10.5
   _Requirements:_ 1.7, 1.10, 1.12, 1.15, 1.17
   _Traces:_ REQ-001, C14
-- [ ] 29.2 `components/mcp/McpPanel.tsx` と `app/mcp/page.tsx` + `McpPanel.test.tsx`: チャットの入力と応答、`finish` の停止理由（致命的エラーでは `error` と許可ルートのパスを含む学習者向けの文言）、思考ツールの切り替え、サーバー状態の取得と表示、入力例（`mock` のシナリオに対応する文）を作る。ページはサーバーで初期値（サーバー状態）を取得して渡す。テストは `error` の表示、思考ツールの切り替え、入力例を検査する
+- [x] 29.2 `components/mcp/McpPanel.tsx` と `app/mcp/page.tsx` + `McpPanel.test.tsx`: チャットの入力と応答、`finish` の停止理由（致命的エラーでは `error` と許可ルートのパスを含む学習者向けの文言）、思考ツールの切り替え、サーバー状態の取得と表示、入力例（`mock` のシナリオに対応する文）を作る。ページはサーバーで初期値（サーバー状態）を取得して渡す。テストは `error` の表示、思考ツールの切り替え、入力例を検査する
   _Boundary:_ `apps/web/components/mcp/McpPanel.tsx`, `apps/web/components/mcp/McpPanel.test.tsx`, `apps/web/app/mcp/page.tsx`
   _Depends:_ 29.1, 10.4
   _Requirements:_ 1.3, 1.7, 1.10
   _Traces:_ REQ-001, C14
 
 ### Implementation Notes
+
+- `McpPanel` が比較（`POST /api/mcp/compare`）の取得と状態を持つ。`CompareView` は `onRun` を呼ぶだけで、29.1 の時点では取得の持ち主がタスク文に無かった。
+- 許可リストの上限（20）は画面でも数える（思考ツールの分を予約）が、判断はサーバーのまま。
+- `/mcp` のページが先にレジストリを作ると、別バンドルの Route Handler が同じツールを認識できない実バグが 35.5 の実サーバー確認で見つかった（例外 (13) の (c)・(f)）。
 
 ---
 
@@ -233,18 +247,21 @@ _Depends:_ 15.4
 _Requirements:_ 2.3, 2.4, 2.5, 2.6, 2.7
 _Traces:_ REQ-002, C14
 
-- [ ] 30.1 (P) `components/helpdesk/{PlanDashboard,TicketList}.tsx` + 各 `*.test.tsx`: 「現在のタスク」「完了タスク」「修正された計画」（変更前後の差分）、ステップ数と判断理由、チケット一覧（状態、解決の回答、未解決の理由、上限到達の `open`）を作る。状態の更新は `aria-live`。テストは 3 項目の表示、差分の表示、ステップ上限到達の未完了タスクの一覧、`aria-live` を検査する
+- [x] 30.1 (P) `components/helpdesk/{PlanDashboard,TicketList}.tsx` + 各 `*.test.tsx`: 「現在のタスク」「完了タスク」「修正された計画」（変更前後の差分）、ステップ数と判断理由、チケット一覧（状態、解決の回答、未解決の理由、上限到達の `open`）を作る。状態の更新は `aria-live`。テストは 3 項目の表示、差分の表示、ステップ上限到達の未完了タスクの一覧、`aria-live` を検査する
   _Boundary:_ `apps/web/components/helpdesk/PlanDashboard.tsx`, `apps/web/components/helpdesk/TicketList.tsx`, `apps/web/components/helpdesk/PlanDashboard.test.tsx`, `apps/web/components/helpdesk/TicketList.test.tsx`
   _Depends:_ 15.4
   _Requirements:_ 2.3, 2.4, 2.5, 2.6, 2.7
   _Traces:_ REQ-002, C14
-- [ ] 30.2 `components/helpdesk/HelpdeskPanel.tsx` と `app/helpdesk/page.tsx` + `HelpdeskPanel.test.tsx`: 問い合わせの入力（4000 文字の上限）、`data-helpdesk-*` の縮約、最終結果（認証情報が検出されたときは種別だけを表示し値を表示しない）、入力例を作る。ページはサーバーでチケット一覧の初期値を取得して渡す。テストは入力の上限、結果の表示、認証情報の種別表示を検査する
+- [x] 30.2 `components/helpdesk/HelpdeskPanel.tsx` と `app/helpdesk/page.tsx` + `HelpdeskPanel.test.tsx`: 問い合わせの入力（4000 文字の上限）、`data-helpdesk-*` の縮約、最終結果（認証情報が検出されたときは種別だけを表示し値を表示しない）、入力例を作る。ページはサーバーでチケット一覧の初期値を取得して渡す。テストは入力の上限、結果の表示、認証情報の種別表示を検査する
   _Boundary:_ `apps/web/components/helpdesk/HelpdeskPanel.tsx`, `apps/web/components/helpdesk/HelpdeskPanel.test.tsx`, `apps/web/app/helpdesk/page.tsx`
   _Depends:_ 30.1, 15.3
   _Requirements:_ 2.5, 2.6, 2.7
   _Traces:_ REQ-002, C14
 
 ### Implementation Notes
+
+- `previousTasks` を `useChat` の `onData` で版ごとに記録する方式にした。描画のたびに前の版を保存する方式は、改訂がまとめて届くと「変更前」の説明を失った（レビュー F-2）。
+- 認証情報の通知は「回答の下書き」に対するもの（Req 2.8）。問い合わせに対するものではない（F-5）。
 
 ---
 
@@ -257,23 +274,26 @@ _Depends:_ 19.7
 _Requirements:_ 3.4, 3.5, 3.6, 3.7, 3.8, 3.9
 _Traces:_ REQ-003, C14
 
-- [ ] 31.1 (P) `components/analysis/{UploadForm,SandboxNotice,AttemptList}.tsx` + 各 `*.test.tsx`: ファイルの選択（受け入れ形式と 20 MB の表示）と指示の入力、サンドボックスが無効のときの入力の無効化と有効化の案内（`guidance`）、試行履歴（コード、標準出力、エラー、修正回数、`attempt-limit` で最後のコードとエラーの強調）を作る。テストは無効時の入力の無効化と案内、`attempt-limit` の表示、キーボード操作を検査する
+- [x] 31.1 (P) `components/analysis/{UploadForm,SandboxNotice,AttemptList}.tsx` + 各 `*.test.tsx`: ファイルの選択（受け入れ形式と 20 MB の表示）と指示の入力、サンドボックスが無効のときの入力の無効化と有効化の案内（`guidance`）、試行履歴（コード、標準出力、エラー、修正回数、`attempt-limit` で最後のコードとエラーの強調）を作る。テストは無効時の入力の無効化と案内、`attempt-limit` の表示、キーボード操作を検査する
   _Boundary:_ `apps/web/components/analysis/UploadForm.tsx`, `apps/web/components/analysis/SandboxNotice.tsx`, `apps/web/components/analysis/AttemptList.tsx`, `apps/web/components/analysis/UploadForm.test.tsx`, `apps/web/components/analysis/SandboxNotice.test.tsx`, `apps/web/components/analysis/AttemptList.test.tsx`
   _Depends:_ 19.5
   _Requirements:_ 3.4, 3.6, 3.8, 3.9
   _Traces:_ REQ-003, C14
-- [ ] 31.2 (P) `components/analysis/{FigureView,TableView}.tsx` + 各 `*.test.tsx`: PNG の画像（`data:image/png;base64`。`alt` が空の図は描画しない。SVG や HTML は描画しない）と、素の `<table>`（キャプション、200 行までの描画と「N 件中 M 件を表示」）を作る。テストは `alt` の有無、行上限の表示、PNG 以外を描画しないことを検査する
+- [x] 31.2 (P) `components/analysis/{FigureView,TableView}.tsx` + 各 `*.test.tsx`: PNG の画像（`data:image/png;base64`。`alt` が空の図は描画しない。SVG や HTML は描画しない）と、素の `<table>`（キャプション、200 行までの描画と「N 件中 M 件を表示」）を作る。テストは `alt` の有無、行上限の表示、PNG 以外を描画しないことを検査する
   _Boundary:_ `apps/web/components/analysis/FigureView.tsx`, `apps/web/components/analysis/TableView.tsx`, `apps/web/components/analysis/FigureView.test.tsx`, `apps/web/components/analysis/TableView.test.tsx`
   _Depends:_ 19.4
   _Requirements:_ 3.5
   _Traces:_ REQ-003, C14, ADR-2
-- [ ] 31.3 `components/analysis/AnalysisPanel.tsx` と `app/analysis/page.tsx` + `AnalysisPanel.test.tsx`: アップロード → ストリームの縮約 → 試行・図・表・結果の表示、明示的な終了操作（`DELETE /api/analysis/sessions/[id]`）、`sessionId`（クライアントが生成する UUID）、サンドボックスが作り直された旨の通知を作る。ページはサーバーでサンドボックスの選択結果を取得して渡す。テストは終了操作、再作成の通知、無効時の入力の無効化を検査する
+- [x] 31.3 `components/analysis/AnalysisPanel.tsx` と `app/analysis/page.tsx` + `AnalysisPanel.test.tsx`: アップロード → ストリームの縮約 → 試行・図・表・結果の表示、明示的な終了操作（`DELETE /api/analysis/sessions/[id]`）、`sessionId`（クライアントが生成する UUID）、サンドボックスが作り直された旨の通知を作る。ページはサーバーでサンドボックスの選択結果を取得して渡す。テストは終了操作、再作成の通知、無効時の入力の無効化を検査する
   _Boundary:_ `apps/web/components/analysis/AnalysisPanel.tsx`, `apps/web/components/analysis/AnalysisPanel.test.tsx`, `apps/web/app/analysis/page.tsx`
   _Depends:_ 31.1, 31.2, 19.6, 19.7
   _Requirements:_ 3.5, 3.6, 3.7, 3.8
   _Traces:_ REQ-003, C14
 
 ### Implementation Notes
+
+- 図と表の上限は props にした。クライアントのコンポーネントが `@platform/ai-core/config` を import すると、環境変数スキーマの秘密名がバンドルに入る（`client-bundle` が検出。例外 (13) の (d)）。
+- 実行中にサンドボックスが使えなくなった場合の案内は、503 の `details.guidance` と `sandbox-unavailable` の結果の再取得で表示する（F-9）。
 
 ---
 
@@ -286,18 +306,20 @@ _Depends:_ 23.3
 _Requirements:_ 4.2, 4.5, 4.6, 4.8, 4.9, 4.10
 _Traces:_ REQ-004, C14
 
-- [ ] 32.1 (P) `components/research/{AgentInspector,UsageBreakdown,ReportView}.tsx` + 各 `*.test.tsx`: どの主体（`supervisor` / `search` / `reading` / `market`）のものかを区別したイベント（呼び出し、ツール、要約、論文サマリーカード、エラー）、役割別のトークン内訳と合計と呼び出し回数（使用量が取れない主体は `unknown`）、Markdown のレポート・警告（除去した旨）・欠落した観点を作る。テストは主体の区別表示、内訳の合計、`unknown` の表示、警告と欠落の表示を検査する
+- [x] 32.1 (P) `components/research/{AgentInspector,UsageBreakdown,ReportView}.tsx` + 各 `*.test.tsx`: どの主体（`supervisor` / `search` / `reading` / `market`）のものかを区別したイベント（呼び出し、ツール、要約、論文サマリーカード、エラー）、役割別のトークン内訳と合計と呼び出し回数（使用量が取れない主体は `unknown`）、Markdown のレポート・警告（除去した旨）・欠落した観点を作る。テストは主体の区別表示、内訳の合計、`unknown` の表示、警告と欠落の表示を検査する
   _Boundary:_ `apps/web/components/research/AgentInspector.tsx`, `apps/web/components/research/UsageBreakdown.tsx`, `apps/web/components/research/ReportView.tsx`, `apps/web/components/research/AgentInspector.test.tsx`, `apps/web/components/research/UsageBreakdown.test.tsx`, `apps/web/components/research/ReportView.test.tsx`
   _Depends:_ 23.2
   _Requirements:_ 4.5, 4.6, 4.8, 4.9, 4.10
   _Traces:_ REQ-004, C14
-- [ ] 32.2 `components/research/ResearchPanel.tsx` と `app/research/page.tsx` + `ResearchPanel.test.tsx`: テーマの入力（500 文字の上限）、呼び出し回数の上限の指定、`data-research-*` の縮約、入力例を作る。テストは入力の上限、上限回数の指定、結果の表示を検査する
+- [x] 32.2 `components/research/ResearchPanel.tsx` と `app/research/page.tsx` + `ResearchPanel.test.tsx`: テーマの入力（500 文字の上限）、呼び出し回数の上限の指定、`data-research-*` の縮約、入力例を作る。テストは入力の上限、上限回数の指定、結果の表示を検査する
   _Boundary:_ `apps/web/components/research/ResearchPanel.tsx`, `apps/web/components/research/ResearchPanel.test.tsx`, `apps/web/app/research/page.tsx`
   _Depends:_ 32.1, 23.3
   _Requirements:_ 4.2, 4.8, 4.9
   _Traces:_ REQ-004, C14
 
 ### Implementation Notes
+
+- レポートは自前の最小パーサーで、生の HTML を描画しない（W6 F-18）。リンクは arXiv のアドレスだけ（F-14）。
 
 ---
 
@@ -310,18 +332,21 @@ _Depends:_ 27.6
 _Requirements:_ 5.1, 5.2, 5.3, 5.4, 5.7
 _Traces:_ REQ-005, C14
 
-- [ ] 33.1 (P) `components/requirements/{RequirementsPreview,DocumentDownload}.tsx` + 各 `*.test.tsx`: 要件プレビュー（機能・非機能・制約・未確認事項、回答ごとの更新を `aria-live` で通知）、十分性の判定（不足項目）とダウンロードのボタン（生成前は無効、`requirements.md`）を作る。テストは回答ごとの更新、不足項目の表示、生成前の無効化を検査する
+- [x] 33.1 (P) `components/requirements/{RequirementsPreview,DocumentDownload}.tsx` + 各 `*.test.tsx`: 要件プレビュー（機能・非機能・制約・未確認事項、回答ごとの更新を `aria-live` で通知）、十分性の判定（不足項目）とダウンロードのボタン（生成前は無効、`requirements.md`）を作る。テストは回答ごとの更新、不足項目の表示、生成前の無効化を検査する
   _Boundary:_ `apps/web/components/requirements/RequirementsPreview.tsx`, `apps/web/components/requirements/DocumentDownload.tsx`, `apps/web/components/requirements/RequirementsPreview.test.tsx`, `apps/web/components/requirements/DocumentDownload.test.tsx`
   _Depends:_ 27.3
   _Requirements:_ 5.3, 5.4, 5.7
   _Traces:_ REQ-005, C14
-- [ ] 33.2 `components/requirements/InterviewPanel.tsx` と `app/requirements/page.tsx` + `InterviewPanel.test.tsx`: 概要の入力（2000 文字の上限）、ペルソナと質問の表示、ペルソナ別の回答欄（1〜10 件）、ラウンドの進行、完了の表示、セッション切れ（404）時の案内を作る。テストは回答の送信、ペルソナ別の質問、セッション切れの案内を検査する
+- [x] 33.2 `components/requirements/InterviewPanel.tsx` と `app/requirements/page.tsx` + `InterviewPanel.test.tsx`: 概要の入力（2000 文字の上限）、ペルソナと質問の表示、ペルソナ別の回答欄（1〜10 件）、ラウンドの進行、完了の表示、セッション切れ（404）時の案内を作る。テストは回答の送信、ペルソナ別の質問、セッション切れの案内を検査する
   _Boundary:_ `apps/web/components/requirements/InterviewPanel.tsx`, `apps/web/components/requirements/InterviewPanel.test.tsx`, `apps/web/app/requirements/page.tsx`
   _Depends:_ 33.1, 27.4, 27.5
   _Requirements:_ 5.1, 5.2, 5.3
   _Traces:_ REQ-005, C14
 
 ### Implementation Notes
+
+- 409 は `details.reason` で「完了済み」と「前の回答を処理中」を区別する（F-4）。
+- 2 ターン目のテストは、サーバー自身の書き込み関数と `createUIMessageStreamResponse` で作った本物の SSE を使う。
 
 ---
 
@@ -334,18 +359,21 @@ _Depends:_ 27.8
 _Requirements:_ 6.1, 6.2, 6.3, 6.4, 6.5
 _Traces:_ REQ-006, C14
 
-- [ ] 34.1 (P) `components/marketing/{CouncilTimeline,ProfileView}.tsx` + 各 `*.test.tsx`: ラウンドごと・ペルソナ名付きの発言、ラウンドごとの合意判定と終了理由、改善後の文案、プロファイル（関心事・予算・懸念点。更新を `aria-live` で通知）を作る。テストはペルソナ名の表示、ラウンドの区切りと判定、終了理由、プロファイルの更新を検査する
+- [x] 34.1 (P) `components/marketing/{CouncilTimeline,ProfileView}.tsx` + 各 `*.test.tsx`: ラウンドごと・ペルソナ名付きの発言、ラウンドごとの合意判定と終了理由、改善後の文案、プロファイル（関心事・予算・懸念点。更新を `aria-live` で通知）を作る。テストはペルソナ名の表示、ラウンドの区切りと判定、終了理由、プロファイルの更新を検査する
   _Boundary:_ `apps/web/components/marketing/CouncilTimeline.tsx`, `apps/web/components/marketing/ProfileView.tsx`, `apps/web/components/marketing/CouncilTimeline.test.tsx`, `apps/web/components/marketing/ProfileView.test.tsx`
   _Depends:_ 27.3
   _Requirements:_ 6.2, 6.3, 6.4
   _Traces:_ REQ-006, C14
-- [ ] 34.2 `components/marketing/{CouncilPanel,RecommendPanel}.tsx` と `app/marketing/page.tsx` + 各 `*.test.tsx`: 文案の入力（2000 文字の上限）と参加ペルソナの選択（2〜5 件）、レコメンド用のチャットと、商品 ID・推薦理由・除去の件数の表示（Generative UI）、未投入のときの `seed:samples` の案内を作る。ページはサーバーでペルソナ定義を取得して渡す。テストは入力の上限、ペルソナの選択、除去の件数の表示、未投入の案内を検査する
+- [x] 34.2 `components/marketing/{CouncilPanel,RecommendPanel}.tsx` と `app/marketing/page.tsx` + 各 `*.test.tsx`: 文案の入力（2000 文字の上限）と参加ペルソナの選択（2〜5 件）、レコメンド用のチャットと、商品 ID・推薦理由・除去の件数の表示（Generative UI）、未投入のときの `seed:samples` の案内を作る。ページはサーバーでペルソナ定義を取得して渡す。テストは入力の上限、ペルソナの選択、除去の件数の表示、未投入の案内を検査する
   _Boundary:_ `apps/web/components/marketing/CouncilPanel.tsx`, `apps/web/components/marketing/RecommendPanel.tsx`, `apps/web/components/marketing/CouncilPanel.test.tsx`, `apps/web/components/marketing/RecommendPanel.test.tsx`, `apps/web/app/marketing/page.tsx`
   _Depends:_ 34.1, 27.7, 27.8
   _Requirements:_ 6.1, 6.3, 6.4, 6.5
   _Traces:_ REQ-006, C14
 
 ### Implementation Notes
+
+- 確定していないラウンドの発言は、実行が終わったとき（失敗・停止を含む）に捨てる。エラーバナーの表示とは切り離した（F-3）。
+- おすすめの再試行は `regenerate` を使う（F-15）。
 
 ---
 
@@ -358,29 +386,29 @@ _Depends:_ 29.2, 30.2, 31.3, 32.2, 33.2, 34.2
 _Requirements:_ 1.3, 1.10, 2.5, 3.4, 3.5, 3.6, 3.8, 4.9, 4.10, 5.3, 5.7, 6.3, 6.4
 _Traces:_ REQ-001, REQ-002, REQ-003, REQ-004, REQ-005, REQ-006, C14
 
-- [ ] 35.1 (P) `app/page.tsx` のモジュール一覧に 6 画面へのリンクを足す + 既存のページのテスト（あれば）に、6 つのリンクの存在とラベルを先に足す
+- [x] 35.1 (P) `app/page.tsx` のモジュール一覧に 6 画面へのリンクを足す + 既存のページのテスト（あれば）に、6 つのリンクの存在とラベルを先に足す
   _Boundary:_ `apps/web/app/page.tsx`
   _Depends:_ 29.2, 30.2, 31.3, 32.2, 33.2, 34.2
   _Requirements:_ 1.7
   _Traces:_ REQ-001, C14
   _Verify:_ `mise run gate` が成功し、トップから 6 画面に遷移できる（35.5 の E2E で確認）
-- [ ] 35.2 `scripts/e2e/generate-sse-fixtures.mjs` と `apps/web/e2e/fixtures/{helpdesk,analysis,research,requirements,marketing-council,marketing-recommend}.sse`、`e2e/support/mock-api.ts`: 新しい Route Handler から固定応答を生成する対象を足し、新しいエンドポイントの差し替え（`/api/mcp/*`、`/api/analysis/status` など）を足す。fixture は Route Handler の実際の出力から生成し、手書きしない
+- [x] 35.2 `scripts/e2e/generate-sse-fixtures.mjs` と `apps/web/e2e/fixtures/{helpdesk,analysis,research,requirements,marketing-council,marketing-recommend}.sse`、`e2e/support/mock-api.ts`: 新しい Route Handler から固定応答を生成する対象を足し、新しいエンドポイントの差し替え（`/api/mcp/*`、`/api/analysis/status` など）を足す。fixture は Route Handler の実際の出力から生成し、手書きしない
   _Boundary:_ `scripts/e2e/generate-sse-fixtures.mjs`, `apps/web/e2e/fixtures/helpdesk.sse`, `apps/web/e2e/fixtures/analysis.sse`, `apps/web/e2e/fixtures/research.sse`, `apps/web/e2e/fixtures/requirements.sse`, `apps/web/e2e/fixtures/marketing-council.sse`, `apps/web/e2e/fixtures/marketing-recommend.sse`, `apps/web/e2e/support/mock-api.ts`
   _Depends:_ 15.3, 19.6, 23.3, 27.5, 27.7, 27.8
   _Requirements:_ 2.5, 3.5, 4.9, 5.3, 6.3, 6.4
   _Traces:_ REQ-002, REQ-003, REQ-004, REQ-005, REQ-006, C14
   _Verify:_ 生成を 2 回実行しても差分が出ない（決定論）。`mise run gate` が成功する
-- [ ] 35.3 (P) `e2e/{mcp,helpdesk,analysis}.spec.ts`: MCP（サーバー状態の表示、拒否したツールの理由、致命的エラーの `error` の表示、通知）、ヘルプデスク（ダッシュボードの 3 項目、修正された計画、チケットの状態）、分析（試行履歴、`alt` 付きの画像、表の行上限、`attempt-limit`、サンドボックス無効時の案内）の主要な流れを、生成した SSE fixture で検証する
+- [x] 35.3 (P) `e2e/{mcp,helpdesk,analysis}.spec.ts`: MCP（サーバー状態の表示、拒否したツールの理由、致命的エラーの `error` の表示、通知）、ヘルプデスク（ダッシュボードの 3 項目、修正された計画、チケットの状態）、分析（試行履歴、`alt` 付きの画像、表の行上限、`attempt-limit`、サンドボックス無効時の案内）の主要な流れを、生成した SSE fixture で検証する
   _Boundary:_ `apps/web/e2e/mcp.spec.ts`, `apps/web/e2e/helpdesk.spec.ts`, `apps/web/e2e/analysis.spec.ts`
   _Depends:_ 35.2, 35.1
   _Requirements:_ 1.3, 1.10, 2.5, 3.4, 3.5, 3.6, 3.8
   _Traces:_ REQ-001, REQ-002, REQ-003, C14
-- [ ] 35.4 (P) `e2e/{research,requirements,marketing}.spec.ts`: リサーチ（Agent Inspector の主体の区別、トークン内訳、警告と欠落）、要件（プレビューの更新、判定、ダウンロード）、マーケティング（ペルソナ名付きの発言、合意の判定、プロファイルとレコメンドの更新、除去の件数）の主要な流れを、生成した SSE fixture で検証する
+- [x] 35.4 (P) `e2e/{research,requirements,marketing}.spec.ts`: リサーチ（Agent Inspector の主体の区別、トークン内訳、警告と欠落）、要件（プレビューの更新、判定、ダウンロード）、マーケティング（ペルソナ名付きの発言、合意の判定、プロファイルとレコメンドの更新、除去の件数）の主要な流れを、生成した SSE fixture で検証する
   _Boundary:_ `apps/web/e2e/research.spec.ts`, `apps/web/e2e/requirements.spec.ts`, `apps/web/e2e/marketing.spec.ts`
   _Depends:_ 35.2, 35.1
   _Requirements:_ 4.9, 4.10, 5.3, 5.7, 6.3, 6.4
   _Traces:_ REQ-004, REQ-005, REQ-006, C14
-- [ ] 35.5 `e2e/real-server.spec.ts`・`e2e/a11y.spec.ts`・`e2e/keyboard.spec.ts`: 6 画面が実サーバー（`mock`）で 200・スタイル適用・ブラウザエラー 0 であること、`/analysis` の `mock` 完走、`/mcp` が自作サーバーを起動することを `real-server.spec.ts` に足し、新しい 6 画面の axe（light / dark）と、入力・送信・タブ移動のキーボード操作を足す。`serverExternalPackages` に変更が要る場合は `next.config.ts` を更新する
+- [x] 35.5 `e2e/real-server.spec.ts`・`e2e/a11y.spec.ts`・`e2e/keyboard.spec.ts`: 6 画面が実サーバー（`mock`）で 200・スタイル適用・ブラウザエラー 0 であること、`/analysis` の `mock` 完走、`/mcp` が自作サーバーを起動することを `real-server.spec.ts` に足し、新しい 6 画面の axe（light / dark）と、入力・送信・タブ移動のキーボード操作を足す。`serverExternalPackages` に変更が要る場合は `next.config.ts` を更新する
   _Boundary:_ `apps/web/e2e/real-server.spec.ts`, `apps/web/e2e/a11y.spec.ts`, `apps/web/e2e/keyboard.spec.ts`, `apps/web/next.config.ts`
   _Depends:_ 35.3, 35.4, 23.4
   _Requirements:_ 1.7, 3.1, 3.8
@@ -388,6 +416,10 @@ _Traces:_ REQ-001, REQ-002, REQ-003, REQ-004, REQ-005, REQ-006, C14
   _Verify:_ `mise run test:e2e`（3 エンジン）が成功し、axe の重大な違反が 0 件
 
 ### Implementation Notes
+
+- fixture は各ルートの `route.test.ts` が実際の応答から書き出す（`generate-sse-fixtures.mjs` 単体では生成できない）。JSON の fixture も同じ方式で、`mcp-servers.json` は本物の `connectMcpServers` から作る。
+- E2E は、実サーバーでページを描画してから API を呼ぶ順序で初めて見つかる実バグがある（複数バンドルのモジュール）。ページ単位の実サーバー確認を `real-server.spec.ts` に足した。
+- Playwright は固定ポートと `next build` を使うので、E2E の作業は並列にできない。
 
 ---
 
@@ -398,7 +430,7 @@ _Depends:_ 35.5
 _Requirements:_ 2.5, 3.5
 _Traces:_ REQ-002, REQ-003, C14
 
-- [ ] 36.1 W7 の gate と E2E を実測して記録する。`mise run gate` と `mise run test:e2e`（3 エンジン）の成功を引用し、所要時間を research.md に追記する。`client-bundle`（`E2B_API_KEY`、`GITHUB_TOKEN` のセンチネルがバンドルに出ない）の成功も併記する
+- [x] 36.1 W7 の gate と E2E を実測して記録する。`mise run gate` と `mise run test:e2e`（3 エンジン）の成功を引用し、所要時間を research.md に追記する。`client-bundle`（`E2B_API_KEY`、`GITHUB_TOKEN` のセンチネルがバンドルに出ない）の成功も併記する
   _Boundary:_ `specs/003-domain-agents/research.md`
   _Depends:_ 35.5
   _Requirements:_ 2.5, 3.5
@@ -406,3 +438,5 @@ _Traces:_ REQ-002, REQ-003, C14
   _Verify:_ `mise run gate`、`mise run test:e2e`、`mise run check:client-bundle` の成功と所要時間を research.md に記録した。W7 の敵対的レビューの記録が `.sdd/reviews/003-domain-agents-impl-w7-review-*.md` にある
 
 ### Implementation Notes
+
+- gate は 87.9 秒、3 エンジンの E2E は 735 件、`client-bundle` は成功（`research.md` の「W7 の実測」）。敵対的レビュー（REQUEST_CHANGES、HIGH 1）の指摘は修正し、記録した。修正後の新しいコンテキストでの再レビューは未実施。

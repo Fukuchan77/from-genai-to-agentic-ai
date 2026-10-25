@@ -368,3 +368,42 @@
 - Gate (forced, `TURBO_FORCE=true`, nothing cached): `mise run gate` exit 0, 83 s. root 419; `@platform/ai-core` 3,673 passed / 4 skipped; `web` 1,190; `@platform/eval-suite` 7 / 8 skipped; `docs:check` 110 references; `workflow-no-agent-loop` scanned 43 files.
 - Commits: `1611759` (cooperateByRole hook), `6ff1ea5` (marketing schema, catalog, seed), `1e4401e` (requirements and marketing workflows, m3-5/m3-6), `a5b44ce` (web routes), `0f603a3` (wiring); docs ride in the docs commit.
 - Not run in ship: E2E, `test:container`, full `test:mutation`. Open: no fresh re-review of the review fixes; `tasks-comp-w6.md` migration waits for CI's `ci-status`.
+
+
+## W7 implementation (`/sdd-impl 003-domain-agents`, 2026-10-25)
+
+- Preflight: the gate lane has no external dependency (PREFLIGHT OK); E2E needs Playwright browsers (three engines installed) and port 3100 (free). Every command ran as `env -u NODE_ENV mise exec -- …`. Work was fanned out to fresh-context subagents, one task each (29.1 / 30.1 / 31.1 / 31.2 / 32.1 / 33.1 / 34.1, then 29.2 / 30.2 / 31.3 / 32.2 / 33.2 / 34.2, then 35.2, 35.3, 35.4, 35.5 one after the other: Playwright uses a fixed port and `next build`). I re-ran each batch's tests myself before ticking it (components 816, then 49 files).
+- Scope: all 19 sub-tasks of the wave (29.1–36.1).
+
+### 29–34 (screens)
+
+- Components first (7 parallel tasks, PROVE 27–58 stubs each; survivors → tests), then the six panels and pages. `@testing-library/user-event` and jest-dom are not installed and adding a dependency was out of scope: keyboard checks use `focus()`, `tabIndex`, DOM order and `fireEvent`; the E2E keyboard spec covers real Tab order.
+- 29.2 was written without a separate RED run (the module did not exist, so the suite failed to load; the first real run was GREEN with one test fix). PROVE 22 stubs.
+- Decisions: figure/table limits are props (client code must not import `@platform/ai-core/config`); `AnalysisPanel` keeps `useChat` and swaps only the transport `fetch` for multipart; the research report uses a small own parser (no raw HTML, W6 F-18).
+
+### 35 (fixtures and E2E)
+
+- 35.2 added 15 generated fixtures (10 `.sse`, 5 `.json`) through the route tests' 'generated SSE fixture' cases (the existing flow; the generator script alone cannot generate). Determinism: two writes gave identical checksums. PROVE: tampered → `is stale`, deleted → `is missing`, handler change → stale.
+- 35.3 / 35.4: 15 + 15 tests (chromium); PROVE 5 and 10 breaks. The first spec for `DELETE` survived (the recorder had no method) → `page.on("request")` added.
+- 35.5 on three engines found a real bug (below), then a 1px focus ring; the first full run had 12 failures (4 tests × 3 engines), all from the multi-bundle bug.
+- Problems met and root causes: (1) `/mcp` rendered first → page bundle builds the MCP registry → route bundle's `buildToolSet` rejects its tools (`definedTools` WeakSet per module copy). Fix: globalThis holder; hardened after review. (2) `client-bundle` failed: `FigureView`/`TableView` imported `@platform/ai-core/config` and pulled the env schema's secret names into the browser bundle. (3) `biome ci` failed on generated JSON fixtures (the formatter and `JSON.stringify` disagree) → generated fixtures excluded in `biome.json`. (4) WebKit's `postData()` omits multipart file bytes → the content assertion is skipped on WebKit.
+
+### W7 adversarial review and close (2026-10-25)
+
+- Review `.sdd/reviews/003-domain-agents-impl-w7-review-2026-10-25.md`: REQUEST_CHANGES (0 CRITICAL, 1 HIGH, 9 MEDIUM, 10 LOW). Fixed test-first by parallel subagents on disjoint files, E2E last (one agent). **The HIGH (F-1)**: the mock web app never ingested the help-desk FAQ, so every sample inquiry was escalated for lack of evidence while the real-server E2E stayed green because it only asserted `T-` and `改訂 1`. A W3 carry-over addressed to 35.x that I had ticked without doing.
+- **The lessons (again)**: (1) ~700 mutation stubs killed across the wave and the reviewer still found a whole-flow defect, because no test asserted the end state of the real run. (2) Three of the six fix agents reported without running PROVE; I ran it myself (F-3/F-15 5/5 killed, F-9/F-20 6/7 with one equivalent). (3) A fix agent's own caveat: a real-server test can pass because an earlier spec filled the shared knowledge base — the seeding guarantee lives in `platform.test.ts`, not in the E2E.
+- Tooling note: the auto-mode classifier returned no verdict for Bash and Agent for a while (editor restart did not help; it recovered later). Nothing was run during the outage; the unverified F-2/F-5 code was verified afterwards (one over-strict assertion fixed, 6 mutations killed).
+- Gate after the fixes: exit 0, 87.9 s (root 419, `@platform/ai-core` 3,681 / 4 skipped, `web` 1,660, `@platform/eval-suite` 7 / 8 skipped, `docs:check` 110 references). E2E: 735 passed on three engines, 3 min 27 s. `check:client-bundle` clean (32 files). Stryker was not run (no screen component is a mutation target in the plan). A fresh re-review of the fixes was not run.
+
+### Human decisions (2026-10-25)
+
+- Boundary exception (13) of `tasks.md` approved by the user, and the plan sync was done the same day: C2 (module copies: defined-tool holder, `PlatformError` brand, `latchOfToolSet`), C13 (`ensureMockFaq`, 409 `details.reason`), C14 (no config import in client components, props for limits, unconfirmed results hidden), C16 (generated fixtures excluded from Biome), and the messages-route 409 rows in the HTTP table and Error Handling.
+
+
+## W7 ship (`/sdd-ship 003-domain-agents`, 2026-10-25)
+
+- Validation: GO. Tasks 29.1–36.1 are `[x]` (19 of 19); boundary exception (13) was approved by the user and the plan was synced; PROVE evidence for every new test is in the sections above. The review (REQUEST_CHANGES) was answered in the review file; no fresh re-review.
+- Gate (fresh run, forced, nothing cached): `mise run gate` exit 0, 70 s. root 419 (1 expected fail); `@platform/ai-core` 3,681 passed / 4 skipped (coverage lines 98.34%); `web` 1,660 passed; `@platform/eval-suite` 7 / 8 skipped; `docs:check` 110 references. 25 new component test files and `getHelpdeskStore seeds the FAQ in mock mode (4)` appear by name in the output.
+- Not re-run in ship (run earlier the same day on the same code): E2E 735 passed on three engines (3 min 27 s), `check:client-bundle` clean. Stryker not run.
+- Commits: `ac487c1` (ai-core: module copies), `473c5a4` (web server, fixtures, Biome), `1f6859b` (six screens), `5208b08` (E2E specs); docs ride in the docs commit.
+- Left alone: the Biome schema-version info (2.5.14 vs CLI 2.5.15) is pre-existing.
