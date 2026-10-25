@@ -105,7 +105,7 @@ services:
       test: [CMD, wget, --no-verbose, --tries=1, --spider, http://127.0.0.1:3030/api/health]
 
   clickhouse:
-    image: clickhouse/clickhouse-server:26.6@sha256:2c870d77ea76e955fb1c8dad536ad40a1236b6093db0c4966e22d21d4428982b
+    image: clickhouse/clickhouse-server:26.9@sha256:19bfacb135479a892551a8155cfbbc8211aedf2aa888cd91950b9ee7e76cc7e3
     profiles: [trace]
     restart: unless-stopped
     user: "101:101"
