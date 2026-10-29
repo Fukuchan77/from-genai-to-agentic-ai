@@ -438,7 +438,7 @@ _Traces:_ REQ-001, REQ-003, REQ-006, C16
   _Requirements:_ 1.4, 1.5, 3.9, 6.5
   _Traces:_ REQ-001, REQ-003, REQ-006, C16
   _Verify:_ `mise run test:mutation` が閾値 70 を満たす
-- [ ] 42.3 完成タグ `module/3-1`〜`module/3-6` をローカルに付ける（push は人が行う）。すべてのサブタスクが `[x]` で、`mise run gate` と CI の `ci-status` が成功していることを確認してから付ける
+- [x] 42.3 完成タグ `module/3-1`〜`module/3-6` をローカルに付ける（push は人が行う）。すべてのサブタスクが `[x]` で、`mise run gate` と CI の `ci-status` が成功していることを確認してから付ける
   _Boundary:_ `specs/003-domain-agents/research.md`
   _Depends:_ 42.2
   _Requirements:_ 1.1
@@ -446,6 +446,7 @@ _Traces:_ REQ-001, REQ-003, REQ-006, C16
   _Verify:_ `git tag -l 'module/3-*'` に 6 件が並ぶ。W8 の敵対的レビューの記録が `.sdd/reviews/003-domain-agents-impl-w8-review-*.md` にある
 
 ### Implementation Notes
+- 42.3 完了（2026-10-29）: push 済みの HEAD `1e99122` で CI（run 40859443623）が成功したことを確認し、`module/3-1`〜`module/3-6` をローカルに付けた（push は人が行う）。38.2 は人の決定で M4 へ送り `[ ]` のまま。
 - 境界の例外（人が承認または決定済み）: `pnpm-workspace.yaml` と `pnpm-lock.yaml`（`typed-rest-client>qs` の override を `^6.16.1` へ。`audit` の解消）、`specs/003-domain-agents/plan.md`（C9 を「ソフトな上限」へ）。
 - 42.2 は 42.1 より先に確かめた（ミューテーション 86.19 ≥ 70、plan の 12 対象はすべて `mutate` に含まれる）。`council.ts` は plan の対象に無いため追加しない（W6 2 回目 F-13 の判断）。
 - 42.1 は完了（2026-10-29 の再実行で E2E 735 件成功、`audit` は override 引き上げ後に成功。research.md 参照）。以下は完了前の記録: 42.1 と 42.3 は未完: `audit` が `qs` の勧告で失敗（既存の override `^6.16.0` を `^6.16.1` へ上げる依存の変更で、人の判断）、3 エンジンの E2E は緑の全体実行を得られていない（research.md「W8 の最終統合の実測」）。タグ（42.3）は、これらと CI の `ci-status` を人が確かめるまで付けない。W8 の敵対的レビューは `.sdd/reviews/003-domain-agents-impl-w8-review-2026-10-29.md`（REQUEST_CHANGES）で、対応は同ファイルの「Responses」にある。
