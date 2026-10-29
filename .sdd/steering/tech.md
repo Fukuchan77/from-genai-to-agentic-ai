@@ -4,9 +4,9 @@
 版の実測値と ADR の詳細は `specs/001-agentic-ai-platform/research.md`、コンポーネントの契約は
 同 `plan.md` にある。
 
-> **状態（2026-10-13）**: M1（001）の W1〜W5 と M2（002）の W1〜W5 は実装済みで、M2 の W6（評価・解説・統合）を
+> **状態（2026-10-29）**: M1（001）と M2（002）は実装済み。M3（003）は W1〜W7 を実装済みで、W8（評価・解説・統合）を
 > 仕上げている。以下は承認済みの plan.md / research.md の決定と実測値で、実装で版などが変われば更新する。
-> M2 の決定の詳細は `specs/002-rag-and-workflows/research.md`（ADR-1〜12）にある。
+> M2 の決定の詳細は `specs/002-rag-and-workflows/research.md`（ADR-1〜12）、M3 は `specs/003-domain-agents/research.md`（ADR-1〜10）にある。
 
 ## Stack
 
@@ -20,7 +20,9 @@
 | Data store | 二層: PGlite + pgvector（インプロセス。gate と `mock` の Web アプリ）と Postgres 17 + pgvector（Docker Compose。`local` / `live` のハンズオンと `test:db`） | M2 から。型付きクエリは `drizzle-orm`。検索は pgvector（コサイン）+ 全文検索 + Reciprocal Rank Fusion（TypeScript の純関数）。ベクトルは 768 次元に統一 |
 | Rerank | Cohere（`@ai-sdk/cohere`）。`mock` は語の重なりによる疑似実装 | キー名 `COHERE_API_KEY`。キーが無い `local` / `live` では Rerank 段をスキップして記録する（ADR-7） |
 | Observability | OpenTelemetry（OTLP）+ Langfuse | 受信基盤（Compose の `trace` プロファイル）は M1 で用意し、計測とエクスポートは M4 |
-| Sandbox | E2B（キーがなければローカルコンテナ） | LLM 生成コードの実行専用（M3 から） |
+| Sandbox | E2B（`E2B_API_KEY` があるとき。`@e2b/code-interpreter`）、なければローカル Docker（Engine API を unix socket 越しに `node:http` で叩く。`dockerode` は使わない）。どちらも無ければ機能は起動しない | LLM 生成コードの実行専用（M3 から）。イメージは `mise run sandbox:build`、残骸は `sandbox:clean`（ADR-4、6） |
+| MCP | `@ai-sdk/mcp`（クライアント）、`@modelcontextprotocol/server`（自作の stdio サーバー） | 依存は完全一致で固定。`@ai-sdk/mcp` は 24 時間規則のため plan 時に 2.0.76 を採った（現在の `package.json` は 2.0.83）。GitHub の MCP は `GITHUB_TOKEN` が無ければ接続しない |
+| arXiv | `HttpFetcher` + `fast-xml-parser`（`processEntities` 無効） | 利用規約: 3 秒に 1 リクエスト、日単位のキャッシュ。制限は複数インスタンスに跨らない（ADR-3） |
 | Testing | Vitest（単体・回帰）、Playwright（3エンジン E2E）、Stryker（ミューテーション） | `@axe-core/playwright` で WCAG 2.2 AA。Stryker は TypeScript 7・Vitest 5 に未対応のため、`tsconfigFile` の回避と `@stryker-mutator/vitest-runner` へのパッチ（`patchedDependencies`）で動かす。対応版が出たら外す（plan C18） |
 | Lint / Format | Biome（リポジトリ全体で単一規約） | `noUnusedVariables` / `noUnusedImports` は `error` |
 | Tooling | mise → `pnpm exec` | 素のツールを直接実行しない |
@@ -73,6 +75,23 @@
   SSR 層のバンドルでは pgvector の tarball を読めず失敗する（Route Handler では動く）。`next.config.ts` に
   `@electric-sql/pglite` と `@electric-sql/pglite-pgvector` を列挙し、全レイヤで `node_modules` から読む。Vitest では
   検出できないので、実サーバー E2E（`real-server.spec.ts`）が回帰を守る。
+- **MCP ツールのリスク区分は注釈から決める**（M3、ADR-7）— `readOnlyHint === true` だけが `read-only`。それ以外（注釈なしを含む）は
+  `destructive` で、`write` / `destructive` は `buildToolSet` が登録を拒む（書き込み系の MCP ツールは使えない）。許可リスト（`schemas`）に載せた
+  ツールだけをエージェントごとに渡し、ツール数は 20 個以下に数える。注釈はサーバーが提供する信頼できないヒントとして扱う。
+  自作サーバーは `files/`（stdio、許可ルートの外に出ない）で、`trustErrorMeta` を真にするのはこれだけ。
+- **`child_process` を import しない**（M3、ADR-4）— `no-dynamic-eval` に例外を作らず、stdio MCP は SDK の transport、E2B は SDK の HTTP、
+  Docker は Engine API（`node:http` の `socketPath`）で扱う。サンドボックスの提供者は `ports/sandbox.ts` の `SandboxProvider` で、
+  選択は `lib/server/platform.ts` の1か所。アイドルは `Clock` で数え（既定 10 分）、E2B 側の寿命は実装ではアイドル × 3（既定 30 分）。ADR-6 も同じ値に直した（2026-10-29）。
+- **致命的ツールエラーは Run 単位のラッチで伝える**（M3、ADR-5）— `FatalToolError` を `FatalLatch` に記録し、**abort ではなく停止条件（`stopWhen`）で**ループを止めて、停止理由を `error` にする（abort は `finish` パートと `onEnd` を落とす。spike S-1）。
+  停止理由の閉じた語彙は変えない。
+- **モジュールのコピーをまたぐ状態は `globalThis` のホルダーに置く**（M3）— Next.js ではページと Route Handler のバンドルが別のモジュール
+  コピーになる。モジュール内の `WeakSet` に「`defineAciTool` で定義済み」を持つと、ページが作った MCP ツールを Route Handler の `buildToolSet` が
+  拒否した（E2E が検出）。定義済みツールの記録と、セッションレジストリ（`sessions.ts`）、`platform.ts` の組み立て結果は `globalThis` に1つだけ置く。
+- **階層型リサーチは Agent-as-a-Tool、計画と面接はワークフロー**（M3、ADR-8、9）— Supervisor が3つのサブエージェントをツールとして呼び、
+  呼び出し数に上限を置き、トークンは `agents/token-ledger.ts`（`RunObserver`）で役割別に集計する。ヘルプデスクの計画・Replanner は
+  `generateValidated` の構造化出力と依存順の純粋なスケジューラ、要件インタビューは固定往復で、各タスクの実行だけが `createGuardedAgent`。
+- **チケットは rag の drizzle 基盤に置く**（M3、ADR-10）— `helpdesk_tickets` などを `rag/db/schema.ts` に定義し、`drizzle/0002_helpdesk.sql`・
+  `0003_marketing.sql` で作る。単一の学習者が前提で、認証と行の共有は扱わない。
 
 ## Conventions
 
@@ -93,12 +112,15 @@
   - `*.local.test.ts` — 比較・品質評価。`local` のときだけ実行し、なければ理由付きスキップ
   - `*.db.test.ts` — インプロセス DB で gate に含める
   - `*.pg.test.ts` — Docker の Postgres が必要。`mise run test:db` だけで実行
+  - `*.container.test.ts` — Docker のサンドボックスが必要。`mise run test:container` だけで実行し、Docker に届かなければ理由付きスキップ。
+    通常の遮断は Docker の socket も塞ぐ（`local` 経路では意図して開けない）。`container` の経路だけが Engine の socket を許可する
   - テスト中は `fetch`・`node:net`・`node:dns` を遮断する。未モックの接続はテストを失敗させる。
 - **Non-vacuous gate**: 各段で実行件数・走査件数が 0 なら失敗。スキップは合格に数えない。
 - **Language**: spec・解説・UI 文言は日本語。コード、識別子、コメント、コミット、PR は英語。
 - **Commands**: `mise run <task>` → `pnpm exec <cmd>` の順。
 - **Gate command**: `mise run gate`。`lint`（Biome の非空走査を含む）→ `check:model-ids` →
-  `check:repo-rules`（11規則。M2 で `workflow-no-agent-loop` と `no-sql-raw` を追加）→ `typecheck`（tsc の対象ファイル数を検査）→ `test`（`mock`）→
+  `check:repo-rules`（13規則。M2 で `workflow-no-agent-loop` と `no-sql-raw`、M3 で `mcp-import-scope`（`@ai-sdk/mcp` は `src/mcp/` の外で import しない）と
+  `sandbox-import-scope`（`@e2b/code-interpreter` は `sandbox/e2b.ts`、Docker の socket は `sandbox/docker/` の外で使わない）を追加）→ `typecheck`（tsc の対象ファイル数を検査）→ `test`（`mock`）→
   `docs:check`。Docker・API キー・ネットワーク不要。後続 milestone で規則や段を足すときも「0 件なら失敗」を保つ。
 - **CI**: `gate`、`secret-scan`、`audit`、`mutation`、`client-bundle`、`e2e`（3エンジン）の各ジョブを
   `ci-status` が集約する。E2E は `mise run test:e2e`、SSE fixture は Route Handler から
@@ -110,13 +132,14 @@
 
 - **決定性**: 同一コミットで `gate` を 10 回実行して同じ合否。依存インストール済みの開発機で 5 分以内。
 - **隔離実行**: LLM 生成コード（データ分析、ハーネスの実装・テスト）はホストで実行しない。隔離環境が
-  なければその機能は起動しない。`eval` / `new Function` / `child_process` は許可リスト外で禁止。
+  なければその機能は起動しない（M3 の分析は E2B か Docker のどちらかが必要）。`eval` / `new Function` / `child_process` は許可リスト外で禁止。
 - **承認ゲート**（constitution 原則 6、004 Req 4）: 承認要否はコミット済みのサーバー側コードで決め、
   クライアントの値や実行時のヒューリスティックで決めない。承認要求はサーバーが発行し、ツール呼び出し
   ID と引数に束縛して署名し、1 回だけ消費できる。承認・再開のリクエストは未知フィールドを拒否する厳格な
   スキーマで検証し、会話履歴・モデル・トークン使用量を受け付けない。
 - **秘密情報**: API キーは環境変数からサーバー側でのみ参照（`server-only`）。`NEXT_PUBLIC_` を秘密に
   使わない。`.env` はコミットせず、キー名だけの `.env.example` を置く。
+- **外部サービスの規約**: arXiv は 3 秒 1 リクエストを直列キューで守り、同じ検索は日単位でキャッシュする。429 / 503 は HTML なので解析に渡さない。
 - **サプライチェーン**: 公開 24 時間未満の版を採らない（`minimumReleaseAge: 1440`）。`allowBuilds` は
   理由コメント付き。`overrides`・`patchedDependencies` も直前のコメントに理由と外す条件を書く。CI は `--frozen-lockfile`、Actions は SHA 固定・最小 `permissions`。
 - **依存の追加**: `plan.md` に宣言してから追加する。API キーが要る外部サービスは、キーがない場合の

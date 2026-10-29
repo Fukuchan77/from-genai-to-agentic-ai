@@ -3,8 +3,8 @@
 コードの配置パターンを記す永続知識。ファイルツリーの列挙ではなく、パターンと例を書く。
 全ファイルの計画は `specs/001-agentic-ai-platform/plan.md` の File Structure Plan にある。
 
-> **状態（2026-10-13）**: M1 と M2（W1〜W5）の `apps/web`・`packages/ai-core`・`packages/eval-suite`・`tooling/`・
-> `scripts/`・`docs/` は実装済み（M2 の W6 で評価・解説・統合を仕上げている）。M3 以降の領域（`harness/` など）は未作成。
+> **状態（2026-10-29）**: M1・M2 と M3 の W1〜W7 の `apps/web`・`packages/ai-core`・`packages/eval-suite`・`tooling/`・
+> `scripts/`・`docs/` は実装済み（M3 の W8 で評価・解説・統合を仕上げている）。M4 の領域（`harness/` など）は未作成。
 
 ## Organization Pattern
 
@@ -28,16 +28,18 @@ packages/ai-core/src/agents/
 | Path | Holds |
 |------|-------|
 | `apps/web/` | Next.js アプリ（パッケージ名 `web`、非公開）。`app/` にページと `app/api/*/route.ts`、`components/<feature>/` に画面部品、`components/ui/` に shadcn/ui の基本部品、`lib/server/` にサーバー専用モジュール、`e2e/` に Playwright |
-| `packages/ai-core/` | `@platform/ai-core`。`src/<area>/`（`config`、`models`、`mock`、`agents`、`aci`、`ports`、`chat`、`summarize`、`testing`、M2 の `structured`、`rag`、`workflows`、`patterns` …）、`drizzle/`（手書きの SQL マイグレーション）と `fixtures/`（シナリオ・カセット・外部サービスの fixture、`rag/` の評価コーパスと質問セット） |
-| `packages/eval-suite/` | `@platform/eval-suite`。`tests/capability/`（`local` 専用の RAG 検索比較と Judge）と `tests/regression/`（RAG の評価の配管。本体は M4） |
+| `packages/ai-core/` | `@platform/ai-core`。`src/<area>/`（`config`、`models`、`mock`、`agents`、`aci`、`ports`、`chat`、`summarize`、`testing`、M2 の `structured`、`rag`、`workflows`、`patterns`、M3 の `files`、`mcp`、`sandbox`、`analysis`、`research`、`helpdesk`、`requirements`、`marketing` …）、`drizzle/`（手書きの SQL マイグレーション）と `fixtures/`（シナリオ・カセット・外部サービスの fixture、`rag/` の評価コーパスと質問セット、M3 の `analysis/`・`arxiv/`・`helpdesk/`・`marketing/`・`sandbox/`） |
+| `packages/eval-suite/` | `@platform/eval-suite`。`tests/capability/`（`local` 専用の RAG 検索比較・Judge と M3 の比較）と `tests/regression/`（RAG と M3 の配管。本体は M4） |
 | `knowledge/` | 学習者の文書（RAG の取り込み元）。`README.md` 以外は `.gitignore` 済み。評価コーパスとは `kb:` / `eval:` の文書 ID で分離する |
 | `tooling/vitest/` | テスト基盤（ネットワーク遮断、`local` 判定、件数を検査するレポーター） |
 | `scripts/` | リポジトリ規約の検査（`check-*.mjs`、各々に隣の `.test.mjs`）、gate の補助（`scripts/gate/`）、E2E 用 SSE fixture 生成（`scripts/e2e/`）、共有ヘルパ（`scripts/lib/`） |
 | `docs/` | 日本語の解説。`modules/<id>-<slug>.md`、`phases/phase-N.md`、`modules/_template.md` |
+| `docker/sandbox/` | データ分析サンドボックスのイメージ定義（`mise run sandbox:build`）。サンプルデータの投入は `mise run seed:samples` |
 | `infra/`、`compose.yaml` | ローカル依存サービス（Compose のプロファイル `db` / `trace`） |
 | `specs/` | milestone 単位の spec（`00N-<name>/`）と、カリキュラムの確定版（`curriculum/`） |
 
-後続 milestone は、この骨格に領域を足す（M2 は `ai-core/src/{structured,rag,workflows,patterns}/`、M4 は
+後続 milestone は、この骨格に領域を足す（M2 は `ai-core/src/{structured,rag,workflows,patterns}/`、M3 は
+`ai-core/src/{files,mcp,sandbox,analysis,research,helpdesk,requirements,marketing}/`、M4 は
 `ai-core/src/harness/`）。新しいトップレベルのワークスペースは作らない前提で進める。
 
 ## Naming Conventions
@@ -45,7 +47,7 @@ packages/ai-core/src/agents/
 - **Files**: kebab-case の `.ts`（`guarded-agent.ts`、`adapt-history.ts`）。React コンポーネントは
   PascalCase の `.tsx`（`ToolPartView.tsx`）。スクリプトは `check-<topic>.mjs`。
 - **Tests**: 実装の隣に `<name>.test.ts`。接尾辞で実行経路を表す（`.local.test.ts`、
-  `.db.test.ts`、`.pg.test.ts`。意味は `tech.md` の Testing を参照）。
+  `.db.test.ts`、`.pg.test.ts`、`.container.test.ts`。意味は `tech.md` の Testing を参照）。
 - **Factories**: `create<Thing>`（`createModelGateway`、`createGuardedAgent`、`createFakeClock`）、
   定義ヘルパは `define<Thing>`（`defineAciTool`、`defineScenario`）。
 - **Errors**: `<Cause>Error extends PlatformError`（`OllamaUnavailableError`、`ConfigError`）。
@@ -66,6 +68,10 @@ packages/ai-core/src/agents/
 - モデル ID の文字列リテラルは `models/catalog.ts` と設定スキーマの既定値以外に書かない。fixture の
   中でもカタログの定数を import する。
 - `new ToolLoopAgent` は `agents/guarded-agent.ts` にだけ書く。
+- `@ai-sdk/mcp` は `ai-core/src/mcp/` の中だけで import する（規則 `mcp-import-scope`）。`@e2b/code-interpreter` は `sandbox/e2b.ts` だけ、
+  Docker の unix socket（`socketPath`、`docker.sock`）は `sandbox/docker/` だけ（規則 `sandbox-import-scope`。テスト基盤の例外は名指しの2ファイル）。
+- Next.js ではページと Route Handler が別のモジュールコピーになる。複数ルートで共有する状態（セッション、定義済みツールの記録）は
+  モジュール変数でなく `globalThis` のホルダーに置く。
 
 ## Where Things Go
 
@@ -92,6 +98,14 @@ packages/ai-core/src/agents/
 - 評価の質問セットとコーパス → `ai-core/fixtures/rag/`。手法の比較と Judge は `eval-suite/tests/capability/*.local.test.ts`、
   評価の配管の検証は `eval-suite/tests/regression/*.db.test.ts`
 - `mock` の応答 → `packages/ai-core/fixtures/`（`scenarios/`、`cassettes/`、`http/`、`transcripts/`、`web-search/`）
+- サンドボックス（実行環境の提供者）→ `ports/sandbox.ts` のポートと `ai-core/src/sandbox/`（E2B は `e2b.ts`、Docker は `docker/`、`mock` は `mock.ts`）。
+  Docker 実機を要するテストは `*.container.test.ts`
+- MCP（クライアントのアダプター、許可リスト、リスク区分）→ `ai-core/src/mcp/`、自作の stdio サーバーとファイル操作ツール → `ai-core/src/files/`
+- ドメインエージェント → 領域ごとに `ai-core/src/{analysis,research,helpdesk,requirements,marketing}/`。`apps/web` の対応は
+  `app/api/{analysis,research,helpdesk,requirements,marketing,mcp}/` と `components/<name>/`。
+  M3 のルート: `mcp/{chat,compare,servers}`、`helpdesk`（`tickets`、`tickets/[id]`）、`analysis`（`status`、`sessions/[id]`）、`research`、
+  `requirements/sessions`（`[id]/messages`、`[id]/document`）、`marketing/{council,recommend}`。
+  HTTP の補助は `lib/server/`（`sessions.ts` セッションレジストリ、`upload.ts` アップロード検査、`domain-stream.ts` イベントの `data-*` 写像、`helpdesk-json.ts`）
 - 新しい画面 → `apps/web/app/<name>/page.tsx` と `apps/web/components/<name>/`（色はテーマトークン経由。
   コントラストはルートのテストが検査する）。E2E は `apps/web/e2e/<name>.spec.ts`、API 応答の差し替えは
   `e2e/support/mock-api.ts`

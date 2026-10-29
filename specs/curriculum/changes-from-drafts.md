@@ -115,3 +115,60 @@ M2（モジュール 2-1〜2-4）の実装で確かめた、ドラフト（Pytho
 | RAG の評価を RAGAS などの外部ライブラリで行う | RAG 専用の最小実装（recall@k、忠実性と回答関連性を軸ごとに別プロンプトで採点する Judge、`unknown` を選択肢に含める）。比較と Judge の実行は `eval-suite` の `*.local.test.ts`、gate が保証するのは評価の配管（質問セットの検証と `mock` の埋め込みでの recall@1）まで。評価基盤への統合は M4 | research ADR-10、ADR-12、spec Req 2.9、2.10、2.12 |
 | Server Component から DB を使う例（Node の長寿命プロセス前提） | Next.js のサーバービルドでは、PGlite を `serverExternalPackages`（`@electric-sql/pglite`、`@electric-sql/pglite-pgvector`）に置かないと、SSR 層で pgvector の tarball を読めない。Vitest では検出できず、実サーバー E2E が守る | research I-10 |
 
+
+## 10. M3 の実装で実測により確定した API・設定（003）
+
+M3（モジュール 3-1〜3-6）の実装で確かめた、ドラフト（Python / LangChain / LangGraph / E2B Python SDK を前提にした記述）との差分を記録する。判断の根拠は [003 research.md](../003-domain-agents/research.md) の I-9〜I-12、ADR-1〜10、実測の節（S-1〜S-6、W2〜W8 の実測）と [plan.md](../003-domain-agents/plan.md) の CL にある。3-1〜3-6 の解説「移植時の変更点」はこの節を元に書く。**実機で確かめていないものは「未実測」と書く。** 小さなローカルモデルでの観察値は少数回のもので、手法の優劣の根拠ではない。
+
+### 10.1 サンドボックス（3-3）
+
+| ドラフトの記述 | 確定版 | 根拠 |
+|---|---|---|
+| Docker の操作に `dockerode` を使う | `dockerode` は採らない。Docker Engine API を `node:http` の `socketPath`（Unix ソケット）で直接叩く。理由は、推移依存と監査面を増やさないこと、`child_process` を import しないため `no-dynamic-eval` に例外を作らずに済むこと。代わりに、入力の転送と多重化ストリーム（8 バイトのヘッダー）の処理を自前で書く。`undici` のソケットも、新規依存であり、調査時点の最新版が公開から 24 時間未満だったため採らない | research I-11、I-12、ADR-4、S-5 |
+| サンドボックスは E2B が前提 | 選択順は、(1) `E2B_API_KEY` があれば E2B、(2) なければローカルのコンテナ（ソケットに届き、画像 `agentic-ai-sandbox:local` が存在するとき）、(3) どちらもなければ分析エージェントを無効にして設定を案内する。選択は `lib/server/platform.ts` の 1 か所で行い、`mock` は疑似サンドボックスを使う。画像がないときもコンテナがないときと同じく無効にする | spec Req 3.8、research ADR-6、plan CL-20 |
+| Docker のソケットは既定のパスにある | 探索先は `DOCKER_HOST`、`~/.docker/run/docker.sock`、`/var/run/docker.sock`。Rancher Desktop のソケット（`~/.rd/docker.sock`）はどれにも当たらないため、`DOCKER_HOST=unix://$HOME/.rd/docker.sock` が要る（Rancher Desktop の Docker Engine 29.5.3 で実測）。Docker Desktop（macOS）の既定パスと Linux のネイティブは未実測 | research W4 の実測（S-5）、39.2 |
+| Engine API の版を新しいものにそろえる | `v1.44` に固定する（Docker 25〜29 が対応する最古の版）。plan の `v1.47` は Docker 27 以降を要するため改めた | research W4 の実測（S-5） |
+| 読み取り専用ルートのコンテナの `/work` を tmpfs にし、起動後に `archive` で入力を置く | この方法は成り立たない。`Tmpfs` は 403、`--mount type=tmpfs` と tmpfs 裏打ちのボリュームは 200 を返すがコンテナから見えない。`/work` は**匿名ボリューム**、`/tmp` は tmpfs（`noexec`、64 MiB）にし、入力は**起動前**に `archive` で置く（create → archive → start → wait → logs → delete）。ボリュームは `DELETE …?force=1&v=1` で消す | research W4 の実測（S-5）、plan C6 の想定との差 |
+| `pip install` を実行時に行う（Python のノートブック環境） | 実行時のコンテナはネットワークなし（`NetworkMode: none`）なので、画像のビルド時に入れる。`python:3.13-slim` をダイジェストで固定し、解決結果を `docker/sandbox/requirements.txt` に全件固定する（pandas 3.0.6、openpyxl 3.1.5、xlrd 2.0.2、matplotlib 3.11.2 と依存 11 件）。pandas と matplotlib が Python 3.11 以上を要するため、ベース画像は 3.11 以上にする。`.xls` は xlrd 2.x、`.xlsx` は openpyxl で読む（xlrd 2.x は `.xlsx` を読めない）。全件の公開は 24 時間以上前（憲章 原則 7） | plan CL-20、research S-5（Python 側の版）、W4 の実測 |
+| 表計算ファイルをホスト側のライブラリで解析する（`exceljs`、`xlsx` など） | ホストは拡張子、20 MB 上限、マジックバイトの検査だけを行い、生バイトをサンドボックスへ渡す。解析は pandas / openpyxl がサンドボックス内で行う。`exceljs` は保守停止、`xlsx` は修正版のない advisory のため採らない | research ADR-1、I-6 |
+| グラフを E2B の `results[].png` で受け取る。クライアントのチャートライブラリで描画する | E2B と Docker で経路を分けない。サンドボックスに事前投入した補助関数 `show_figure` / `show_table` が目印付きの 1 行（`__PNG__:` / `__TABLE__:` + JSON）を標準出力へ書き、ホストが純関数で取り出す。画像は `<img>`（`alt` 必須）、表は素の `<table>` で描画し、`recharts` は M3 では採らない | plan CL-19、research ADR-2 |
+| 失敗した実行の累積回数で修正を打ち切る（3_genai-agent §4.2 の試行回数） | 修正は**失敗ごと**に数える。失敗した実行 1 回につき修正は最大 3 回（最大 4 回の実行）で、成功すると失敗は終わる。累積で数えると、失敗と成功が交互のときに、修正を受けていない失敗で止まる（W4 のレビュー F-3） | plan CL-26（2026-10-19 確定）、spec Req 3.3 |
+| E2B のサンドボックスの外向き通信は遮断されている、またはドラフトは触れない | **既定は許可**（E2B の文書「すべてのサンドボックスは既定でインターネットへの外向き通信が可能」による。`Sandbox.create({ allowInternetAccess: false })` で無効にできる）。型定義に `allowInternetAccess` があることは確かめたが、`E2B_API_KEY` がないため**実機では未実測**。E2B の提供者は設定したときだけこの値を渡し、既定を変えない。Docker は `NetworkMode: none` で遮断する。`runPython` は破棄可能なサンドボックスの中だけで作用するため `read-only` とし、通信の制限は 004 Req 4 で再検討する | research S-4、plan CL-21、`tasks.md`「004 への引き継ぎ事項」 |
+| アイドルの破棄を E2B の寿命に任せる | 破棄は `Clock` を使う `sandbox/lifecycle.ts` が数え、既定 10 分で行う（クライアントの切断は Route Handler の `request.signal` で検知する）。E2B 側の `timeoutMs` は安全網で、ADR-6 は 15 分と書くが、実装は `lifetimeMs ?? アイドル時間 × 3`（既定で 30 分）である。ADR-6 の数値は未修正のまま、人の判断を仰いでいる。実サーバーで切断が `request.signal` を abort することは未実測 | research ADR-6、W7・W8 の実測の記録、spec Req 3.7 |
+
+### 10.2 MCP とツール（3-1）
+
+| ドラフトの記述 | 確定版 | 根拠 |
+|---|---|---|
+| MCP サーバーの全ツールをエージェントに渡す | `client.tools({ schemas })` の `schemas` は**許可リスト**として働き、載っていないツールは読み込まれない。既定の `'automatic'` は全ツールを読むため使わない。1 エージェントのツール数は MCP のツールを含めて 20 以下で、超える構成は起動時に拒否する | research I-9、spec Req 1.8、1.15 |
+| MCP ツールのリスクをサーバーが決める、またはすべて読み取り専用とみなす | リスク区分は**注釈から決定論的に写す**。`readOnlyHint === true` は `read-only`、`destructiveHint === true` または**注釈なし**は `destructive`。`write` と `destructive` は登録しない（`buildToolSet` が拒否する）。注釈はサーバーが提供する信頼できないヒントで、信頼境界の外にある。この結果、GitHub の書き込み系ツール（issue の作成など）は M3 では使えない | research ADR-7、spec Req 1.16、1.17、004 Req 4.14 |
+| GitHub の MCP サーバーの読み取り専用ツールが使える | 自作サーバーは、公式 SDK（`@modelcontextprotocol/server`）の `registerTool` の `annotations` が `tools/list` に載り、`readOnlyHint` / `destructiveHint` が写ることを実測した。**GitHub の公式ホスト型サーバーの注釈は未実測**（`GITHUB_TOKEN` がなく `tools/list` を呼べていない。文書に `readOnlyHint` の記述が見つからなかった）。注釈がなければ許可リストのツールは 0 件になり、「接続できるが何も登録されない」。既定の許可リスト（`get_file_contents`、`issue_read`、`list_issues`、`pull_request_read`、`search_issues`）は文書による候補で、ハンズオンで確かめる | research S-3、S-6、W8 の 39.2、plan CL-25 |
+| `@ai-sdk/mcp` は最新版を使う。Claude Desktop や既製のサーバー群とつなぐ | `@ai-sdk/mcp` を完全一致で固定する。**2.0.76 に固定したのは、互換性の理由ではなく、リポジトリの 24 時間規則（`minimumReleaseAge: 1440`、憲章 原則 7）のため**で、調査時点の最新 2.0.77（2026-10-15T18:10Z 公開）は約 18 時間で窓に入っていた。その後、2026-10-24 の依存更新（監査の指摘の解消、コミット `685162b`）で **2.0.83 へ上げた**。現在の `packages/ai-core/package.json` は 2.0.83 である。stdio は `Experimental_StdioMCPTransport` で、プロセスの起動は SDK の内部が行い、本リポジトリは `child_process` を import しない。MCP サーバー SDK は v2 の `@modelcontextprotocol/server` 2.3.1（stdio は `@modelcontextprotocol/server/stdio`）を採り、依存の重い v1（`@modelcontextprotocol/sdk` 1.32.1）は採らない。`@ai-sdk/mcp` の import は `mcp/` に限り、リポジトリ規則 `mcp-import-scope` が守る | research I-9、I-10、I-12、ADR-4、ADR-7、`pnpm-workspace.yaml` |
+| 致命的なツールエラーで内部の `AbortController` を abort して止める | 採らない。`stream` と UI ストリームが `abort` で終わり、`finish` と `onEnd` が来ないため、学習者向けの文言を載せる経路が使えなくなる。Run 単位の `FatalLatch` の状態だけを読む条件を `stopWhen` の末尾に足し、`finalise` がラッチを先に判定して停止理由 `error` を返す。同じステップの残りのツールは AI SDK が止めないため、ラッチがあるときだけツール呼び出しを 1 件ずつ実行する | research S-1、ADR-5（退き方）、W1 レビュー後の訂正 |
+| ツール入力の検証失敗を AI SDK の既定の文言で返す | `inputSchema` を `jsonSchema(() => zodSchema(schema).jsonSchema, { validate })` で包み、失敗時の修正ガイドをモデルに届ける。AI SDK が付ける前置き（`Invalid input for tool …`）と入力値の再掲は消せない。生の `z.toJSONSchema` は `io: "input"` などの補正がないため使わない | research CL-2、W1 レビュー後の訂正、spec Req 1.2 |
+| ツールの説明文は自由な書式 | 用途の 1 文に、`使うとき:`、`使わないとき:`、`例:` の 3 つの見出し行を含め、全入力フィールドに `.describe()` を付ける（`defineAciTool` が検査する）。外部の MCP ツールは `McpServerConfig.descriptions` で上書きする。M1 の 6 ツールの書き直しは、ツールを含むリクエストのカセットのキーを変える（既存のシナリオは述語で照合するため gate には影響しない） | plan CL-18、CL-25、research W1 レビュー後の訂正 |
+| Next.js のバンドラーでも `new URL(…, import.meta.url)` でファイルを指せる | Turbopack は「ファイル資産の参照」として扱い、ビルドが失敗する。`resolve(dirname(fileURLToPath(import.meta.url)), …)` の形にする。Vitest はバンドラーを通らないため単体テストでは検出できず、実サーバーのビルドだけが見つけた。`serverExternalPackages` に足したパッケージはない（`@ai-sdk/mcp`、`@modelcontextprotocol/server`、`@e2b/code-interpreter`、`fast-xml-parser` はバンドルのまま動く） | research W2・W4・W5 の実サーバー確認（R-1） |
+
+### 10.3 エージェントの構成（3-2、3-4〜3-6）
+
+| ドラフトの記述 | 確定版 | 根拠 |
+|---|---|---|
+| ヘルプデスクの Plan-and-Execute、要件定義書のインタビューを LangGraph のグラフ、または 1 つのエージェントのループで組む | 計画と Replanner の判断は `generateValidated` による構造化出力、実行は依存順の純粋なスケジューラ、インタビューは固定の往復を行うワークフローで、`ToolLoopAgent` を使うのは各タスクの実行（ツールを使う箇所）だけ。マーケティングの合議もワークフローで、ペルソナはツールを持たない。`workflow-no-agent-loop` 規則が `workflows/` からの `ToolLoopAgent` の利用を禁じる。チケットの状態と計画の版は、M2 の drizzle 基盤（PGlite / Postgres）に永続化する | research ADR-9、ADR-10、憲章 原則 1 |
+| 階層型リサーチを LangGraph のマルチエージェントと LangGraph Studio で行う | Agent-as-a-Tool の単一プロセス。Supervisor が 3 つのサブエージェントを入力スキーマ付きのツールとして呼び、サブエージェントは要約だけを返し、呼び出し数に上限を設ける。Studio の代わりに Agent Inspector UI。トークンは役割別に集計する | research ADR-8、spec Req 4.4、4.8〜4.10 |
+| 多エージェントは精度を上げる、という前提で階層型を採る | 多エージェントは憲章 原則 1 により正当化の記録が要る。ローカルの小型モデル（`llama3.2:latest`、各質問 1 回、約 189 秒）では、階層は単一エージェントの約 1.6 倍のトークンを使い（平均 2,433 対 1,555）、Supervisor の呼び分けはほとんど観察できなかった（広い質問と市場の質問でサブエージェントを呼ばなかった）。**少数回の観察であり、手法の優劣の根拠ではない**。単一側の「0/3」は引用検査が有効と判定しなかったという意味で、品質の比較ではない | research ADR-8、W8 の実測（38.3） |
+| 高水準ツールのほうが効率がよい（Guide モジュール3） | 同じ操作を高水準ツール 1 つと低レベルツールの組み合わせで行った比較（`granite4.2:latest`、3 回ずつ）で、中央値はステップ 2 対 4、トークン 1,894 対 5,641（比 0.34）だった。ローカルの小型モデルでの少数回の観察であり、分散は見ていない | spec Req 1.12、research W8 の実測（38.1） |
+| arXiv は LangChain の既製ローダーで取得する | `HttpFetcher` と `fast-xml-parser`（5.11.2、`processEntities` 無効）の自前のクライアント。利用規約の 1 リクエスト / 3 秒と単一接続を守る直列キューと日単位のキャッシュを置く。429 / 503 / 301 の応答は実測済み（research I-5）で、未実測なのは複数件・0 件の正常系、HTTP 400 のフィード、ライブサーバーに対する再試行の挙動 | research I-5、ADR-3、W5 の実測 |
+| 合議の合意をモデルの宣言で決める。固定のペルソナ名・商品名・価格をモデルに返させる | 合意の確定はコードが持つ（未解決の反対があれば、欠けたペルソナがいるラウンドでは、`agreed` は無効）。コストの上限は最大ラウンドと共有の累積トークンの 2 つで、モデレーター用に一部を予約する。商品名と価格はカタログから取り、モデルが返したものは使わない | spec Req 6.2、6.5、plan CL-12、CL-15、CL-17 |
+| 合議は単一エージェントより品質を上げる | ローカルの小型モデル（`llama3.2:latest`、2 回）で、合議は「合意した」と判定したが文案は変わらず、トークンは単一の約 21 倍（平均 12,626 対 602）だった。少数回の観察で、優劣の根拠ではない。また、あるローカルモデルでは、ペルソナ 1 人あたりの既定の上限 60 秒に収まらず `timeout` で止まった（原因は未特定。合議は 1 人ずつ直列に呼ぶ）。「合意した」のに文案が変わらなかった点は、小型モデルが `<draft>` を書かなかっただけの可能性があり、合意の判定と改善が別の事柄かは未測定 | research W8 の実測（38.4） |
+| `mock` の検索でも、類似度の閾値（0.5）で根拠を絞る | `mock` の埋め込みは疑似乱数で、既定の閾値では検索が常に空になり、すべての問い合わせが根拠なしで `escalated` になる。ヘルプデスクの `mock` は `minSimilarity: -1`（上位 k 件をそのまま返す）で検索する。`local` / `live` は既定のまま | research W3 で分かったこと |
+
+### 10.4 カリキュラム本文の修正（spec を正とする）
+
+41.4 の点検で、`specs/curriculum/` の本文のうち承認済みの 003 / 001 と食い違う、または実測で誤解を招く記述を、カリキュラム側で直した。
+
+| ファイル | 修正前 | 修正後 | 根拠 |
+|---|---|---|---|
+| `security.md` §3（ASI05 の行） | 「サンドボックス、ネットワーク遮断」とだけ書き、3-3 の隔離がすべてネットワーク遮断だと読める | ネットワーク遮断はローカルのコンテナ（`NetworkMode: none`）で、E2B は既定で外向き通信が可能（未実測）であり、制限は 004 Req 4 で再検討する、と明記した | research S-4、plan CL-21、spec Req 3.8 |
+| `README.md` 技術スタック（サンドボックスの行）、`sources.md` §6（コード実行の行） | 「キーがなければローカルのコンテナ」で終わり、どちらもない場合が書かれていない | 「どちらもなければ分析エージェントを無効にする」を足した | spec Req 3.8、research ADR-6 |
+
+上記以外の本文（`phase-3.md` の 3-1〜3-6、`concepts.md`、`phase-1.md`、`phase-2.md`、`phase-4.md`）は、003 の Req 1〜6 と矛盾する記述を見つけなかった。`phase-3.md` が参照する Python 側の版は存在せず（元教材の Python 版は `sources.md` に「Python / LangChain / LangGraph」とあるだけ）、M3 で実際に固定した Python パッケージの版は 10.1 の画像の記述（research S-5）にだけある。

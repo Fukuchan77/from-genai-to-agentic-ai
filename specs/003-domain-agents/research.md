@@ -237,7 +237,7 @@
 
 - **Context**: E2B のキーがあれば E2B、なければローカルコンテナ、どちらもなければ分析エージェントを無効にする（Req 3.8）。学習者が離れた時に破棄する必要がある（Req 3.7）。
 - **Decision**: `ports/sandbox` に `SandboxProvider` を定義し、E2B 実装、Docker 実装、`mock` の疑似実装を置く。選択は `lib/server/platform.ts` の 1 か所で行う。
-  セッションのアイドル判定は `Clock` を使う `sandbox/lifecycle.ts` が担い、既定 10 分で破棄する。E2B 側の `timeoutMs` は 15 分の安全網とする。
+  セッションのアイドル判定は `Clock` を使う `sandbox/lifecycle.ts` が担い、既定 10 分で破棄する。E2B 側の寿命（`timeoutMs`）は、アイドルの 3 倍（既定 30 分）の安全網とする（実装は `lifetimeMs ?? idleTimeoutMs * 3`。当初は「15 分」と書いたが、2026-10-29 に実装に合わせて直した。W8 レビュー）。
 - **Alternatives**: E2B の寿命だけに任せる（クライアント切断を検知できない）。
 - **Consequences**: 接続断の検知は Route Handler の `request.signal` に依存する。
 
@@ -479,7 +479,7 @@ Rancher Desktop の Docker Engine **29.5.3**（API 1.54、aarch64）で、Engine
 - **`serverExternalPackages` に足した集合は空**。`fast-xml-parser` は Turbopack のバンドルに入ったままビルドと実行が通った。`next.config.ts` は変えていない（理由を書けない追加はしない）。`card` イベント（`"kind":"card"`、`"arxivId":"2401.01234"`）がストリームに現れることが、実ランタイムで arXiv のフィクスチャのフィードを解析できた証拠になる。
 - **確認した内容**: `/api/research` が `mock` で完走する（Supervisor、検索・精読・市場影響の 3 つの子、`data-research-event` の 4 つの `agent`、`data-research-usage`、`data-research-result`）。引用の照合が実サーバーで働く（`未取得の手法 X` の行は除かれ、レポートの末尾に `## 引用の確認` が付く）。部分失敗のテーマでは `調査できなかった観点` に精読の欠落が載る。`maxSubagentCalls: 2` は使用量の状態パートに `"calls":2,"maxCalls":2` として現れ、空のテーマは 400 `invalid-request`。
 - **PROVE**: `parseArxivFeed` を空の配列を返すように壊して同じケースを実行すると、`"kind":"card"` の期待で失敗した（`card` が 1 つも流れない）。壊した変更は戻した。最初の壊し方（常に例外を投げる）は到達不能コードで `next build` の型検査が落ち、サーバーが起動しなかった。到達できる壊し方に直した。
-- **arXiv への実接続は未確認**: `mock` のフィクスチャだけで確かめた。`export.arxiv.org` への実際の応答（429 / 503 / `Retry-After` の実挙動、リダイレクト、ガード付き fetch（リダイレクトを辿らない）との相性）は未実測で、フィクスチャは文書化された形式に基づく。
+- **arXiv への実接続は一部のみ確認**: 429 / 503 / 301 の応答は 2026-10-19 に実測済み（I-5）。未実測なのは、複数件・0 件の正常系、HTTP 400 のフィード、ライブサーバーに対する再試行の挙動、リダイレクトとガード付き fetch の相性。
 - 未確認: `next dev` での同じ流れ、firefox / webkit での同じ 3 ケース（W5 の締めの `mise run test:e2e` で 3 エンジン全体を実行する）。
 
 ## W5 の gate 実測（24.2、2026-10-19、実測）
@@ -487,7 +487,7 @@ Rancher Desktop の Docker Engine **29.5.3**（API 1.54、aarch64）で、Engine
 - `env -u NODE_ENV mise run gate`: exit 0、52.1 秒（レビューの修正後）。ルート 419（期待された失敗 1 件）、`@platform/ai-core` 3,278 件成功 / 4 スキップ（W4 の締めは 2,778）、`web` 1,004（959）、`@platform/eval-suite` 7 / 8 スキップ、`Docs: 8 module documents, 110 test references verified`。`tool-risk-declared: scanned 342 FILES`、`TypeScript packages/ai-core/tsconfig.json: 356 files`。
 - 3 エンジンの E2E（`mise run test:e2e`）は 402 件成功（修正の前）。修正後に `research:` の 3 件を chromium で再実行して成功。`check:client-bundle` は成功（24 ファイル、16 名前と 5 センチネル）。
 - ミューテーション: `research/citations.ts` 82.41、`research/budget.ts` 88.89（2 ファイルだけの実行で 83.22、閾値 70）。
-- **arXiv の 429 / 503 / `Retry-After` の実挙動は未実測**で、`fixtures/arxiv/` は文書化された形式と推測に基づく（実 API への接続は `mock` の外でしか確かめられない）。
+- **arXiv**: 429 / 503 / 301 の応答（`content-type`、本文、`Retry-After`）は I-5 で実測済みで、`parse.test.ts` に固定されている。未実測なのは、複数件・0 件の正常系、HTTP 400 のフィード、ライブサーバーに対する再試行の挙動。
 
 ## W6 の実測（2026-10-24）
 
@@ -507,3 +507,69 @@ Rancher Desktop の Docker Engine **29.5.3**（API 1.54、aarch64）で、Engine
 - WebKit の Playwright は、multipart の `postData()` にファイルの中身を含めない（ヘッダーと空の本文だけ）。`analysis.spec.ts` はファイル名をすべてのエンジンで、中身を WebKit 以外で確かめる。
 - **W7 の敵対的レビュー**（`.sdd/reviews/003-domain-agents-impl-w7-review-2026-10-25.md`）: REQUEST_CHANGES（HIGH 1 / MEDIUM 9 / LOW 10）。修正と記録は同ファイルの「Responses」を参照。
 - **未実測・未検証**: 実サーバーでブラウザの切断が `request.signal` を abort するか（W4 F-21）。モックのサンドボックスが数ミリ秒で終わり、abort を観測できなかった（raw `http` で応答ヘッダーの直後にソケットを切る試みは、25 回中 25 回とも `released` で、abort の前に実行が終わっていた）。遅いモックのシナリオか、分析のストリームに間隔を指定する手段が要る。Stryker の W7 の対象は無い（画面のコンポーネントは対象外）。
+
+## W8 の実測: `local`・`container`（39.1、39.2、2026-10-29、実測）
+
+実行環境: macOS、Ollama（`llama-server -np 1 -c 4096`、同時処理は 1 スロット）。Docker は Rancher Desktop 29.5.3（`DOCKER_HOST=unix://$HOME/.rd/docker.sock`）、画像 `agentic-ai-sandbox:local`（この回では再ビルドしていない）。
+**値は小さなローカルモデルでの少数回の観察であり、手法の優劣の根拠ではない。** 反復は 1〜3 回で、分散は見ていない。
+
+### 38.1: 高水準ツールと低レベルの組み合わせ（`granite4.2:latest`、3 回ずつ、約 135 秒）
+
+| 方式 | ステップ（最小-中央-最大） | トークン（最小-中央-最大） | 呼ばれたツール |
+|---|---|---|---|
+| `findAndReadFiles`（高水準） | 2-2-2 | 1,839-1,894-1,900 | `findAndReadFiles` |
+| `searchFiles` + `readFile`（低レベル） | 4-4-4 | 5,444-5,641-5,696 | `searchFiles > readFile > readFile` |
+
+高水準のほうが中央値でステップが 2、トークンが 3,747 少ない（トークン比 0.34）。全 6 回が `completed`。
+
+### 38.2: 修正ループ（`granite4.2:latest` + Docker のサンドボックス、3 回、約 144 秒）
+
+**測定時は、テスト内でネットワークガードを `container` 用に入れ直して Docker のソケットを許可した**（`local` レーンは既定で Docker のソケットを遮断する。`setup-hermetic.test.ts` が固定している設計）。その迂回は `sandbox-import-scope`（動的 import の指定子は文字列リテラル）と型検査（`rootDir`）に反するため、最終のテストからは外した。**最終のテストは `mise run test:local` では「Docker のソケットが遮断される」理由でスキップされ、この表は再現できない**（Ollama と Docker の両方を許すレーンが要る。人の判断）。
+
+3 回とも `succeeded`（完走率 100%、表 1 つ）。修正は 1 回ずつ（平均 1.00。上限 3）、実行は 3〜4 回、1 回あたり 43〜55 秒。誤りは「存在しない `revenue` 列を読む」固定の 1 種類だけなので、一般的な修正能力の値ではない。
+
+### 38.3: 階層型リサーチと単一エージェント（`llama3.2:latest`、各質問 1 回ずつ、約 189 秒）
+
+| 方式 | トークン（平均） | 引用が見つかった論文だけ | 見つかった論文を引用した |
+|---|---|---|---|
+| 階層（Supervisor + 3 つ） | 2,433 | 3/3 | 1/3 |
+| 単一エージェント | 1,555 | 0/3 | 0/3 |
+
+Supervisor の呼び分けは、広い質問と市場の質問でサブエージェントを 1 つも呼ばず、手法の質問で `search` を 1 回呼んだだけだった。**このモデルでは階層型の利点（呼び分け）はほとんど観察できず**、階層は単一の約 1.6 倍のトークンを使った。「単一 0/3」は引用検査が単一側の出力を有効と判定しなかったという意味で、品質の比較ではない（単一側の出力の読み方は未検証）。fixture の arXiv は全クエリで同じ 3 件を返す。
+
+### 38.4: 合議と単一エージェント（`llama3.2:latest`、2 回、約 402 秒）
+
+| 方式 | 回 | トークン | ラウンド | 合意 | 文案が変わった |
+|---|--:|--:|--:|---|---|
+| 合議 | 1 | 5,249 | 1 | 合意 | いいえ |
+| 合議 | 2 | 20,002 | 2 | 合意 | いいえ |
+| 単一 | 1 | 435 | 1 | — | はい |
+| 単一 | 2 | 769 | 1 | — | はい |
+
+合意に達した割合は 2/2。合議の平均 12,626 トークンは単一の平均 602 の約 21 倍。**合議は「合意した」と判定したが、文案は変わらなかった**（合意の判定と改善は別の事柄）。
+
+### 38.2〜38.4 を実行するときに分かったこと
+
+- **合議のペルソナ呼び出しが、既定の 1 人あたりの上限 60 秒に収まらなかった（原因は未特定）。** 合議は 1 人ずつ直列に呼ぶ（`runCouncil` は `cooperateByRole` を 1 役割ずつ呼び、その中も逐次）ので、「並列の呼び出しが並ぶ」という当初の説明は誤りだった（W8 レビュー F-2）。 `granite4.2:latest` で 3 人とも `timeout`（ステップ 0、トークン 0）になり、`provider-unavailable`（「どのペルソナも発言できませんでした」）で止まった。評価テストは `roleLimits.maxDurationMs` を 300 秒にして対処した。**アプリの既定は 60 秒のまま**で、同じ構成では同じ失敗が起きうる（3-6 の解説の「確認できていないこと」に書く）。原因の候補で除外できていないもの: そのモデルの長い出力（暴走）、同時に走る他の `local` テストファイルが 1 スロットの Ollama を奪い合ったこと（Vitest はファイルを並列に実行する。`--no-file-parallelism` での再測定が要る）。
+- `granite4.2:latest` は上限を 300 秒にしても、合議の途中で Ollama から `400 Bad Request` を返した（本文は取れていない）。同じモデルの単一エージェント（各視点を含むプロンプト）は 300 秒でも 1 ステップも終えず出力が空だった。Ollama 自体は正常（短い呼び出しは約 15 秒）。原因は特定していない（長い出力の暴走か、コンテキスト 4,096 の超過の疑い。未検証）。このため 38.3・38.4 は `AI_MODEL_CHAT=llama3.2:latest` で実行した。38.1・38.2 は既定の `granite4.2:latest`。
+- 38.3 の反復は 3 → 1、38.4 は 3 → 2 に減らした（所要時間のため。38.3 は 3 回で 18 実行、1 回でも約 3 分）。
+
+### 39.2: `container` と手動の項目
+
+- `mise run test:container`（Rancher Desktop の Docker、`DOCKER_HOST` を設定）: `provider.container.test.ts` 17 件成功、スキップ 0（`executed=17 passed=17 failed=0 skipped=0`）。S-5（Docker Engine API とソケット）の確認は W4 の「W4 の実測: Docker サンドボックス」のとおりで、Rancher Desktop のソケットは探索先に無いため `DOCKER_HOST` が要る。
+- `mise run sandbox:build`: この回は**未実行**（画像は W4 でビルド済みのものが存在した）。
+- **S-4（E2B）: 未実行**（`E2B_API_KEY` が無い。外向き通信の既定は文書の記述のまま）。
+- **S-6（GitHub の MCP の注釈）: 未実行**（`GITHUB_TOKEN` が無い）。
+- Docker Desktop・Linux のネイティブでのソケット: 未実行（人が行う）。
+
+### W8 の解説の確認で見つかった食い違い（2026-10-29）
+
+- ADR-6 は E2B 側の `timeoutMs` を「15 分の安全網」とするが、実装（`sandbox/lifecycle.ts`）は `lifetimeMs ?? idleTimeoutMs * 3`（既定のアイドル 10 分なら 30 分）である。3-3 の解説は実装に合わせて「アイドル時間の3倍」と書いた。**2026-10-29 に人の決定で ADR-6 を実装に合わせて直した**（上の ADR-6）。
+
+## W8 の最終統合の実測（42.1、2026-10-29、実測）
+
+- `env -u NODE_ENV TURBO_FORCE=true mise run gate`（キャッシュなし、40 件の `Gate test summary` を含む 10 回）: **`mise run gate:repeat` は 10 回とも成功（exit 0）**。1 回の内訳は root 427、`@platform/ai-core` 3,681 件成功 / 4 スキップ、`web` 1,660、`@platform/eval-suite` 39 件成功 / 12 スキップ（`local` 専用）、`docs:check` 14 文書・245 参照。`check:repo-rules` は 13 規則（`workflow-no-agent-loop` は 43 ファイル、`mcp-import-scope`・`sandbox-import-scope` は 656 ファイルを走査）。
+- `mise run test:mutation`（Stryker、閾値 70）: **86.19（成功）**。所要 100 分 40 秒。
+- `mise run secret-scan`: 成功（292 コミット、漏えいなし）。
+- **`mise run audit`: 失敗（M3 の変更とは無関係）。** 中程度 1 件: `qs`（`>=6.7.0 <=6.16.0`、修正版 `>=6.16.1`）の `qs.stringify` の DoS（GHSA-6pq8-jhm2-2vcw）。経路は `@stryker-mutator/core` → `typed-rest-client` → `qs` の開発用依存のみ。`pnpm-workspace.yaml` にはすでに `"typed-rest-client>qs": "^6.16.0"` の override があり、解決は 6.16.0 である。必要なのは追加ではなく `^6.16.1` への引き上げ。W7 の締め（2026-10-25）以降に出た勧告と見られる。直すには既存の `overrides` の引き上げ（依存の変更）が要り、24 時間規則の確認も要るため、行わず人に委ねる。
+- **`mise run test:e2e`（3 エンジン）: 全体が緑の 1 回は得られなかった。** 4 回の全体実行の結果: (1) 731 成功 / 4 失敗（WebKit の `/summarize` の a11y、30 秒タイムアウト）、(2) 719 成功 / 16 失敗（41.2 分）、(3) 727 成功 / 8 失敗（22.8 分。すべて 30 秒または browser launch 180 秒のタイムアウト）、(4) `--workers=2` で 733 成功 / 2 失敗（3.8 分。Firefox ダークの `/workflows`・`/research` の `color-contrast`、ボタンの `hover:bg-primary/90`）。実行ごとに失敗が入れ替わり、**失敗分だけを単独で再実行すると毎回成功**した（(1)(3) の失敗分 8 件が 8/8 成功、(4) の 2 件は 8 回繰り返して 16/16 成功）。実行中のロードアベレージは 25〜31（他のプロセスによる）で、W7 の締め（同じコードで 735 件成功、3 分 27 秒）より極端に遅かった。**判断: 負荷依存の不安定さと見るが、緑の全体実行は未取得。** (4) の `color-contrast` は、ダークへの切り替え直後に色の遷移の途中で axe が測った可能性が高い（未確認）。a11y の仕様が遷移の完了を待たない点は W7 の E2E の改善候補（W8 の境界外）。

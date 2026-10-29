@@ -407,3 +407,18 @@
 - Not re-run in ship (run earlier the same day on the same code): E2E 735 passed on three engines (3 min 27 s), `check:client-bundle` clean. Stryker not run.
 - Commits: `ac487c1` (ai-core: module copies), `473c5a4` (web server, fixtures, Biome), `1f6859b` (six screens), `5208b08` (E2E specs); docs ride in the docs commit.
 - Left alone: the Biome schema-version info (2.5.14 vs CLI 2.5.15) is pre-existing.
+
+
+## W8 implementation (`/sdd-impl 003-domain-agents`, 2026-10-29)
+
+- Preflight: the gate lane needs nothing external. `local` needs Ollama (was up); Docker (Rancher Desktop, `DOCKER_HOST=unix://$HOME/.rd/docker.sock`) came up during the session; `E2B_API_KEY`, `GITHUB_TOKEN` and `COHERE_API_KEY` were missing (optional hands-on only → recorded "未実行").
+- Work: 37.x (5 regression files, PROVE 6 / 8 / 11 / 15 stubs, sources untouched), 38.x (4 capability files + README), 39.x (measured and recorded in research.md "W8 の実測"), 40.x (six module docs by fresh agents, `REQUIRED_TOPICS`, phase-3, index), 41.x (traceability, steering, AGENTS.md, changes-from-drafts), 42.2. 42.1 and 42.3 and 38.2 are open (see tasks.md).
+- Root causes met: (1) the sandbox-import-scope rule and `rootDir` rejected a guard workaround in the analysis-fix test, and an existing test pins that the local lane blocks the Docker socket — removed the workaround instead of weakening the guard; the test now always skips. (2) `check:model-ids` forbids model IDs in docs. (3) E2E: four full runs were not green; every failure was a 30 s / 180 s timeout or a dark-mode `color-contrast` that passed alone (8/8 and 16/16); system load average was 25–31 from other processes.
+- **Lessons**: (1) I wrote a wrong causal explanation ("parallel calls queue up") into five places from one diagnosis; the reviewer disproved it from the code. Check a hypothesis against the implementation before recording it. (2) A ticked task whose test cannot run in any lane (38.2) was caught only by the review. (3) A 100-minute mutation run and a 41-minute E2E run were dominated by machine load, not by the code.
+- Review: `.sdd/reviews/003-domain-agents-impl-w8-review-2026-10-29.md` (REQUEST_CHANGES: 3 HIGH, 7 MEDIUM, 12 LOW); fixes and responses are in the same file. No fresh re-review.
+- Verification (after the fixes): `env -u NODE_ENV TURBO_FORCE=true mise run gate` exit 0 — root 427, `@platform/ai-core` 3,681 / 4 skipped, `web` 1,660, `@platform/eval-suite` 39 / 12 skipped, `docs:check` 14 documents / 247 references, 13 repo rules. `gate:repeat` 10/10 (before the fixes; docs and test comments only changed afterwards). Mutation 86.19 (threshold 70). `secret-scan` clean. `audit` fails on a `qs` advisory in the Stryker dev path (not M3). `test:container` 17 passed.
+
+### W8 follow-up after the human decisions (2026-10-29)
+
+- plan C9 → soft cap; ADR-6 → idle × 3; 38.2 and the out-of-boundary items → M4 (tasks.md "004 への引き継ぎ事項"). The `qs` override was raised to `^6.16.1` (resolved 6.17.0, lockfile diff `qs` only): `mise run audit` passes.
+- New test in `research-budget.test.ts` (soft-cap bound) with PROVE recorded in the review file; sources restored (`cmp` against a backup, `git diff` empty).

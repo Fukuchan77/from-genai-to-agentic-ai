@@ -140,6 +140,9 @@ plan CL-21 の定めにより、次を記録する。解説（`docs/modules/3-3-
   ネットワーク制限を再検討する。Docker は `NetworkMode: none` のため該当しない。
 - **外部コンテンツの汚染状態**（CL-10）: M3 は取り込みの記録口（5.2）だけを置く。判定と遮断は 004 Req 4.8 で実装する。
 - **MCP の注釈は信頼しない前提**（ADR-7）: 注釈のないツールは `destructive` として登録しない。004 の承認ゲートが `risk` を入力にする。
+- **M4 の最初のタスク（2026-10-29 に人が決定）**: W8 の境界外で残った次の項目を、`apps/web` の小さな修正としてまとめる。(1) `/recommend` の往復テスト（`readUIMessageStream` で組み立てた assistant メッセージを次のリクエストに渡す。`apps/web/app/api/marketing/recommend/route.test.ts`。W6 2 回目 F-8）。(2) W7 F-17（入力例と上限の重複）と F-18（未投入の判定を文言でなく `details` で行う）。(3) `plan.md` の Data Model の `CouncilRound` / `data-council-result` の同期と `council.ts` の PROVE（W6 F-20、2 回目 F-13）。
+- **38.2（修正ループの能力テスト）は M4 へ送る（2026-10-29 に人が決定）**: Ollama と Docker の両方を許すレーン（eval-suite の設定、ネットワークガード、mise タスク）は今は足さない。テストは常にスキップされる状態で残し、`[ ]` のままにする。
+- **共有予算はソフトな上限（2026-10-29 に人が決定、plan C9 を改訂済み）**: 合計は `maxTotalTokens` を超えうる。004 が予算を費用の上限として使うなら、ハードな上限（ステップの途中での中断）を別に設計する。
 
 ## 人が行うこと
 
@@ -217,22 +220,22 @@ _Depends:_ 11.1, 15.3, 19.6, 22.4, 27.8
 _Requirements:_ 1.3, 1.5, 2.1, 2.6, 2.7, 4.8, 6.5
 _Traces:_ REQ-001, REQ-002, REQ-004, REQ-006, C16
 
-- [ ] 37.1 (P) `tests/regression/mcp-fatal-stop.test.ts`: 致命的エラー（許可ルート外のパスの読み取り）でツール呼び出しが止まり、停止理由が `error` になり、後続のツールが実行されない配管を、`mock` と自作サーバー（同一プロセスの接続）で検証する
+- [x] 37.1 (P) `tests/regression/mcp-fatal-stop.test.ts`: 致命的エラー（許可ルート外のパスの読み取り）でツール呼び出しが止まり、停止理由が `error` になり、後続のツールが実行されない配管を、`mock` と自作サーバー（同一プロセスの接続）で検証する
   _Boundary:_ `packages/eval-suite/tests/regression/mcp-fatal-stop.test.ts`
   _Depends:_ 10.4, 8.4
   _Requirements:_ 1.3, 1.5
   _Traces:_ REQ-001, C16
-- [ ] 37.2 (P) `tests/regression/helpdesk-plan.db.test.ts`: 問い合わせ → 計画 → 実行 → 判断 → チケット保存（`resolved` と `escalated`）の配管を、`mock` と PGlite で検証する
+- [x] 37.2 (P) `tests/regression/helpdesk-plan.db.test.ts`: 問い合わせ → 計画 → 実行 → 判断 → チケット保存（`resolved` と `escalated`）の配管を、`mock` と PGlite で検証する
   _Boundary:_ `packages/eval-suite/tests/regression/helpdesk-plan.db.test.ts`
   _Depends:_ 14.1, 15.1
   _Requirements:_ 2.1, 2.6, 2.7
   _Traces:_ REQ-002, C16
-- [ ] 37.3 (P) `tests/regression/research-budget.test.ts`: Supervisor の呼び出し回数と共有トークン予算の上限（`maxSubagentCalls: 2` に下げて検証する）を `mock` で検証する
+- [x] 37.3 (P) `tests/regression/research-budget.test.ts`: Supervisor の呼び出し回数と共有トークン予算の上限（`maxSubagentCalls: 2` に下げて検証する）を `mock` で検証する
   _Boundary:_ `packages/eval-suite/tests/regression/research-budget.test.ts`
   _Depends:_ 22.5
   _Requirements:_ 4.8
   _Traces:_ REQ-004, C16
-- [ ] 37.4 (P) `tests/regression/marketing-catalog.db.test.ts`: レコメンドがカタログの商品 ID だけを返し、カタログ外の ID が除去されて件数が記録される配管を、`mock` と PGlite で検証する
+- [x] 37.4 (P) `tests/regression/marketing-catalog.db.test.ts`: レコメンドがカタログの商品 ID だけを返し、カタログ外の ID が除去されて件数が記録される配管を、`mock` と PGlite で検証する
   _Boundary:_ `packages/eval-suite/tests/regression/marketing-catalog.db.test.ts`
   _Depends:_ 27.1, 26.7
   _Requirements:_ 6.5
@@ -241,6 +244,11 @@ _Traces:_ REQ-001, REQ-002, REQ-004, REQ-006, C16
 ### Implementation Notes
 
 - W6 からの持ち越し（tasks.md「W6 からの持ち越し」）: 既定のラウンド数のテスト（F-16）、INVARIANT の skip、recommend の往復テスト。
+- 37.3 の共有トークン予算の部分は、余裕のある 20,000 でしか合計を上限と比べていない。`mock` の m3-4 では合計が `maxTotalTokens` を超える（960 → 1,370、7,000 → 9,100、10,000 → 11,800）。plan C9 は「全体が収まる」と書いており、plan を「ソフトな上限」に直すと 2026-10-29 に人が決定し、`research-budget.test.ts` が「`maxTotalTokens` + Supervisor 自身の消費」を固定した（W8 レビュー F-1）。
+- 37.x の結果（2026-10-29）: 回帰テスト 4 ファイル + `marketing-council.test.ts`（境界は大タスクの `tests/regression/*` 内）。eval-suite は 39 件成功・12 件 `local` 専用スキップ（37.x の時点は 8 件、38.x で 4 件増えた）。各テストは実装を壊す PROVE で失敗を確認済み（37.1: 6 種、37.2: 8 種、37.3: 11 種、37.4: 15 種）。
+- F-16（既定 3 ラウンドと `max-rounds`）と INVARIANT の skip（モデレーターが大きい組み合わせ。ソフトキャップなので `spent <= max + モデレーター 1 回分` で固定）は `marketing-council.test.ts` で対応。
+- **未対応（持ち越し）**: recommend の往復テスト（2 回目 F-8、`readUIMessageStream`）。`ai` は eval-suite の依存になく、ストリームの組み立ては `apps/web` のルートにあるため、eval-suite からは書けない。`apps/web/app/api/marketing/recommend/route.test.ts` に足すのが筋で、W8 の境界外。人の判断を仰ぐ。
+- 37.3 の注意: 予算の閾値（960 / 7,000 / 10,000 / 20,000）は m3-4 のフィクスチャの usage に依存する。
 
 ---
 
@@ -253,7 +261,7 @@ _Depends:_ 37.1, 37.2, 37.3, 37.4
 _Requirements:_ 1.12, 3.3, 4.2, 4.5, 6.2
 _Traces:_ REQ-001, REQ-003, REQ-004, REQ-006, C16
 
-- [ ] 38.1 (P) `tests/capability/mcp-compare.local.test.ts`: 高水準ツール（`findAndReadFiles`）と低レベルの組み合わせのステップ数・トークン数の比較を観察する（Req 1.12）
+- [x] 38.1 (P) `tests/capability/mcp-compare.local.test.ts`: 高水準ツール（`findAndReadFiles`）と低レベルの組み合わせのステップ数・トークン数の比較を観察する（Req 1.12）
   _Boundary:_ `packages/eval-suite/tests/capability/mcp-compare.local.test.ts`
   _Depends:_ 10.5
   _Requirements:_ 1.12
@@ -263,17 +271,17 @@ _Traces:_ REQ-001, REQ-003, REQ-004, REQ-006, C16
   _Depends:_ 18.4, 17.8
   _Requirements:_ 3.3
   _Traces:_ REQ-003, C16
-- [ ] 38.3 (P) `tests/capability/research-quality.local.test.ts`: Supervisor が子を呼び分け、未知の論文を引用しない割合を観察し、同じ課題を単一エージェントで行った場合とのトークン使用量を比較する（3-4 の解説に使う。憲章 原則 1）
+- [x] 38.3 (P) `tests/capability/research-quality.local.test.ts`: Supervisor が子を呼び分け、未知の論文を引用しない割合を観察し、同じ課題を単一エージェントで行った場合とのトークン使用量を比較する（3-4 の解説に使う。憲章 原則 1）
   _Boundary:_ `packages/eval-suite/tests/capability/research-quality.local.test.ts`
   _Depends:_ 22.4
   _Requirements:_ 4.2, 4.5
   _Traces:_ REQ-004, C16
-- [ ] 38.4 (P) `tests/capability/council-agreement.local.test.ts`: 合議が上限内で合意に達する割合を観察し、単一エージェントで同じ文案を改善した場合とのトークン使用量を比較する（3-6 の解説に使う。憲章 原則 1）
+- [x] 38.4 (P) `tests/capability/council-agreement.local.test.ts`: 合議が上限内で合意に達する割合を観察し、単一エージェントで同じ文案を改善した場合とのトークン使用量を比較する（3-6 の解説に使う。憲章 原則 1）
   _Boundary:_ `packages/eval-suite/tests/capability/council-agreement.local.test.ts`
   _Depends:_ 26.7
   _Requirements:_ 6.2
   _Traces:_ REQ-006, C16
-- [ ] 38.5 `tests/capability/README.md`: M3 の評価の置き場所と gate / `local` / `container` の線引きを足す
+- [x] 38.5 `tests/capability/README.md`: M3 の評価の置き場所と gate / `local` / `container` の線引きを足す
   _Boundary:_ `packages/eval-suite/tests/capability/README.md`
   _Depends:_ 38.1, 38.2, 38.3, 38.4
   _Requirements:_ 1.12
@@ -281,6 +289,8 @@ _Traces:_ REQ-001, REQ-003, REQ-004, REQ-006, C16
   _Verify:_ README の記述と、実在するテストのファイル名が一致する（`mise run docs:check` が成功する）
 
 ### Implementation Notes
+- **38.2 は未完（チェックを外した）**: コミット済みのテストは、`local` レーンが Docker のソケットを意図的に遮断し（`setup-hermetic.test.ts` が固定）、eval-suite に `container` レーンも無いため、どのレーンでもスキップされる（W8 レビュー F-3）。実測の表は、ガードを一時的に許可した版で 1 度だけ取った。Ollama と Docker の両方を許すレーンは、2026-10-29 に人が「今は足さず M4 へ送る」と決定した。
+- 38.3・38.4 の実測は `AI_MODEL_CHAT` を別の小型モデルに替えて取った。既定のモデルでは合議が完走しなかった（原因は未特定）。実行は 1 ファイルずつで、`--no-file-parallelism` の再測定はしていない。
 
 ---
 
@@ -293,13 +303,13 @@ _Depends:_ 38.5
 _Requirements:_ 1.12, 3.1, 3.3, 4.2, 6.2
 _Traces:_ REQ-001, REQ-003, REQ-004, REQ-006, C16
 
-- [ ] 39.1 `mise run test:local`（Ollama）で 38.1〜38.4 を実行し、結果（高水準と低レベルのステップ数・トークン数、修正ループの完走率、引用の遵守率、合意に達する割合、単一エージェントとのトークン比較）を、使用したモデルとともに research.md に追記する。Ollama が使えない環境では未実行と明記し、解説にはその旨を書く（実測値を捏造しない）
+- [x] 39.1 `mise run test:local`（Ollama）で 38.1〜38.4 を実行し、結果（高水準と低レベルのステップ数・トークン数、修正ループの完走率、引用の遵守率、合意に達する割合、単一エージェントとのトークン比較）を、使用したモデルとともに research.md に追記する。Ollama が使えない環境では未実行と明記し、解説にはその旨を書く（実測値を捏造しない）
   _Boundary:_ `specs/003-domain-agents/research.md`
   _Depends:_ 38.5
   _Requirements:_ 1.12, 3.3, 4.2, 6.2
   _Traces:_ REQ-001, REQ-003, REQ-004, REQ-006, C16
   _Verify:_ research.md に実行日、モデル、各観察値（または「未実行」と理由）が書かれている
-- [ ] 39.2 `mise run sandbox:build` と `mise run test:container`（Docker）の結果、macOS のソケットの結果（S-5）、E2B（`E2B_API_KEY`）と GitHub の MCP（`GITHUB_TOKEN`）のハンズオンの結果（任意）を、research.md の該当 spike の節に追記する。人が実行する項目で、実行されなかったものは「未実行」と書く
+- [x] 39.2 `mise run sandbox:build` と `mise run test:container`（Docker）の結果、macOS のソケットの結果（S-5）、E2B（`E2B_API_KEY`）と GitHub の MCP（`GITHUB_TOKEN`）のハンズオンの結果（任意）を、research.md の該当 spike の節に追記する。人が実行する項目で、実行されなかったものは「未実行」と書く
   _Boundary:_ `specs/003-domain-agents/research.md`
   _Depends:_ 39.1
   _Requirements:_ 3.1, 3.8
@@ -307,6 +317,7 @@ _Traces:_ REQ-001, REQ-003, REQ-004, REQ-006, C16
   _Verify:_ research.md の S-4・S-5・S-6 の節に実行日と結果（または「未実行」）が書かれている
 
 ### Implementation Notes
+- 実測は小型のローカルモデルで、`granite` 系の既定モデルは合議を完走しなかったため、38.3・38.4 は別の小型モデルで取った（原因は未特定）。Docker は Rancher Desktop（`DOCKER_HOST` を設定）で `test:container` 17 件成功。E2B・GitHub MCP は未実行（キー無し）。
 
 ---
 
@@ -321,42 +332,42 @@ _Depends:_ 36.1, 39.2
 _Requirements:_ 1.1, 1.17, 2.1, 3.1, 4.1, 5.1, 6.1
 _Traces:_ REQ-001, REQ-002, REQ-003, REQ-004, REQ-005, REQ-006, C16
 
-- [ ] 40.1 (P) `docs/modules/3-1-aci-and-mcp.md`: ACI 設計（説明文の形式、修正ガイド、`concise` / `detailed`、意味のある識別子、思考ツール、高水準ツール）、MCP（自作サーバー、許可リスト、注釈とリスク区分、致命的エラーのラッチ、書き込み系を登録しない理由）を、移植時の変更点・本番ではどう作るか（`docs/guide/mcp.md`）・確認できていないこと（GitHub の MCP の注釈、S-6）とともに書く
+- [x] 40.1 (P) `docs/modules/3-1-aci-and-mcp.md`: ACI 設計（説明文の形式、修正ガイド、`concise` / `detailed`、意味のある識別子、思考ツール、高水準ツール）、MCP（自作サーバー、許可リスト、注釈とリスク区分、致命的エラーのラッチ、書き込み系を登録しない理由）を、移植時の変更点・本番ではどう作るか（`docs/guide/mcp.md`）・確認できていないこと（GitHub の MCP の注釈、S-6）とともに書く
   _Boundary:_ `docs/modules/3-1-aci-and-mcp.md`
   _Depends:_ 36.1, 39.2
   _Requirements:_ 1.1, 1.3, 1.5, 1.7, 1.8, 1.12, 1.16, 1.17
   _Traces:_ REQ-001, C16
-- [ ] 40.2 (P) `docs/modules/3-2-helpdesk-agent.md`: Plan-and-Execute（計画の検査、スケジューラ、`continue` / `replan` / `finish`、差分）、チケットとステップ上限、認証情報の形状検査、計画をワークフローで書き `ToolLoopAgent` を使わない理由（ADR-9）、憲章 原則 1 の⚠ 2 の記録を書く
+- [x] 40.2 (P) `docs/modules/3-2-helpdesk-agent.md`: Plan-and-Execute（計画の検査、スケジューラ、`continue` / `replan` / `finish`、差分）、チケットとステップ上限、認証情報の形状検査、計画をワークフローで書き `ToolLoopAgent` を使わない理由（ADR-9）、憲章 原則 1 の⚠ 2 の記録を書く
   _Boundary:_ `docs/modules/3-2-helpdesk-agent.md`
   _Depends:_ 36.1, 39.2
   _Requirements:_ 2.1, 2.2, 2.3, 2.4, 2.6, 2.7, 2.8, 2.10
   _Traces:_ REQ-002, C16
-- [ ] 40.3 (P) `docs/modules/3-3-data-analysis-agent.md`: サンドボックス（E2B と Docker の選択順、隔離の制限）、アップロードの検査、修正ループ（3 回）、図表の受け渡し（目印の行）、アイドル破棄を書く。**「確認できていないこと」に E2B の外向き通信の既定（S-4）と、004 への引き継ぎ事項（`runPython` のリスク区分とネットワーク制限の再検討。CL-21）を書く**
+- [x] 40.3 (P) `docs/modules/3-3-data-analysis-agent.md`: サンドボックス（E2B と Docker の選択順、隔離の制限）、アップロードの検査、修正ループ（3 回）、図表の受け渡し（目印の行）、アイドル破棄を書く。**「確認できていないこと」に E2B の外向き通信の既定（S-4）と、004 への引き継ぎ事項（`runPython` のリスク区分とネットワーク制限の再検討。CL-21）を書く**
   _Boundary:_ `docs/modules/3-3-data-analysis-agent.md`
   _Depends:_ 36.1, 39.2
   _Requirements:_ 3.1, 3.2, 3.3, 3.4, 3.5, 3.7, 3.8, 3.9
   _Traces:_ REQ-003, C16, CL-21
-- [ ] 40.4 (P) `docs/modules/3-4-hierarchical-research.md`: Supervisor と 3 つのサブエージェント（Agent-as-a-Tool）、要約だけを返す境界、共有予算と呼び出し回数、引用の照合、arXiv の利用規約（3 秒間隔、キャッシュ）を書き、**単一エージェントとのトークン使用量の比較（39.1 の実測または「未実行」）を記録する**（憲章 原則 1 の⚠ 1）
+- [x] 40.4 (P) `docs/modules/3-4-hierarchical-research.md`: Supervisor と 3 つのサブエージェント（Agent-as-a-Tool）、要約だけを返す境界、共有予算と呼び出し回数、引用の照合、arXiv の利用規約（3 秒間隔、キャッシュ）を書き、**単一エージェントとのトークン使用量の比較（39.1 の実測または「未実行」）を記録する**（憲章 原則 1 の⚠ 1）
   _Boundary:_ `docs/modules/3-4-hierarchical-research.md`
   _Depends:_ 36.1, 39.1
   _Requirements:_ 4.1, 4.4, 4.5, 4.6, 4.7, 4.8, 4.10
   _Traces:_ REQ-004, C16
-- [ ] 40.5 (P) `docs/modules/3-5-requirements-interview.md`: ペルソナ面接、十分性の判定（`missing` の検査）、ラウンド上限、固定の章立ての要件定義書、状態をセッションに置く理由を書く
+- [x] 40.5 (P) `docs/modules/3-5-requirements-interview.md`: ペルソナ面接、十分性の判定（`missing` の検査）、ラウンド上限、固定の章立ての要件定義書、状態をセッションに置く理由を書く
   _Boundary:_ `docs/modules/3-5-requirements-interview.md`
   _Depends:_ 36.1, 39.2
   _Requirements:_ 5.1, 5.2, 5.3, 5.4, 5.5, 5.6
   _Traces:_ REQ-005, C16
-- [ ] 40.6 (P) `docs/modules/3-6-marketing-support.md`: ラウンドロビンの合議、合意の判定（モデルの宣言とコードの検査）、プロファイルのマージ、カタログ照合を書き、**単一エージェントとのトークン使用量の比較（39.1 の実測または「未実行」）を記録する**（憲章 原則 1 の⚠ 1）
+- [x] 40.6 (P) `docs/modules/3-6-marketing-support.md`: ラウンドロビンの合議、合意の判定（モデルの宣言とコードの検査）、プロファイルのマージ、カタログ照合を書き、**単一エージェントとのトークン使用量の比較（39.1 の実測または「未実行」）を記録する**（憲章 原則 1 の⚠ 1）
   _Boundary:_ `docs/modules/3-6-marketing-support.md`
   _Depends:_ 36.1, 39.1
   _Requirements:_ 6.1, 6.2, 6.4, 6.5
   _Traces:_ REQ-006, C16
-- [ ] 40.7 `docs/phases/phase-3.md` と `docs/modules/index.md`: Phase 3 の成熟度の水準（IBM の Level 2〜3）とモジュール一覧、3-1〜3-6 を「提供済み」にし、解説とタグへのリンクを足す
+- [x] 40.7 `docs/phases/phase-3.md` と `docs/modules/index.md`: Phase 3 の成熟度の水準（IBM の Level 2〜3）とモジュール一覧、3-1〜3-6 を「提供済み」にし、解説とタグへのリンクを足す
   _Boundary:_ `docs/phases/phase-3.md`, `docs/modules/index.md`
   _Depends:_ 40.1, 40.2, 40.3, 40.4, 40.5, 40.6
   _Requirements:_ 1.1, 2.1, 3.1, 4.1, 5.1, 6.1
   _Traces:_ REQ-001, REQ-002, REQ-003, REQ-004, REQ-005, REQ-006, C16
-- [ ] 40.8 `scripts/check-docs.mjs` の `REQUIRED_TOPICS` に `3-1`〜`3-6` を足す + `check-docs.test.mjs` に、新しい必須トピックが欠けたときに失敗すること、習熟度チェックリストのテスト名が実在することを先に足す。`005-hub-alignment` の解説リンクの検査が入っていれば、3-1〜3-6 にも適用されることを確認する
+- [x] 40.8 `scripts/check-docs.mjs` の `REQUIRED_TOPICS` に `3-1`〜`3-6` を足す + `check-docs.test.mjs` に、新しい必須トピックが欠けたときに失敗すること、習熟度チェックリストのテスト名が実在することを先に足す。`005-hub-alignment` の解説リンクの検査が入っていれば、3-1〜3-6 にも適用されることを確認する
   _Boundary:_ `scripts/check-docs.mjs`, `scripts/check-docs.test.mjs`
   _Depends:_ 40.7
   _Requirements:_ 1.1, 2.1, 3.1, 4.1, 5.1, 6.1
@@ -364,6 +375,10 @@ _Traces:_ REQ-001, REQ-002, REQ-003, REQ-004, REQ-005, REQ-006, C16
   _Verify:_ `mise run docs:check` が成功する。`mise run gate` が成功する
 
 ### Implementation Notes
+- 解説 6 本は fresh-context のエージェントが並列に書き、私が `docs:check`（247 参照）、`check:model-ids`（解説にモデル ID を書けない）、レビュー（F-2 など）で検証した。ハンズオンの手順は、`research-budget` の実行コマンドを除いて、実行して確かめていない。
+- `REQUIRED_TOPICS` は 3-1〜3-6 を持つ（3-1 の ACI の 3 件は既存、MCP の 5 件と 3-2〜3-6 を W8 で追加）。
+- W7 の F-17（入力例と上限の重複）と F-18（未投入の判定を文言でなく `details` で行う）は `apps/web` のコード変更で、W8 の境界外のため**未対応**。M4 の前に人が扱う（W8 レビュー F-7）。
+- 解説の確認で見つかった食い違い: ADR-6 の E2B の寿命「15 分」と実装（アイドル × 3）。人の判断待ち。
 
 ---
 
@@ -376,28 +391,29 @@ _Depends:_ 40.8
 _Requirements:_ 1.1, 3.8, 6.6
 _Traces:_ REQ-001, REQ-003, REQ-006, C16
 
-- [ ] 41.1 `specs/003-domain-agents/traceability.md`: Test の列を、受け入れ基準ごとにテストのファイル名（`*.local.test.ts` と `*.container.test.ts` はスキップされうることを併記）で埋め、「gate が保証しないもの」（E2B の実機、GitHub の MCP の注釈、実 Docker、実モデルの品質、arXiv の実応答、複数インスタンス、認証）を Gaps に明記する。Commit の列は `/sdd-ship` が埋める
+- [x] 41.1 `specs/003-domain-agents/traceability.md`: Test の列を、受け入れ基準ごとにテストのファイル名（`*.local.test.ts` と `*.container.test.ts` はスキップされうることを併記）で埋め、「gate が保証しないもの」（E2B の実機、GitHub の MCP の注釈、実 Docker、実モデルの品質、arXiv の実応答、複数インスタンス、認証）を Gaps に明記する。Commit の列は `/sdd-ship` が埋める
   _Boundary:_ `specs/003-domain-agents/traceability.md`
   _Depends:_ 40.8
   _Requirements:_ 1.1, 3.8
   _Traces:_ REQ-001, REQ-003, C16
-- [ ] 41.2 `.sdd/steering/tech.md` と `structure.md`: サンドボックス（E2B と Docker の選択）、MCP の決定（注釈からリスクを決める、許可リスト）、arXiv の利用規約、`*.container.test.ts`、新しい規則 `mcp-import-scope`・`sandbox-import-scope`、`ai-core` の新しい領域 8 つ、`apps/web` の新しいルートと `lib/server/` の追加を反映する
+- [x] 41.2 `.sdd/steering/tech.md` と `structure.md`: サンドボックス（E2B と Docker の選択）、MCP の決定（注釈からリスクを決める、許可リスト）、arXiv の利用規約、`*.container.test.ts`、新しい規則 `mcp-import-scope`・`sandbox-import-scope`、`ai-core` の新しい領域 8 つ、`apps/web` の新しいルートと `lib/server/` の追加を反映する
   _Boundary:_ `.sdd/steering/tech.md`, `.sdd/steering/structure.md`
   _Depends:_ 41.1
   _Requirements:_ 3.8
   _Traces:_ REQ-003, C16
-- [ ] 41.3 `AGENTS.md`: プロジェクトの状態（M3 の実装済みの範囲、`*.container.test.ts`、新しい規則、`workspace/`、`mise run sandbox:build` / `test:container` / `seed:samples`、`gate` の新しい検査数）を更新する。更新後、旧い件数や名前（規則の数 11 など）を grep して残っていないことを確認する
+- [x] 41.3 `AGENTS.md`: プロジェクトの状態（M3 の実装済みの範囲、`*.container.test.ts`、新しい規則、`workspace/`、`mise run sandbox:build` / `test:container` / `seed:samples`、`gate` の新しい検査数）を更新する。更新後、旧い件数や名前（規則の数 11 など）を grep して残っていないことを確認する
   _Boundary:_ `AGENTS.md`
   _Depends:_ 41.2
   _Requirements:_ 1.1
   _Traces:_ REQ-001, C16
-- [ ] 41.4 `specs/curriculum/changes-from-drafts.md`: M3 で実測により確定した API・設定の差分（`dockerode` を採らないこと、MCP の注釈の扱い、`@ai-sdk/mcp` を 2.0.76 に固定した理由、Python 側の版など）を追記する。`specs/curriculum/` の本文が spec と食い違う箇所があれば、spec を正としてカリキュラム側を直す
+- [x] 41.4 `specs/curriculum/changes-from-drafts.md`: M3 で実測により確定した API・設定の差分（`dockerode` を採らないこと、MCP の注釈の扱い、`@ai-sdk/mcp` を 2.0.76 に固定した理由、Python 側の版など）を追記する。`specs/curriculum/` の本文が spec と食い違う箇所があれば、spec を正としてカリキュラム側を直す
   _Boundary:_ `specs/curriculum/changes-from-drafts.md`
   _Depends:_ 41.3
   _Requirements:_ 3.8
   _Traces:_ REQ-003, C16
 
 ### Implementation Notes
+- W6 からの持ち越しのうち未対応（W8 レビュー F-7）: `plan.md` の Data Model の `CouncilRound`（実装は `round; statements; missing; verdict?; draft`）と `data-council-result` の同期、`council.ts` の PROVE。いずれも M4 の前に人が `plan.md` を直す。`council.ts` は Stryker の対象に入れない判断（plan の対象外）。
 
 - W6 からの持ち越し（tasks.md「W6 からの持ち越し」）: `CouncilRound`・`data-council-result` の型の同期、`council.ts` の PROVE。
 
@@ -416,7 +432,7 @@ _Traces:_ REQ-001, REQ-003, REQ-006, C16
   _Requirements:_ 1.5, 3.9
   _Traces:_ REQ-001, REQ-003, C16
   _Verify:_ 各コマンドの成功が research.md に引用されている。`gate:repeat` が 10 回とも同じ判定（成功）である
-- [ ] 42.2 `stryker.config.mjs` の最終確認: plan のミューテーション対象（`resolveWorkspacePath`、`riskFromAnnotations`、`checkDescription`、`validatePlan`、`diffPlan`、`nextRunnable`、`parseSandboxOutput`、`checkUpload`、`checkCitations`、`createBudget`、`judgeAgreement`、`recommend` の照合）がすべて含まれていることを確かめ、足りないものを足す
+- [x] 42.2 `stryker.config.mjs` の最終確認: plan のミューテーション対象（`resolveWorkspacePath`、`riskFromAnnotations`、`checkDescription`、`validatePlan`、`diffPlan`、`nextRunnable`、`parseSandboxOutput`、`checkUpload`、`checkCitations`、`createBudget`、`judgeAgreement`、`recommend` の照合）がすべて含まれていることを確かめ、足りないものを足す
   _Boundary:_ `stryker.config.mjs`
   _Depends:_ 42.1
   _Requirements:_ 1.4, 1.5, 3.9, 6.5
@@ -430,3 +446,6 @@ _Traces:_ REQ-001, REQ-003, REQ-006, C16
   _Verify:_ `git tag -l 'module/3-*'` に 6 件が並ぶ。W8 の敵対的レビューの記録が `.sdd/reviews/003-domain-agents-impl-w8-review-*.md` にある
 
 ### Implementation Notes
+- 境界の例外（人が承認または決定済み）: `pnpm-workspace.yaml` と `pnpm-lock.yaml`（`typed-rest-client>qs` の override を `^6.16.1` へ。`audit` の解消）、`specs/003-domain-agents/plan.md`（C9 を「ソフトな上限」へ）。
+- 42.2 は 42.1 より先に確かめた（ミューテーション 86.19 ≥ 70、plan の 12 対象はすべて `mutate` に含まれる）。`council.ts` は plan の対象に無いため追加しない（W6 2 回目 F-13 の判断）。
+- 42.1 と 42.3 は未完: `audit` が `qs` の勧告で失敗（既存の override `^6.16.0` を `^6.16.1` へ上げる依存の変更で、人の判断）、3 エンジンの E2E は緑の全体実行を得られていない（research.md「W8 の最終統合の実測」）。タグ（42.3）は、これらと CI の `ci-status` を人が確かめるまで付けない。W8 の敵対的レビューは `.sdd/reviews/003-domain-agents-impl-w8-review-2026-10-29.md`（REQUEST_CHANGES）で、対応は同ファイルの「Responses」にある。

@@ -47,7 +47,7 @@
 | ASI02 | Tool Misuse and Exploitation | ツールごとの許可リスト、パラメータのスキーマ検証 | 3-1（`inputSchema` の Zod 検証、ポカヨケ） |
 | ASI03 | Identity and Privilege Abuse | エージェント専用の ID、ユーザー権限を丸ごと委譲しない | 3-1、3-2（本カリキュラムでは認可は対象外。設計上の注意に留める） |
 | ASI04 | Agentic Supply Chain Vulnerabilities | MCP サーバー・プラグインの来歴確認、バージョン固定 | 3-1 MCP、§5 |
-| ASI05 | Unexpected Code Execution（RCE） | サンドボックス、ネットワーク遮断 | 3-3、4-2（生成コードの隔離実行） |
+| ASI05 | Unexpected Code Execution（RCE） | サンドボックス、ネットワーク遮断（ローカルのコンテナは `NetworkMode: none`。E2B は既定で外向き通信が可能で、制限は 004 Req 4 で再検討する） | 3-3、4-2（生成コードの隔離実行） |
 | ASI06 | Memory and Context Poisoning | 長期メモリへの書き込みを検証し、出所を記録する | 4-1 メモリ、2-4 |
 | ASI07 | Insecure Inter-Agent Communication | エージェント間の相互認証、メッセージ署名 | 3-4 階層型リサーチ（マルチエージェント） |
 | ASI08 | Cascading Failures | サーキットブレーカー、レート制限 | 強制停止条件、4-2 |
