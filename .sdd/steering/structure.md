@@ -3,8 +3,8 @@
 コードの配置パターンを記す永続知識。ファイルツリーの列挙ではなく、パターンと例を書く。
 全ファイルの計画は `specs/001-agentic-ai-platform/plan.md` の File Structure Plan にある。
 
-> **状態（2026-10-29）**: M1・M2 と M3 の W1〜W7 の `apps/web`・`packages/ai-core`・`packages/eval-suite`・`tooling/`・
-> `scripts/`・`docs/` は実装済み（M3 の W8 で評価・解説・統合を仕上げている）。M4 の領域（`harness/` など）は未作成。
+> **状態（2026-10-29）**: M1〜M3（W1〜W8）の `apps/web`・`packages/ai-core`・`packages/eval-suite`・`tooling/`・
+> `scripts/`・`docs/` は実装済み。M4 の領域（`harness/` など）は未作成。
 
 ## Organization Pattern
 
