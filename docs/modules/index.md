@@ -33,14 +33,18 @@
 
 ## Phase 3 現場実践編（M3）
 
-| モジュール | 状態 |
-|---|---|
-| 3-1 ACI と MCP | 未提供 |
-| 3-2 ヘルプデスク・エージェント | 未提供 |
-| 3-3 データ分析エージェント | 未提供 |
-| 3-4 階層型リサーチエージェント | 未提供 |
-| 3-5 要件定義書生成エージェント | 未提供 |
-| 3-6 マーケティング支援エージェント | 未提供 |
+扱う成熟度の水準: [phase-3.md](../phases/phase-3.md)
+
+> 完成時点のタグ `module/3-1`〜`module/3-6` は W8 の 42.3 でローカルに付ける（push は人が行う）。付けるまでは、タグのリンク先は存在しない。
+
+| モジュール | 解説 | 完成時点のタグ | 状態 |
+|---|---|---|---|
+| 3-1 ACI と MCP | [3-1-aci-and-mcp.md](3-1-aci-and-mcp.md) | `module/3-1` | 提供済み |
+| 3-2 ヘルプデスク・エージェント | [3-2-helpdesk-agent.md](3-2-helpdesk-agent.md) | `module/3-2` | 提供済み |
+| 3-3 データ分析エージェント | [3-3-data-analysis-agent.md](3-3-data-analysis-agent.md) | `module/3-3` | 提供済み |
+| 3-4 階層型リサーチエージェント | [3-4-hierarchical-research.md](3-4-hierarchical-research.md) | `module/3-4` | 提供済み |
+| 3-5 要件定義書生成エージェント | [3-5-requirements-interview.md](3-5-requirements-interview.md) | `module/3-5` | 提供済み |
+| 3-6 マーケティング支援エージェント | [3-6-marketing-support.md](3-6-marketing-support.md) | `module/3-6` | 提供済み |
 
 ## Phase 4 運用・品質編（M4）
 
