@@ -41,6 +41,28 @@ M2 の `tests/regression/rag-eval-set.db.test.ts` は、RAG の評価の**配管
 
 `local` の評価は、数値を観察として出力し、手法の優劣そのものはアサートしない。アサートするのは、全質問が完走すること、配管が妥当なこと、固定のケースでの Judge の判定である。
 
+## M3 の評価（[003 spec](../../../../specs/003-domain-agents/spec.md)）
+
+M3 では回帰（gate、`mock`）と能力（`local`）を次のように分けた。能力テストは数値を観察として表に出力し、優劣はアサートしない。結果は
+`specs/003-domain-agents/research.md` に記録する。
+
+| ファイル | レーン | 内容 |
+|---|---|---|
+| `tests/regression/mcp-fatal-stop.test.ts` | gate | 許可ルート外の読み取り（致命的エラー）でループが止まり、停止理由が `error` になり、後続のツールが実行されない |
+| `tests/regression/helpdesk-plan.db.test.ts` | gate（PGlite） | 問い合わせ → 計画 → 実行 → 判断 → チケット保存（`resolved` と `escalated`） |
+| `tests/regression/research-budget.test.ts` | gate | Supervisor の呼び出し回数の上限と共有トークン予算 |
+| `tests/regression/marketing-catalog.db.test.ts` | gate（PGlite） | レコメンドがカタログの商品 ID だけを返し、除去した件数を記録する |
+| `tests/regression/marketing-council.test.ts` | gate | 合議の既定のラウンド数（3）と `max-rounds`、モデレーターが大きいときの予算 |
+| `mcp-compare.local.test.ts` | `local` | 高水準ツール `findAndReadFiles` と低レベルの組み合わせのステップ数・トークン数（Req 1.12） |
+| `analysis-fix.local.test.ts` | `local` + Docker | 実モデルが誤ったコードを修正して完走する割合。`local` レーンは Docker のソケットを遮断するため、通常の `mise run test:local` では理由付きでスキップされる（Ollama と Docker の両方を許すレーンが必要）|
+| `research-quality.local.test.ts` | `local` | Supervisor の呼び分け、引用の遵守、単一エージェントとのトークン使用量の比較 |
+| `council-agreement.local.test.ts` | `local` | 合議が上限内で合意に達する割合、単一エージェントとのトークン使用量の比較 |
+
+| | gate | `local`（`mise run test:local`） | `container`（`mise run test:container`） |
+|---|---|---|---|
+| 保証すること | 配管: 停止理由、呼び出し回数と予算の上限、カタログ照合、チケットの保存 | 実モデルの観察値（ステップ数、トークン数、完走率、引用の遵守率、合意率） | 実 Docker のサンドボックスの隔離と実行（`@platform/ai-core` の `*.container.test.ts`） |
+| 保証しないこと | 実モデルの品質。スキップは合格に数えない | 再現性（モデルとサンプリングに依存） | E2B の実機、macOS 以外のソケット |
+
 ## ファイル名と実行レーン
 
 - `*.test.ts`: `mise run gate` の決定論的な `mock` レーンで実行する。
