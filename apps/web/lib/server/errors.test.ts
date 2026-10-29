@@ -7,6 +7,7 @@ import {
 	HTTP_STATUS_BY_CODE,
 	parseStreamErrorText,
 	toErrorResponse,
+	toNotFoundResponse,
 	toPublicError,
 	toStreamErrorText,
 	UNEXPECTED_ERROR_MESSAGE,
@@ -90,6 +91,73 @@ describe("toErrorResponse", () => {
 				details: { reason: "http-status", status: 404 },
 			},
 		});
+	});
+
+	it("keeps the guidance of a provider-unavailable error, which is fixed text about what to set up", async () => {
+		const guidance =
+			"E2B_API_KEY を設定するか、Docker を起動して `mise run sandbox:build` を実行してください。";
+
+		const response = toErrorResponse(
+			new PlatformError("provider-unavailable", "分析を使えません。", { guidance, apiKey: SECRET }),
+		);
+
+		const text = await response.text();
+		expect(JSON.parse(text)).toEqual({
+			error: { code: "provider-unavailable", message: "分析を使えません。", details: { guidance } },
+		});
+		expect(text).not.toContain(SECRET);
+	});
+
+	it.each([
+		["a non-string guidance", { guidance: { nested: SECRET } }],
+		["an empty guidance", { guidance: "" }],
+		["a guidance over 500 characters", { guidance: "あ".repeat(501) }],
+	])("drops %s of a provider-unavailable error", async (_label, details) => {
+		const text = await toErrorResponse(
+			new PlatformError("provider-unavailable", "x", details),
+		).text();
+
+		expect(JSON.parse(text)).toEqual({ error: { code: "provider-unavailable", message: "x" } });
+	});
+
+	it.each(["completed", "busy"])(
+		"keeps the closed reason %s of an invalid-request error",
+		async (reason) => {
+			const text = await toErrorResponse(
+				new PlatformError("invalid-request", "x", { reason, apiKey: SECRET }),
+			).text();
+
+			expect(JSON.parse(text)).toEqual({
+				error: { code: "invalid-request", message: "x", details: { reason } },
+			});
+			expect(text).not.toContain(SECRET);
+		},
+	);
+
+	it("drops a reason of an invalid-request error that is not on the allow-list", async () => {
+		const text = await toErrorResponse(
+			new PlatformError("invalid-request", "x", { reason: "secret-reason" }),
+		).text();
+
+		expect(JSON.parse(text)).toEqual({ error: { code: "invalid-request", message: "x" } });
+	});
+
+	it("keeps a guidance of exactly 500 characters", async () => {
+		const guidance = "あ".repeat(500);
+
+		const text = await toErrorResponse(
+			new PlatformError("provider-unavailable", "x", { guidance }),
+		).text();
+
+		expect(JSON.parse(text).error.details).toEqual({ guidance });
+	});
+
+	it("does not pass guidance on for any other code", async () => {
+		const text = await toErrorResponse(
+			new PlatformError("output-invalid", "x", { guidance: "do not show" }),
+		).text();
+
+		expect(text).not.toContain("do not show");
 	});
 
 	it.each([
@@ -257,5 +325,17 @@ describe("invalid-request reasons (review F-3)", () => {
 		);
 
 		expect(error.details).toBeUndefined();
+	});
+});
+
+describe("toNotFoundResponse (003: a missing resource is 404 with the invalid-request code)", () => {
+	it("answers 404 with the shared JSON error shape and the given Japanese message", async () => {
+		const response = toNotFoundResponse("チケット T-0404 は見つかりません。");
+
+		expect(response.status).toBe(404);
+		expect(response.headers.get("content-type")).toContain("application/json");
+		expect(await bodyOf(response)).toEqual({
+			error: { code: "invalid-request", message: "チケット T-0404 は見つかりません。" },
+		});
 	});
 });

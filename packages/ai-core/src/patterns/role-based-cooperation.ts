@@ -45,6 +45,17 @@ export interface CooperateByRoleParams {
 	readonly clock: Clock;
 	readonly signal: AbortSignal;
 	readonly limits?: WorkflowLimitOverrides | undefined;
+	/**
+	 * Notified right after each role finishes, in role order, with the same `RoleOutput` object that
+	 * lands in `outputs`; the next role starts only after the returned promise settles. A role that
+	 * ended in `error`, `aborted` or `timeout` is notified too (with empty `output`), and it is the
+	 * last notification. A role that never ran (budget spent, signal already aborted) or whose
+	 * environment error is rethrown is not notified.
+	 *
+	 * A notification that throws or rejects is swallowed: a failing observer (for example a closed UI
+	 * stream) must not change the hand-off or its result.
+	 */
+	readonly onRoleOutput?: ((output: RoleOutput) => void | Promise<void>) | undefined;
 }
 
 /** A role that ended like this made no usable output, so the hand-off ends. */
@@ -70,6 +81,17 @@ function promptFor(role: string, task: string, earlier: readonly RoleOutput[]): 
 		`[役割: ${role}]\n<task>\n${task}\n</task>`,
 		...earlier.map((entry) => `<previous role="${entry.role}">\n${entry.output}\n</previous>`),
 	].join("\n\n");
+}
+
+async function notify(
+	onRoleOutput: CooperateByRoleParams["onRoleOutput"],
+	entry: RoleOutput,
+): Promise<void> {
+	try {
+		await onRoleOutput?.(entry);
+	} catch {
+		// An observer failure is not an agent failure.
+	}
 }
 
 function tokensUsed(run: AgentRunSummary): number {
@@ -124,7 +146,9 @@ export async function cooperateByRole(params: CooperateByRoleParams): Promise<Co
 			if (!params.signal.aborted && isEnvironmentError(error)) throw error;
 		}
 		const run = await guarded.done;
-		outputs.push({ role: role.name, output: text, run });
+		const entry: RoleOutput = { role: role.name, output: text, run };
+		outputs.push(entry);
+		await notify(params.onRoleOutput, entry);
 		if (FATAL_STOPS.has(run.stopReason)) {
 			stopped = run.stopReason;
 			break;

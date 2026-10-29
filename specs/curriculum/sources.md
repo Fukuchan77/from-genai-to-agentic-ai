@@ -108,7 +108,7 @@
 | ベクトルストア | Chroma、FAISS、`langchain-community` の各ストア | Postgres + pgvector（Drizzle ORM） | マネージドなベクトルストアとの統合 |
 | 埋め込み | `OpenAIEmbeddings` | `embed`、`embedMany` | — |
 | ツールプロトコル | LangChain Tool | MCP（公式 SDK のサーバー + AI SDK の MCP クライアント） | — |
-| コード実行 | E2B Code Interpreter（Python SDK） | E2B（TypeScript SDK）。キーがなければローカルのコンテナ | — |
+| コード実行 | E2B Code Interpreter（Python SDK） | E2B（TypeScript SDK）。キーがなければローカルのコンテナ。どちらもなければ分析エージェントを無効にする | — |
 | 評価 | Ragas、Python の LLM-as-a-Judge | Vitest の評価スイート（Code-based と LLM-as-a-Judge） | Ragas の既製の指標 |
 | 可観測性 | LangSmith、LangGraph Studio | OpenTelemetry（OTLP）+ Langfuse、Agent Inspector UI | LangGraph Studio によるグラフの可視化とデバッグ |
 | デプロイ | Streamlit Community Cloud | 対象外（ローカルで完結） | — |

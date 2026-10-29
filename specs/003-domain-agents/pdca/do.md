@@ -1,0 +1,431 @@
+# Do Phase: domain-agents
+
+## Success Criteria
+
+- Task fidelity: config values, the fatal-error latch, the ACI checks and the sandbox port match plan C1/C2/C3/C6/C9/C15/C16 and the CL decisions; where the spike changed a mechanism (S-1), the plan's own fallback was taken and recorded in `research.md`.
+- Consistency: every public contract later waves use (`DEFAULT_*`, `FatalLatch`, `checkDescription`, `TokenLedger`, `SandboxProvider`, the two new repo rules) is covered by tests that fail when its value or behaviour changes (PROVE below).
+- Safety: no secret in errors, summaries or cassettes (`E2B_API_KEY`, `GITHUB_TOKEN` are redacted and sentinel-checked); the think tool and the external-content log keep no content; the fix guide never echoes received values.
+- Performance: `mise run gate` stays within the 5-minute budget (constitution principle 3).
+- Cost: no new service, key, or network access in the gate.
+
+## Implementation Log
+
+### 2026-10-18 W1 Started (branch `feat/m3-w1-foundation`)
+
+- Preflight: the gate lane has no external dependency (PREFLIGHT OK). `E2B_API_KEY`, `GITHUB_TOKEN`, `DOCKER_HOST` are unset and no Docker socket exists, so spikes S-4 (1.5), S-5 (1.6) and S-6 (1.4) can only be recorded as not measured. `NODE_ENV=development` leaks from the shell; every `mise run` below used `env -u NODE_ENV`.
+- `pnpm install` was refused by the auto-mode classifier ("Untrusted Code Integration") twice (including after the user re-ran the command). The edit to `packages/ai-core/package.json` was reverted so `package.json` and the lockfile stay consistent (the patch is kept in the scratchpad). Blocked by this: 1.2 (the four dependencies and the `exports`), 1.3 (S-2/S-3 need `@ai-sdk/mcp` and `@modelcontextprotocol/server`), and the audit / `allowBuilds` check of 7.2. Nothing implemented so far imports a new dependency.
+
+### Task 1.1 (spike S-1 and CL-2)
+
+- Experiment (scratchpad, not committed): `ToolLoopAgent` + `MockLanguageModelV4`, a tool that trips a latch, `generate` / `stream` / `createAgentUIStream`, stopped by (a) abort, (b) `stopWhen`, (c) both. Result: abort stops the loop but drops `finish` and `onEnd` in `stream` and rejects `generate`; `stopWhen` stops after one model call with a normal `finish`. Adopted the plan's fallback: the latch is read by `stopWhen`; no abort on trip. Full table in `research.md` ("spike の実測（W1）").
+- CL-2 is possible: wrapping the Zod schema with `jsonSchema(() => zodSchema(s).jsonSchema, { validate })` lets the fix guide replace Zod's issue dump; the SDK still prefixes `Invalid input for tool <name>:`. The JSON Schema is the SDK's own, so cassette keys do not change.
+
+### Task 2.1 (config) — Boundary: as declared
+
+- RED: 12 failures in `env-schema.test.ts`, `feature-requirements.test.ts`, `load.test.ts`. GREEN: 52 passed in `src/config`.
+- PROVE: stubbed `cacheTtlMs`, a persona ID, `github-mcp` → `E2B_API_KEY`, the `e2b` credential, the `MCP_FS_ROOT` and `DOCKER_SANDBOX_IMAGE` overrides → 5 failures (`expected [ 'E2B_API_KEY' ] to deeply equal [ 'GITHUB_TOKEN' ]`, `expected undefined to be 'changeme-e2b'`, `expected 'workspace/' to be '/tmp/ws'`, …). Restored: 52 passed.
+- Decision: extra export `DEFAULT_MCP_FS_ROOT` (like M2's `DEFAULT_DATABASE`) so the default lives with the other defaults; `DEFAULT_TOOLS.maxToolsPerAgent` is the literal 20 because `config` cannot import `agents`, and a test pins it to `MAX_AGENT_TOOLS`.
+
+### Task 2.2 (gateway secrets)
+
+- RED: `expected '{"version":1,"key":…' not to contain 'test-e2b-key'` (and the GitHub token). GREEN: `credentialSecrets` gets both; 70 passed in `src/models`. The RED run is the PROVE (the unmodified implementation leaks both).
+
+### Task 3.1–3.3 (fatal errors and the latch)
+
+- 3.1 RED: `Cannot find module './fatal'`; GREEN 18 passed. PROVE: `trip` overwrote, only 401 was fatal, the raw message went into the summary, `Error.message` carried the learner text → 5 failures (e.g. `expected FatalToolError: second … to be FatalToolError: first`, `expected 'ツールの実行に失敗しました（Error）。request to https…' not to contain 'sk-secret-value-123'`). Restored: 18 passed.
+- 3.2 RED: 4 failures (`expected 1 to be +0`, `expected undefined to be 'auth-failed'`). GREEN: `aci` + `agents` 206 passed. PROVE: removed the refusal and the trip → the same 4 failures. Restored.
+- 3.3 RED: `expected 10 to be 1` ×3 (the loop ran to the step limit). GREEN: 43 passed in `guarded-agent.test.ts`. PROVE: latch condition made constant false, abort priority restored, error mapping replaced → 4 failures (`expected 10 to be 1`, `expected { Object (stopReason, steps, ...) } to match object { stopReason: 'error', … }`). Restored.
+- **Deviation from the Boundary**: 3.2's boundary is `aci/tool-set.ts` and its test, but `defineAciTool`'s `executeWithGuards` turns every thrown error into an outcome before `tool-set.ts` can see it. The trip therefore lives in `define-tool.ts` (`failureFrom` calls `classifyToolError` and trips `runtime.fatal`); `tool-set.ts` adds only the refusal after the latch. The behaviour is covered end to end through `buildToolSet` in `tool-set.test.ts`.
+- Decision: `GuardedAgentOptions.fatal` is passed by the caller (the same latch instance that went into `buildToolSet`'s `runtime.fatal`), because the tool set is built before the agent. `AgentRunErrorCode` gains the four fatal codes.
+- Limit: tool calls of one step run concurrently, so a sibling call that already started is not interrupted; only calls that start after the latch is tripped are refused.
+
+### Task 4.1–4.8 (ACI checks and helpers)
+
+- RED for 4.1/4.2/4.3/4.5: `Cannot find module` for each. 4.4: written before the modules; RED was not observed separately (covered by PROVE).
+- PROVE 4.1: heading match without `trimStart`, ASCII-only colon, no empty-body check, no recursion, name-in-text always true → 7 failures (e.g. `accepts a full-width colon after a heading`, `checks nested object fields with their dotted path`). 4.2/4.3/4.5: 12 failures (`never cuts a surrogate pair in half`, `does not divide by zero…`, `names a missing required parameter, its type and that it cannot be omitted`, …). 4.4: 6 failures (`never puts a UUID or an item id in the assignment shown to the model`, `acknowledges the call without echoing or storing the thought`, …). All restored.
+- 4.6/4.7: the six M1 descriptions were rewritten before the registration check existed, so there was no separate RED. PROVE of 4.6: restoring `web-search.ts` from `git show HEAD:…` makes `passes for all six M1 tools` fail with `ConfigError: ツール「webSearch」の説明文が規約を満たしていません…`. PROVE of 4.7: check disabled and schema unwrapped → 3 failures (rejects a description without the three headings, rejects an input field without .describe(), shows the model a fix guide).
+- Decisions: `compareApproaches` returns the plan's `{ steps, tokens, ratio }` (steps/tokens saved by the high-level tool; `ratio` = high/low tokens, `undefined` when a run failed or the low-level run used 0 tokens); `createThinkTool` keeps the plan's `AciTool | undefined` and takes an optional `onCall` recorder; `AciTool` gained `inputSchema` (the Zod schema) so `checkDescription` can inspect a defined tool.
+- **Existing tests modified (risk trigger 3)**: `define-tool.test.ts` (the `toBe(echoSchema)` identity assertion became a JSON-Schema equality, because the tool now exposes a wrapped schema), `tool-set.test.ts`, `guarded-agent.test.ts`, `patterns/role-based-cooperation.test.ts` (descriptions via the new `testing/describeTool`, one `.describe()` added), `aci/tools/calculator.test.ts` (reads `aciTool.inputSchema`). No test was deleted, skipped, or weakened.
+
+### Task 5.1–5.2 (TokenLedger, observer)
+
+- RED: `Cannot find module` ×2. GREEN: 95 passed in `src/agents`. PROVE: a made-up total, no `unknown`, `unknownCalls` leaking into the total, content kept in the log, an `agent` default, no empty-name check → 7 failures in total (e.g. `keeps only the kind and the source, never the content`, `marks a role whose usage is unavailable as unknown and adds nothing for it`). Restored.
+- `agents/observer.ts` did not exist (`RunObserver` lives in `guarded-agent.ts`), so the file is new; it adds `createNamedObserver` and `createExternalContentLog` without touching `RunObserver`.
+
+### Task 6.1–6.4 (port, rules, container lane, scenario detector)
+
+- 6.1: types only; `tsc` passes; no E2B or Docker type appears in the port.
+- 6.2 RED: 40 failures. GREEN: 189 passed. PROVE: out-of-scope allowance, the SDK sub-path, the `docker.sock` string, the listed files, the docker allowance → 25 failures. The new rules also ran on the real tree (`mcp-import-scope: scanned 363 FILES`, `sandbox-import-scope: scanned 363 FILES`) and flagged my own `docker.sock` string in `config/load.test.ts`, which I renamed.
+- 6.3 RED: 4 failures (the sentinel checks, including a **real gap**: `GITHUB_TOKEN` was not a secret name for `check-client-bundle`, because `SECRET_NAME` lacked `TOKEN`; fixed in `scripts/check-client-bundle.mjs` with a whole-word match so `AGENT_MAX_TOTAL_TOKENS` stays out — a Boundary deviation). `mise tasks validate` → 27 tasks. `mise run test:container` exits 0 with "No test files found". A dummy `*.container.test.ts` ran under `container` and was absent from `vitest list` under `gate`; removed. `test:container` runs only `@platform/ai-core` (the other workspaces' Vitest configs do not know the suite); the hermetic network guard still blocks unix sockets for the container suite, which the first container test (17.x) must deal with.
+- 6.4 RED: `M3_SCENARIOS is not iterable`. GREEN: 66 passed in `src/mock`. PROVE: detectors weakened → 4 failures; an ambiguous scenario added to the real list → `holds the expected number of scenarios and turns` fails.
+
+### Task 7.1 / gate
+
+- `stryker.config.mjs` gets `aci/description-check.ts`.
+- `mise run gate` (with `env -u NODE_ENV`): exit 0, `real 31 s`. Root 399, `@platform/ai-core` 1884 (4 skipped), `@platform/eval-suite` 7 (8 skipped), `web` 733, `Docs: 8 module documents, 110 test references verified`, `tool-risk-declared: scanned 29 FILES`, `TypeScript packages/ai-core/tsconfig.json: 239 files`. Before this wave: root 352, ai-core 1732, web 733.
+
+### W1 adversarial review (`.sdd/reviews/003-domain-agents-impl-w1-review-2026-10-18.md`): REQUEST_CHANGES
+
+- Fixed: F-1 (HIGH, a sibling call of the same step ran after the latch tripped). With a latch, `buildToolSet` now runs tool calls one after another and refuses those that start after the trip. New test `refuses a sibling call that starts together with the failing call (one step)`; PROVE: removing the queue → `expected 1 to be +0` (the sibling ran). F-2 in part: `createGuardedAgent` rejects an already-tripped latch (test added). Gate after the fix: exit 0.
+- Open (not fixed in this session): F-2 (the latch is still passed to two places by hand), F-3 (repo-rule bypasses; plan C16 vs 6.2 disagree on `ports/`), F-4/F-5 (`checkJsonSchemaDescription` substring match, records / `z.lazy` / `z.date()`), F-6 (fix-guide example can be invalid), F-8 (boundary deviations to record in plan.md), F-12 (`docs/modules/1-2-…` snippet now fails the description check), F-7 and F-9–F-19 (LOW). Wave W1 is not closed: 1.2, 1.3, 1.5 (types) and 7.2 remain open.
+
+### 1.2 / 1.3 / 1.5 completed after the user ran `pnpm install`
+
+- The user's first `pnpm install` changed nothing (the manifest edit had been reverted); I re-applied the saved patch and `pnpm install` then succeeded: `Packages: +32 -4`, `pnpm audit` → "No known vulnerabilities found", no `allowBuilds` warning (`pnpm-workspace.yaml` unchanged), `pnpm install --frozen-lockfile` → "Lockfile is up to date". Publish ages were checked before (73 h, 304 h, 109 h, 455 h).
+- S-2/S-3 measured with a real stdio server started by Node 26 type stripping (no `tsx`): tools/list carries annotations; `isError`, `_meta`, `structuredContent` reach `execute`; `client.tools()` works in `ToolLoopAgent`. S-4 types read from `@e2b/code-interpreter` 2.9.0 `.d.ts`. See `research.md`.
+- `mise run gate` after the install: exit 0 (root 399, ai-core 1886 / 4 skipped, eval-suite 7 / 8 skipped, web 733, docs 8 / 110).
+
+### Review fixes applied (second pass)
+
+- F-2: `buildToolSet` records `runtime.fatal` in a module-private `WeakMap`; `createGuardedAgent` reads it with `fatalLatchOf(options.tools)` and the `fatal` option is gone, so the latch cannot differ between the two. An already-tripped latch is rejected (test).
+- F-4/F-5: `checkJsonSchemaDescription` matches a property name as a whole word (`id` no longer passes through "valid"); `checkDescription` walks record values (`name{}`), follows local `$ref` once per path (`z.lazy`), requires a union to be described as a whole or in every non-null member, and converts with the AI SDK's options, so an unsendable schema (a `Date`) is an issue (`unsendable-schema`) and `defineAciTool` rejects it. PROVE (substring match, `some`, no record walk, no `$ref` ignore): 5 failures in `description-check.test.ts` / `input-guide.test.ts`.
+- F-6: the fix guide's example handles exclusive bounds and string formats, and is printed only when the schema accepts it (11 parameterised cases plus a refine case that omits it).
+- F-3: `mcp-import-scope` / `sandbox-import-scope` now scan `.ts .tsx .mts .cts .js .mjs .cjs` under `apps`, `packages`, `scripts`, `tooling`; they follow a `createRequire` alias and flag `import(x)` / `require(x)` with a non-literal specifier outside the allowed places. PROVE (old scan scope, no alias, no dynamic ban): 9 failures. The Docker check remains an approximation (`socketPath`, `docker.sock` strings); it is recorded in plan C2/C16, not closed.
+- F-8: plan.md C2/C3 Owns, the File Structure Plan and C16 (`ports/` is not allowed for `@ai-sdk/mcp`) synced. F-12: the `docs/modules/1-2` snippet shows the CL-18 form. F-13: corrections appended to `research.md`.
+- Not done: F-7, F-9–F-11, F-14–F-19 (LOW; F-14 is explained in `research.md`, the rest are noted for the wave close). Gate after the fixes: exit 0 (root 410, ai-core 1905 / 4 skipped, eval-suite 7, web 733). Not re-reviewed by a fresh `sdd-reviewer`.
+
+### /sdd-ship validation (2026-10-18): GO
+
+- Fresh `env -u NODE_ENV mise run gate`: exit 0. Root 410 (1 expected fail), `@platform/ai-core` 1905 / 4 skipped (96 files), `@platform/eval-suite` 7 / 8 skipped, `web` 733, `Docs: 8 module documents, 110 test references verified`, `tool-risk-declared: scanned 29 FILES`, `TypeScript packages/ai-core/tsconfig.json: 239 files`. `pnpm audit`: no known vulnerabilities. The counts match the second-pass figures above.
+- Every W1 task is `[x]`; PROVE evidence exists for each new test group above. W1 review HIGH (F-1) and MEDIUM (F-2–F-6, F-8) are fixed; F-7, F-9–F-11, F-14–F-19 (LOW) stay open and are carried to the wave close. No fresh `sdd-reviewer` re-review of the fixes.
+- Commits: `ee815d5` (deps, 1.2), `3af8b69` (config + gateway, 2.x), `70dd437` (aci + fatal latch, 3.x/4.x), `efcde0d` (TokenLedger + observer, 5.x), `077c51e` (port, rules, container lane, detector, 6.x/7.1). Spike results and the gate timing (1.1, 1.3–1.6, 7.2) ride in the docs commit.
+
+## W2 (MCP・ファイル) — started 2026-10-18 (branch `feat/m3-w1-foundation`, uncommitted)
+
+- Preflight: gate lane has no external dependency (PREFLIGHT OK). `GITHUB_TOKEN`, `E2B_API_KEY` are not needed in W2; 11.1 (real-server E2E) needs the Playwright browsers and a free E2E port, checked there. `node` on `PATH` is v24.22 while `mise.toml` pins 26.12; every command below ran as `mise exec -- …` (Node 26.12) from the repo root or `packages/ai-core`.
+- Scope: all unchecked tasks in `tasks.md` = W2 (8.1–11.3).
+
+### 8.1 / 8.2 (workspace, `resolveWorkspacePath`)
+
+- 8.1 RED: `git check-ignore -q workspace/sample.txt` → not ignored. GREEN: `workspace/*` ignored, `workspace/README.md` tracked (`git check-ignore` exit codes checked both ways).
+- 8.2 RED: module missing. GREEN: 22 passed. PROVE: (a) prefix match without a separator → `rejects a sibling directory that shares the root's prefix`, `…link that points to a file in a prefix-sharing sibling`, `rejects an escape through a missing path…` fail with `expected an error, received …/root-evil/secret.txt`; (b) no `realpath` + (a) → 7 failures (symlink escape, not-found cases). Restored: 22 passed.
+- Design: an escape through a path that does not exist is `outside-root`, not `not-found` (the nearest existing ancestor is resolved, so the answer never says what exists outside the root).
+
+### 9.1 (`mcp/types.ts`, `mcp/risk.ts`)
+
+- RED: module missing. GREEN: 14 passed. PROVE: `!== false` instead of `=== true`, no `destructiveHint` rule, inherited property allowed → 8 failures (`expected 'read-only' to be 'destructive'`). Restored.
+- Added to the plan's rule: a tool claiming both `readOnlyHint: true` and `destructiveHint: true` is `destructive` (contradictory annotations are not trusted).
+
+### 8.3 / 8.4 (file tools, MCP server, stdio entry)
+
+- **Boundary deviation (new file `files/operations.ts`)**: CL-3 / 8.4 `_Verify:_` require `node …/files/stdio.ts` to start under Node's type stripping, which cannot resolve extension-less imports (`./server`, `../aci`). The `aci` index also pulls `rates.json` (needs an import attribute under plain Node). So the logic the server serves lives in `files/operations.ts` (neutral `FileOperation`, `FileToolError`; imports only `../aci/response-format.ts`, `../aci/short-id.ts` (dependency-free) and `./path.ts`, all with the `.ts` extension); `tools.ts` wraps each operation with `defineAciTool` and maps the errors to `FatalToolError` / `ToolExecutionError`; `server.ts` and `stdio.ts` use the operations directly. `tsconfig.base.json` gained `allowImportingTsExtensions` (needed for those `.ts` imports; `noEmit` is already set). Plan C4 and the File Structure Plan are synced below.
+- `createFileTools({ root })` has no `clock`: no file tool depends on time (`ToolRuntime` already supplies the clock); the plan's `{ root, clock }` was dropped.
+- 8.3 RED: module missing. GREEN: 40 passed. PROVE (7 stubs, each run alone): outside-root recoverable → 6 failures; concise default `detailed` → 3; search follows links → 1 (`does not follow a symbolic link while searching`); write without `wx` → 1 (`does not write through a dangling link…`); outside links kept in listing → 1; index starts at 1 → 3; binary check removed → 1. Restored: 40 passed.
+- 8.4 RED: module missing. GREEN: 12 passed (in-memory raw JSON-RPC peer + a real child process started with `process.execPath stdio.ts`). PROVE: no read-only annotation → 1 failure; fatal reported as recoverable → 3; fatal without `isError` → 2; `process.exit(0)` → 2; the missing root created → 1 (`exits with the reason, and without creating the directory…`). Restored: 74 passed in `src/files`. `MCP_FS_ROOT=/nonexistent/ws mise exec -- node packages/ai-core/src/files/stdio.ts` exits 1 with the reason (Node 26.12).
+- Only `@ai-sdk/mcp` is import-scoped to `mcp/`; the server test therefore talks JSON-RPC over `InMemoryTransport` itself instead of using a client package.
+
+### 9.2 (`mcp/allow-list.ts`) / 9.3 (`mcp/adapt.ts`)
+
+- 9.2 RED: module missing. GREEN: 9 passed (7 pure + 2 against a real `createMCPClient` connected to the files server over `InMemoryTransport`: only the allowed tools become client tools). PROVE: everything allowed → 8 failures; plain-object schemas → 1 (`treats a hostile tool name as a plain key…`); `unknown` not reported → 2; schema not closed → 1. Restored.
+- TypeScript 7.1-dev cannot instantiate the SDK's `toolsFromDefinitions<TOOL_SCHEMAS>` / `ReturnType<MCPClient["tools"]>` with explicit schemas (`TS5115 … infinitely circular … $InferZodRecordInput`; even `Schema<unknown>` is "not assignable to `FlexibleSchema<unknown>`"). `loadAllowedTools` therefore calls the client through a one-method structural type (`SchemaLoadingClient`) and `McpClientTool` is this layer's own minimal shape of what it reads. Recorded in the code.
+- 9.3 **Boundary deviation (`aci/types.ts`, `aci/define-tool.ts`, `aci/define-tool.test.ts`)**: `buildToolSet` accepts only objects `defineAciTool` made, and `defineAciTool` required a Zod schema and the strict `checkDescription` (every field `.describe()`d). CL-25's looser JSON-Schema check and the server's own schema could not pass through that. `AciToolDefinition` gained `externalInputSchema` (a JSON Schema from outside): the description is checked with `checkJsonSchemaDescription`, the model receives the schema unchanged, the Zod `inputSchema` only validates the input (the MCP adapter uses `z.looseObject({})` and the server validates its fields). 4 tests appended to `define-tool.test.ts` (no existing test touched).
+- 9.3 RED: module missing. GREEN: 29 passed in `adapt.test.ts` (+4 in `define-tool.test.ts`). PROVE: fatal believed from every server → 1 failure (`treats a fatal result from a server that is not trusted as recoverable`); any code accepted → 1; server text passed on from every server → 2; no description check → 1; no output cap → 1; external schema checked as Zod → 2; external schema not sent → 1. **First attempt at "401/403 not fatal" passed**: `classifyToolError` also maps a `statusCode` of 401/403, and my configured message equalled its default, so the test could not tell the adapter's explicit mapping from the fallback. The test's `auth-failed` wording now differs from the platform default; the stub then fails 2 tests. Restored: `src/aci` + `src/mcp` 286 passed.
+- Decisions: a recoverable `isError` result from a **trusted** server passes the server's own fix guide on as `nextAction` (our server writes it); from an untrusted server nothing of its text is passed on. Results are capped at 20,000 characters (`MAX_MCP_OUTPUT_CHARACTERS`). `adaptMcpTool` returns `{ ok: false, reason }` instead of throwing, so the registry can record `disabledReason`.
+
+### 9.4 (`mcp/github.ts`) / 9.5 (`mcp/connect.ts`, `mcp/index.ts`)
+
+- 9.4 RED: module missing. GREEN: 16 passed. PROVE (6 stubs): no `trim` → 2 failures; a write tool in the allow-list → 2; GitHub trusted → 1; token in the URL → 2; the files server not trusted → 1; `MCP_FS_ROOT` not passed → 2. Restored.
+- Decisions: `githubServerConfig` also sends `X-MCP-Readonly: true` (documented read-only mode of the hosted server; the platform's own allow-list and risk check do not depend on it). `McpServerConfig` gained `fatalMessages` (the learner's wording by code, built from configuration, CL-24). The five read-only GitHub tools and their documented inputs are in `GITHUB_TOOL_INPUTS`; they are unconfirmed until the hands-on run (S-6).
+- 9.5 RED: module missing. GREEN: 28 passed in `connect.test.ts` (incl. 2 with the real `filesServerConfig` child process started by `Experimental_StdioMCPTransport`). PROVE (8 stubs): non-read-only tools registered → 1 failure; no tool limit → 3; a disconnect never detected → 1; duplicate names kept → 1; an agent allow-list may widen → 1; abort ignored → 1; the raw error message in the reason → 1; the learner-stop guard in `adaptMcpTool` removed → 0 failures at first (**vacuous**), a test was added (`leaves a stop by the learner alone…`) and the stub then fails it. Restored: `src/mcp` 95 passed + 28.
+- `ToolsForOptions.reservedTools` lets a caller count its built-in tools against the 20-tool limit; `createGuardedAgent` still checks the final set.
+- Test seams: `ConnectOptions.transportFor` (a server in the same process), `clock` for the connection time limit.
+
+### 10.1–10.5 (HTTP entrance)
+
+- **Boundary deviations (new files)**: `packages/ai-core/src/mcp/{request-schema,chat}.ts` (+ tests) and `publicMcpStatus` in `mcp/types.ts` (+ `types.test.ts`): `apps/web` has no `zod` dependency, so the route schemas, the chat instructions and the comparison wording live in `@platform/ai-core/mcp` (M2's `rag/request-schema.ts` is the precedent).
+- 10.1 RED: expected counts changed to 4 scenarios / 9 turns first; the gateway test for the M3-1 scenarios failed (no scenario matched). GREEN: `src/models` + `src/mock` 137 passed / 2 skipped. PROVE: `...M3_1_SCENARIOS` removed from the gateway default list → `answers the M3-1 MCP scenarios…` fails; a high-level turn matched on `[run:` only → `answers each M3 turn alone…` fails (ambiguity detector).
+- 10.2 RED: imports of `createMcpRegistry`, `getMcpRegistry`, `mcpServerConfigs`, `setMcpRegistryForTesting` missing. GREEN: `platform.test.ts` 53 passed (+9). PROVE: GitHub offered in `mock` → 1 failure; relative root left to the cwd → 2; a failure cached → 1; the cause of a connect failure leaked → 2.
+- 10.3 GREEN: 4 passed. PROVE: no whitelist → the leak test fails; wrong limit → 2; errors swallowed → 1. `publicMcpStatus` moved to ai-core afterwards; the route test still passes.
+- 10.4 GREEN: 15 passed (rejections 413 / 400 shape / 400 limit / 429 live only / allow-list unknown server and tool / write-destructive 400 / registry refusal 400 / capability-unsupported / 503; mock runs: list → read → answer with `{ run, mcp }` on `finish`; a path outside the root → `stopReason: "error"`, `error.code: "not-allowed"`, message with the root; think on/off; allow narrowing; abort signal). The registry in these tests is the real `connectMcpServers` with the real `files/stdio.ts` child process. PROVE (7 stubs): the write/destructive check removed → 1 failure; no latch → 1; `mcp` missing from `finish` → 1; no `signal` → 1; no `require: ["tools"]` → 1; think switch ignored → 2; **the think tool not counted against the 20-tool limit survived** (0 failures) → a test with a recording registry now pins `reservedTools` 1 / 0 and the stub fails it.
+- 10.5 GREEN: 10 passed (high-level: 2 steps / 890 tokens; low-level: 3 steps / 1,478 tokens; comparison steps 1, tokens 588, ratio 0.602). The first "one side fails" test did not fail the run: the AI SDK turns a call to a tool that is not loaded into a tool error and the scenario carries on to `completed`. The failing side is now a `listFiles` bound to a root that does not exist (fatal `config-missing`). PROVE (6 stubs): failure not marked, output tokens not counted, the same tools for both, no file-server check, no signal, no tool capability required → each fails the matching test.
+
+### 11.1 / 11.2 (real server, wiring)
+
+- Preflight for the E2E lane: port 3100 free, chromium / firefox / webkit installed (`playwright install --dry-run` locations exist), no pre-push hook, `NODE_ENV=development` leaks from the shell so every command ran with `env -u NODE_ENV`.
+- 11.1: the first `next build` **failed** (`new URL("../files/stdio.ts", import.meta.url)` in `mcp/github.ts` is a Turbopack asset reference; same cause as M1's fixtures directory). Fixed with `resolve(dirname(fileURLToPath(import.meta.url)), …)`. Then `next build` succeeded with no `serverExternalPackages` change, and `real-server.spec.ts` `mcp:` (4 cases: servers list, chat list→read, outside-root fatal, comparison) passed on chromium (4 passed, 7.6 s). No leftover `files/stdio.ts` process or listener. Details in `research.md` ("W2 の実サーバー確認").
+- `no-dynamic-eval` forbids `node:child_process` everywhere (ADR-4), so the child-process tests I first wrote in `files/server.test.ts` were rejected by `check:repo-rules`. `stdio.ts`'s root check moved to `resolveServerRoot` (`files/server.ts`, tested in process; PROVE: creating the missing root → 2 failures, file accepted as root → 1, symlink not resolved → 1); the real child process is exercised through `@ai-sdk/mcp` in `mcp/connect.test.ts` (which also asserts the missing root is not created) and in the E2E.
+- 11.2: `mise.toml` `check:repo-rules --only` + `mcp-import-scope` (`mcp-import-scope: scanned 426 FILES`, all rules pass); `stryker.config.mjs` + `files/path.ts`, `mcp/risk.ts`. First `mise run gate` after the wave's code: exit 0, 37 s wall.
+- 11.2 mutation: all files 86.61 (threshold 70); `files/path.ts` 77.78, `mcp/risk.ts` 100.
+
+### W2 adversarial review (`.sdd/reviews/003-domain-agents-impl-w2-review-2026-10-18.md`): REQUEST_CHANGES (0 HIGH, 5 MEDIUM, 13 LOW)
+
+- Fixed: F-2 (disconnect = only the client's own `MCPClientError` without a `code`; `isDisconnectError` + tests). F-5 (E2E no longer expects `[0] README.md`; the low-level comparison now does `searchFiles("README")` → `readFile` index 0, so both ways read the same file regardless of the learner's `workspace/`; `MCP_COMPARE_TOOLS.lowLevel` = searchFiles + readFile).
+- Accepted for now, to carry: F-1 (one index per file-server process, shared by concurrent chats; single learner, ADR-10; cannot leave the root), F-3 (no reconnect until restart), F-4 (generic reason for a missing `MCP_FS_ROOT`), F-6–F-18 (LOW). Not re-reviewed by a fresh reviewer.
+- Gate after the fixes: exit 0 (root 410, ai-core 2,107 / 4 skipped, eval-suite 7, web 771); E2E `mcp:` 4 passed. `GITHUB_TOKEN` is unset in the shell.
+
+### W2 review responses (second pass)
+
+- Fixed: F-4 (`McpServerConfig.preflight`; `filesServerConfig` checks the root with `resolveServerRoot`, so the status names `MCP_FS_ROOT` and the path), F-6 (unexpected server error reported by name only: new `EACCES` test), F-7 (`ENOTDIR` cases in `path.test.ts`), F-11 (a configuration over 20 tools is refused when the registry is built; `getMcpRegistry` then answers 503), F-13 (test title), F-14 (trusted server error without `_meta` → generic next action), F-17 (the server stops work on the client's cancellation: `ctx.mcpReq.signal`). PROVE: each stub (ENOTDIR branch, message leak, `recoverableMeta` condition, startup limit, preflight) fails its new test.
+- Carried (not fixed, by choice): F-1 (shared `ShortIdIndex` per file-server process; single learner, cannot leave the root), F-3 (no reconnect / no proactive `connected` → `unavailable`), F-8 (`onUncaughtError` is silent), F-9 (401/403 is fatal for any server; document in plan C5), F-10 (check-then-use window; `writeFile`/`deleteFile` are not registered for agents), F-12 (`tool-risk-declared` scans only `aci/`), F-15 (`allowImportingTsExtensions` is workspace-wide because `apps/web` type-checks the `ai-core` sources), F-16 (a comparison run that read nothing still counts as completed).
+- Gate after the fixes: exit 0 (root 410, ai-core 2,110 / 4 skipped, eval-suite 7, web 771); E2E `mcp:` 4 passed.
+
+### W2 review responses (third pass)
+
+- Fixed: F-8 (`onUncaughtError` marks the server broken for the client's own terminal errors — connection closed, reconnection attempts exhausted — and `status()` then shows `unavailable` with the error name only; PROVE: any error counts → 1 failure, `status()` never syncs → 1), F-12 (`tool-risk-declared` now scans all of `packages/ai-core/src`: 29 → 256 files), F-9 and the F-1 / F-3 / F-10 limits documented in plan C5.
+- Still carried: F-1, F-3 (reconnect), F-10, F-15 (workspace-wide `allowImportingTsExtensions`), F-16.
+- Gate: exit 0 (root 410, ai-core 2,112 / 4 skipped, eval-suite 7, web 771).
+
+### /sdd-ship validation (2026-10-18, W2): GO
+
+- Fresh `mise run gate`: exit 0. Root 410 (1 expected fail), `@platform/ai-core` 2,112 / 4 skipped, `@platform/eval-suite` 7 / 8 skipped, `web` 771, `Docs: 8 module documents, 110 test references verified`, `mcp-import-scope` wired in `check:repo-rules --only`. ai-core coverage: all files 96.84 % lines, `src/files` 91.31 %. The new `src/files` tests (`tools.test.ts` 40, `server.test.ts` 14, `path.test.ts` 23) appear by name in the run output.
+- Every W2 task (8.1–11.3) is `[x]`; PROVE evidence is recorded for each new test group above. W2 review: 0 HIGH; MEDIUM F-2, F-4, F-5 and LOW F-6–F-9, F-11–F-14, F-17 fixed; F-1, F-3, F-10, F-15, F-16 carried by choice (documented in plan C5); no fresh `sdd-reviewer` re-review of the fixes. Boundary deviations (`operations.ts`, `mcp/{request-schema,chat}.ts`, `externalInputSchema`, `allowImportingTsExtensions`) are recorded above and in plan.md.
+- Auto-fixes: `traceability.md` Test / Commit cells for Requirement 1.1–1.17 (W2 tasks); empty `### Implementation Notes` of task 11 in `tasks.md`. No code or test edits.
+- Commits: `4121998` (aci external schema), `9df796f` (files), `7c3c3f9` (mcp), `c710007` (web routes, mock scenarios, E2E), `2432c19` (gate / mutation wiring). Docs ride in the docs commit.
+- Not run here: E2E (`mcp:` 4 passed earlier in the wave, not re-run), `pnpm audit`, `test:mutation`.
+
+## W3 (ヘルプデスク) — started 2026-10-18 (branch `feat/m3-w1-foundation`, uncommitted)
+
+- Preflight: the gate lane has no external dependency (PREFLIGHT OK). Docker was not reachable during implementation, so `mise run test:db` (the `client.pg.test.ts` case for `0002`) and a persistent two-run `seed:samples` were left for the ship run (done there: see "W3 ship"). `NODE_ENV=development` leaks from the shell; every command ran as `env -u NODE_ENV mise exec -- …` / `env -u NODE_ENV mise run …`.
+- Scope: all unchecked tasks of the current wave in `tasks.md` (12.1–16.2).
+
+### 12.1–12.3 (plan-schema, scheduler, credentials)
+
+- 12.1 GREEN 20 passed. PROVE (7 stubs): self-dependency ignored → 4 failures; missing dependency ignored → 3; `changed` ignores dependencies → 1; empty plan valid → 2; no max → 1; duplicate ids allowed → 1. **Stub "dependency list compared in order" survived**: the reorder test had an already-sorted left side. The test now compares both orders (`diffPlan(a, b)` and `diffPlan(b, a)`), and the stub fails it.
+- 12.2 GREEN 9 passed. PROVE: dependencies ignored → 3 failures; `some` instead of `every` → 5; completed returned → 6; `findLast` → 1.
+- 12.3 GREEN 40 passed (the first run was already green: test and module were written together, so there was no separate RED; PROVE stands in). PROVE (9 stubs): temporary also reported as plain password → 7 failures; no placeholder filter → 1; no digit/mixed-case rule → 1 (`Password: required`); no JWT shape → 1; the value returned → 14; no GitHub shape → 2; no `AKIA` → 1; unordered result → 1. **Stub "labelled API key / token off" survived** (a prefix shape also matched), so a test with values that have no known prefix was added; both label stubs now fail it.
+- Decisions: `PlanIssue` carries a Japanese `message` that the planner feeds back; `PlanSchema` allows an empty task list so `validatePlan` names it (`empty`) in the feedback; a duplicate task id is a schema failure. The credential patterns are bounded (values are runs of printable ASCII; a 200,000-character line is tested).
+
+### 12.4–12.6 (planner, replanner, runTask)
+
+- 12.4 GREEN 12 passed. PROVE (7 stubs): no `validate` → 6 failures; any `StructuredOutputError` treated as an invalid plan → 1 (`throws output-invalid when the output keeps breaking the schema`); fixed regeneration count → 2; no feedback → 1; no signal → 2; no titles → 1. **Stub "no `<inquiry>` wrapper" survived** because the system text also names the tag; the test now compares the JSON-encoded block `<inquiry>\n…\n</inquiry>`.
+- 12.5 GREEN 15 passed. PROVE (10 stubs): completed tasks not kept → 6 failures; a completed id reused → 1; no `validatePlan` on the merge → 2; no size check → 1; no empty-remaining check → 1; usage not summed → 1; replan always → 4; no diff → 2. **Two survivors** (any `StructuredOutputError` becomes a failed replan; no signal in the decision call): tests added for "replan output never fits the schema → `output-invalid`" and "already aborted → no call". `ReplanOutcome` failure carries `problems: string[]` instead of `PlanIssue[]` because a reused completed id has no `PlanIssueKind`.
+- 12.6 GREEN 13 passed. PROVE (12 stubs): no truncation → 1; truncation without room for the ellipsis → 1; UTF-16 slice → 1 after the emoji was moved onto the cut; failure not recorded → 2; raw error message in the failure → 1; no latch → 1; sources not de-duplicated → 1 after the test chunks got distinct ids; no observer → 1; no pre-abort check → 1; abort swallowed → 1 after a mid-run abort test was added; no inquiry block → 1 (JSON-encoded block compared). `params.signal.aborted ||` in the catch was redundant (a caller abort already has stop reason `aborted`) and was removed.
+- Decisions: `runTask` builds its own source recorder as the `CitationRegistry`, so `sources` are exactly what the search returned (de-duplicated by document and heading); `TaskResult.failure` is a learner-facing sentence (step limit, token budget, deadline, or the latch's message), never raw text; only the run's own deadline (`timeout`) becomes a failed task, anything else (the caller's abort, a model error) is rethrown. A fatal tool error cannot come from the knowledge-search tool for a plain `Error` (the tool turns it into a fixed sentence), so the fatal path is exercised with a `PlatformError` that carries `status: 401`.
+
+### 13.1–13.4 (DB, store, seed, script)
+
+- 13.1: **existing tests modified (risk trigger 3)** — `schema.db.test.ts` and `client.pg.test.ts` expected exactly `["0001_rag_schema.sql"]` / one applied migration; both now expect `0002_helpdesk.sql` too (inside the declared boundary). RED: `Cannot read properties of undefined (reading 'Symbol(drizzle:Name)')` (the tables did not exist). GREEN 52 passed in `src/rag/db`. The first GREEN had two failures that were real design findings: Postgres evaluates CHECKs in name order, so `status_check` and `revision_check` could never be the reported constraint; both were implied by `state_check` / `diff_check` and were removed (the SQL says so in comments). PROVE (9 stubs on the SQL): resolved arm with a stopped reason → 1 failure; no id check → 1; no cascade → 1; no diff check → 2; no stopped_reason check → 1; open arm with an answer → 3; `DEFAULT now()` → 1; no steps check → 1; escalated without reason → 1. Docker is down, so the `0002` case in `client.pg.test.ts` was not run.
+- 13.2 GREEN 32 passed. PROVE (13 stubs): no `status = 'open'` guard in the UPDATE → 2 failures; text `max()` → 5; retry on any error → 1; no retry cap → hangs (the "gives up" test); no retry → 2; diff rules off → 2; list unlimited → 1 after `limit: 500` over 52 rows was added to the test; list ascending → 1; `reset` also clears `rag_documents` → 1; stop reason kept on resolve → 1; clock ignored → 4; no input validation → 1. The unique-violation retry is driven with a Proxy over the database that throws a 23505 error shaped like Drizzle's (PGlite serialises transactions, so a real race cannot be produced); the PK is the real guard.
+- Decisions: `create` accepts `initialPlan` and writes revision 0 in the same transaction; `setStatus` is one conditional UPDATE with a union that includes `{ status: "open", stoppedReason }` (stays open); revisions have no update path (append-only by the API; the DB has no trigger — an UPDATE through raw SQL would succeed, noted as a limit); `Ticket` leaves out fields that do not apply.
+- 13.3 GREEN 13 passed. PROVE (8 stubs): reset ignored → 1 failure; reset always → 3; upsert overwrites → 3; reset deletes `rag_documents` → 1; default root ignored → 2; existing count wrong → 1; skipped dropped → 1; and the explicit abort checks were **redundant** (the ingestion checks the signal first), so they were removed and the "already aborted" test now guards the ingestion's check. Fixtures: 6 FAQ files (Japanese, headings, no credential shape — a test reads them through `detectCredentialShapes`) and 5 sample tickets (resolved ×3, escalated, open at the step limit) with plans.
+- 13.4: `scripts/seed-samples.ts` needs Node to start TypeScript that imports ai-core sources, whose relative imports have no extension. A `registerHooks` resolve hook (retry with `.ts`, `/index.ts`) registered inside the script, then dynamic imports, worked on Node 26.12 (a probe confirmed `ERR_UNSUPPORTED_DIR_IMPORT` is the code for directory imports). `AI_RUN_MODE=mock mise run seed:samples` → 6 documents, 5 tickets; `--reset` works; without Docker in `local` the script prints the `services:up:db` guidance and exits 1. In `mock` the PGlite database lives only for the process, so a two-run idempotence check there is meaningless: idempotence is covered by `seed.db.test.ts` (second run adds 0 rows) and the two-run check on Docker Postgres is for the human. `mise tasks validate` → 28 tasks.
+
+### 14.1 (runHelpdesk)
+
+- GREEN 35 passed (real PGlite store, a model that routes each call by what its prompt asks for). PROVE (14 stubs): limit `>` instead of `>=` → 2 failures; no post-task limit → 1; replan not counted → 1; no credential check → 3; no second check → 1; evidence check off → 1 (after the pattern was fixed: it had missed a line break); abort not stored → 2; no revision record → 1; unsafe reason kept → 1; plan event only at the end → 2; no post-plan abort check → 1; invalid-plan ticket not escalated → 1; decision asked after the last step → 2.
+- Decisions: the plan generation is a step (CL-14), so with `maxSteps: 1` the ticket exists, stays `open` with `step-limit` and nothing runs; a replan counts as one step and its decision call does not; when the budget is spent after a task, no decision is asked (work left → `step-limit`, otherwise answer). A request aborted while the plan was made throws and creates no ticket; later aborts leave the ticket `open`/`aborted`. An unexpected exception after the ticket exists leaves it `open` with no stopped reason and is rethrown (noted as a limit). The final answer is a structured `resolved | unresolved` object; a reason from the model that has a credential shape is replaced by a fixed sentence.
+- `helpdesk.ts` may not import anything under `agents/` (the repo rule matches any import path with an `agents` segment, type imports included), so the loop-limit and observer types come from `RunTaskParams`.
+
+### 15.1–15.4 (scenarios, stream, routes)
+
+- 15.1: the ambiguity detector found a **real collision**: M2's agentic-RAG turn `{ stepIndex: 1, toolResultFor: "searchKnowledgeBase" }` answers any step-1 request after a search, so it would have answered the help desk's task turns. It now also names its question (`fixtures/scenarios/m2-1.ts`, a boundary deviation; M2's tests all still pass). PROVE: the old turn put back → `answers each M3 turn alone…` fails; `M3_2_SCENARIOS` removed from the gateway defaults → the new gateway test fails. Counts 4/9 → 8/32 (existing test constants updated).
+- 15.2: `domain-stream.ts` (`createHelpdeskStreamer`) copies fields by name and drops any credential kind outside `CREDENTIAL_KINDS`; `getHelpdeskStore()` = the knowledge-base database + the platform clock. PROVE: 8 stubs on the streamer (plan/progress id, result numbering, kinds unfiltered, event spread, undefined kept, empty kinds kept, async write) and the clock on the store, each failing its test.
+- 15.3: `helpdeskRequestSchema` lives in ai-core (`apps/web` has no `zod`; boundary deviation, W2 precedent). The route requires `tools` and `structuredOutput` on the model, passes the FAQ titles to the planner, and in `mock` searches with `minSimilarity: -1` because the mock embeddings are pseudo-random (every search would otherwise be empty and every ticket escalate). PROVE (9 stubs): no `require` → 2 failures; no signal → 5+; `maxSteps` not passed → 1; mock similarity left at default → 4; no `message-metadata` → 2; no `onEvent` → 5+; raw error text → 1; store opened before the model → 2; **titles not passed survived** until a test read the planner's prompt. Two test bugs found on the way: the live rate-limit test let a request reach OpenAI (blocked network, reported by the next test), so it now ends at a capability error past the guard; the immediacy test first read the stream until "progress" and asserted the model call had started (it had not yet — correct order), so it now reads until `"current":"t1"`.
+- 15.4: `GET /api/helpdesk/tickets` (status filter, unknown query rejected, 50 newest) and `/tickets/[id]` (ticket + revisions; a malformed id is a 404 that never reaches the database). `toNotFoundResponse` is new in `lib/server/errors.ts` (the app's first 404; code stays `invalid-request`) and `lib/server/helpdesk-json.ts` holds the shaping, because a Next.js route file may export handlers only (both are boundary deviations). PROVE: 12 stubs across the two routes, the JSON helper and the 404 helper; one equivalent mutant (`answer: undefined` is dropped by `JSON.stringify`).
+
+### 16.1 / gate
+
+- `stryker.config.mjs` + `helpdesk/plan-schema.ts`, `helpdesk/scheduler.ts`; `stryker run --mutate` on those two: 91.41 (plan-schema 90.83, scheduler 100.00), threshold 70. The full `mise run test:mutation` was not run.
+- W1 review F-17: `scripts/check-repo-rules.test.mjs` now asserts on the real tree that the three M3 workflow files exist and that the rule scans exactly `workflows/` + `patterns/` + those files (renaming `planner.ts` fails two tests; 28.1 extends the list). `mise run check:repo-rules`: `workflow-no-agent-loop: scanned 37 FILES`.
+- `env -u NODE_ENV mise run gate`: exit 0, 41.0 s wall. Root 411 passed + 1 expected fail, `@platform/ai-core` 2,341 passed / 4 skipped (116 files), `@platform/eval-suite` 7 / 8 skipped, `web` 830, `Docs: 8 module documents, 110 test references verified`, `tool-risk-declared: scanned 277 FILES`, `TypeScript packages/ai-core/tsconfig.json: 287 files`, `apps/web/tsconfig.json: 145 files`. Before the wave: root 410, ai-core 2,112, web 771.
+- `env -u NODE_ENV mise run check:client-bundle`: exit 0 (`next build` lists `/api/helpdesk`, `/api/helpdesk/tickets`, `/api/helpdesk/tickets/[id]`; 20 client files scanned for 16 names and 5 sentinels).
+
+### W3 adversarial review (`.sdd/reviews/003-domain-agents-impl-w3-review-2026-10-18.md`): REQUEST_CHANGES (2 HIGH, 7 MEDIUM, 14 LOW)
+
+- Fixed: F-1 (ticket stranded `open` after an unexpected error → escalated with a fixed reason, then rethrown; PROVE: removing it fails 3 tests), F-2 (reset-link answers were flagged → URLs / hyphenated words are prose, labelled keys/tokens need a digit or mixed case), F-3 (decision reason and task descriptions checked; PROVE fails 1 test each), F-4 (nine tasks and repeated ids are `validatePlan` issues and escalate), F-6 (the diff rides on every later plan state), F-7 (tools offered = `["searchKnowledgeBase"]`), F-14 (plan.md synced). F-5: plan wording corrected (the CHECK cannot see the old row).
+- Deferred (see tasks.md "W3 からの持ち越し"): F-8 (FAQ in the mock knowledge base → 35.x), F-9, F-12, F-20–F-22. Not re-reviewed by a fresh reviewer (the reviewer hit a rate limit after writing the report).
+- Gate after the fixes: exit 0, 42.3 s. Root 412 (1 expected fail), `@platform/ai-core` 2,354 / 4 skipped, `web` 830.
+
+### W3 ship (`/sdd-ship 003-domain-agents`, 2026-10-18)
+
+- Verdict: GO. Spec drift: none (review F-4 / F-5 / F-14 were already synced to plan.md). Boundary: every changed file is in a task `_Boundary:_` or the recorded exceptions (5)–(7).
+- Evidence: `mise run gate` exit 0 (turbo replayed logs for ai-core / eval-suite / web by input hash): root 412 (1 expected fail), `@platform/ai-core` executed=2354 passed=2354 skipped=4, `@platform/eval-suite` 7 / 8 skipped, `web` 830; helpdesk files in the run: `helpdesk.test.ts` 40, `ticket-store.db.test.ts` 32, `seed.db.test.ts` 13, `credentials.test.ts` 45, `plan-schema.test.ts` 22, `run.test.ts` 13, `replanner.test.ts` 15, `planner.test.ts` 13, `request-schema.test.ts` 18, `scheduler.test.ts` 9, three `api/helpdesk` route files 47. `docs:check`: 8 module documents, 110 test references.
+- Docker (Rancher Desktop): `mise run test:db` → `client.pg.test.ts` 8 + `store.pg.test.ts` 9 passed (executed=17); `mise run seed:samples` twice → 5 tickets added then 0 added / 5 existing, FAQ 6 ingested both times.
+- Auto-fixes: stale Docker note in this file and in `tasks.md` 13 Implementation Notes; `traceability.md` Test / Commit cells for 2.1–2.10 and the Gaps entry. No code or test edits.
+- Commits: `1a0ff4c` (helpdesk core), `2f07038` (m3-2 scenarios), `7f1351f` (web routes), `b67826d` (seed:samples), `dea6909` (mutation target / rule scan). Docs ride in the docs commit.
+- Not run here: `test:mutation` (full), E2E, `pnpm audit`, `check:client-bundle` (run at implementation: exit 0), a fresh re-review of the W3 fixes.
+
+
+## W4 implementation (`/sdd-impl 003-domain-agents`, 2026-10-18)
+
+- Preflight: the gate lane has no external dependency (PREFLIGHT OK). Docker (Rancher Desktop, `~/.rd/docker.sock`, Engine 29.5.3) was reachable, so 17.6–17.8 ran against the real engine. Every command ran as `env -u NODE_ENV mise exec -- …`; container runs used `DOCKER_HOST=unix://$HOME/.rd/docker.sock`.
+- Scope: all unchecked tasks of the current wave in `tasks.md` (17.1–20.3), in order.
+
+### 17.1–17.8 (sandbox providers)
+
+- 17.1 mock: GREEN 11. PROVE (8 stubs, all killed): marker ignored, bytes not copied, close not idempotent, run/write after close allowed, abort ignored, index fixed at 0, alive always. The mock applies the same file-name rule as the real sandboxes (`sandbox/file-name.ts`, written with its test in one step; PROVE stands in for the RED, 10 stubs killed after a boundary test for exactly 100 bytes was added).
+- 17.2 select: GREEN 8. PROVE (5 stubs killed): blank key counts, image presence ignored, env image ignored, build task missing from the guidance, Docker before E2B.
+- 17.3 lifecycle: GREEN 18. `acquire` returns a `SandboxLease` (plan only named the methods). PROVE (15 stubs). **Survivors → tests added**: `done` not idempotent (a session with two holders was closed), `sweep` leaving swept entries in the map. One stub survived as **equivalent** and the line was removed (`acquire` also set `lastActive`; `done()` already does).
+- 17.4 e2b: GREEN 29 against a fake SDK shaped from the 2.9.0 `.d.ts` (`Sandbox.create` has **no `signal` option**, so an abort during creation kills the new sandbox afterwards). The SDK is loaded lazily on the first `create` (rule `sandbox-import-scope` allows a literal dynamic import in this one file). The SDK's `TimeoutError` means both "the code ran too long" and "the sandbox expired", so `isRunning()` tells them apart. Messages are fixed text (the SDK error can carry the key). PROVE: 26 stubs, all killed. `allowInternetAccess` is passed only when configured (the SDK default stays; handed to 004 by CL-21; unverified without a key).
+- 17.5 tar/demux: GREEN 28. The tar output equals Python `tarfile` (USTAR) byte for byte for four inputs (hash goldens). First run mismatched: Python leaves devmajor/devminor empty for a regular file; the implementation now matches. PROVE (tar 13, demux 11 stubs, all killed after a test for Docker's system-error stream type 3 was added). One equivalent mutant left on purpose (`break` after a short payload).
+- 17.6 engine/probe: the in-memory socket is an `http.Agent` subclass whose `createConnection` returns a `Duplex` (the hermetic guard patches `net.Socket#connect`, which this never reaches). GREEN 43 + 17. PROVE: 28 + 11 stubs. **Survivors → tests added**: a 200 where 201 is expected, an id returned by the daemon that is not a container id, an unanchored id regex, logs not cut by the cap on a stream that never ends (the fake gained a chunked body that stays open), an error message that could leak the connection error. One redundant pre-abort check removed (the `signal` option of `http.request` does it).
+- **S-5 on the real engine (changed the design, see research "W4 の実測")**: PUT archive into a read-only-root container fails for `--tmpfs` (403) and is hidden by the mount for `--mount type=tmpfs` and tmpfs-backed volumes; only an anonymous volume works. Hence `/work` = anonymous volume, `/tmp` = tmpfs, inputs placed before start; plan C6 synced.
+- 17.7 provider: GREEN 40 with a fake engine. PROVE: 45 stubs, all killed after 4 tests were added (the boundary at the exact end of the lifetime, the traceback starting at its header, a colon that is not an exception, the traceback-name filter). One stub (`NetworkMode`) is equivalent to `NetworkDisabled: true` and was dropped in favour of a pair stub.
+- 17.8 image + container tests: `mise run sandbox:build` succeeded (15 s; 395 MB; base `python:3.13-slim@sha256:70729b46…`, Python 3.13.16; `requirements.txt` freezes 15 packages, all published ≥ 24 h before). `mise run test:container`: 14 passed, about 15 s wall. PROVE against the real engine (9 stubs): network, read-only root, `no-new-privileges`, non-root user, pids limit, memory limit, container not removed — all killed; **survivors → tests strengthened**: `CapDrop` removal survived (`CapEff` is 0 for any non-root process) → assert `CapBnd`; "container removed" survived because `close()` removed it → assert before `close`; volume leak (`v=1` dropped) → assert the dangling-volume count. The stubs leaked 15 anonymous volumes and 2 containers; I removed only those created in this session (by creation time).
+- `tooling/vitest/network-guard.ts`: in the `container` suite only, the unix sockets named by `DOCKER_HOST` (unix) and the two default locations are allowed; PROVE 6 stubs, one equivalent (`DOCKER_HOST` with a TCP address leaves junk in the set that no connection can match).
+- `testing/container-only.ts` (`describeContainer`): skips every test with a reason when no Engine answers or the image is missing; PROVE 8 stubs killed. Written together with its test (no separate RED; PROVE stands in).
+- Decisions: the Docker API is pinned to v1.44; Rancher Desktop needs `DOCKER_HOST` (not in the plan's three socket locations; not added, documented); `fonts-ipafont-gothic` is in the image for Japanese chart labels (the prelude, 18.2, sets the font family).
+
+### 18.1–18.5 (data analysis)
+
+- 18.1 upload-check: GREEN 36. PROVE (about 30 stubs). **Survivors → tests added**: the base `.xlsx` check passed a file that only looked like a zip (a Word document is a zip too, so the check reads the central directory names and needs `xl/workbook.xml`); the name's directory part (`dir/.csv`); `maxBytes`; ZIP64 and truncated directories; `Book` (BIFF5). Two redundant lines were removed. The reasons are `extension | size | empty | magic | encoding` (`empty` added to the plan's four).
+- 18.2 prelude + output-parser: GREEN 54. The parser takes markers only at the start of a line and extracts them from the whole output before cutting the text. PROVE (35 stubs): **base64 length and character checks hid each other** until the tests asserted the rejection message. The prelude was run in the real image (container test): NaN/NaT/inf become `null`, tables stop at 200 rows, figures are closed.
+- 18.3 attempts + runPython: GREEN 40. PROVE (35 stubs). Reading Req 3.3 as "first run + 3 fixes = 4 runs" (see tasks.md task 18 notes, plan CL-26, to be confirmed). The tool refuses by itself when the log is exhausted (a second line of defence if no latch is wired); the usual path is the latch that `defineAciTool` trips from the thrown `FatalToolError`.
+- 18.4 runAnalysis: GREEN 26 with scenario models and the mock sandbox. Unreadable workbooks end before the model is called (probe via openpyxl / xlrd, per kind). PROVE (24 stubs): survivors were the per-kind probe (the test responder now fails only the library that opens that kind), control characters and the length of the shown file name, the tool-limit margin (extracted to `analysisLoopLimits` and tested directly), and an abort between writing and probing.
+- 18.5 m3-3 scenarios: three scenarios (success 2 turns, fixed 3, attempt-limit 5), wired into the gateway defaults and `M3_SCENARIOS`; counts 8/32 → 11/42. `analysis/scenarios.test.ts` runs each end to end with the mock sandbox (1, 2 and 4 attempts). PROVE (8 stubs, all killed).
+- `mise run test:container`-free full ai-core run at this point: 2,730 passed / 4 skipped, lines 97.99%.
+
+### 19.1–19.7 (analysis HTTP entrance)
+
+- 19.1 `getSandboxSelection`: GREEN (platform tests 66). mock → pseudo provider; E2B key → E2B without probing Docker; else probe → Docker or disabled with the reason and guidance. A disabled setup is not cached (starting Docker works without a restart); a failed build is not cached; an enabled one is built once (concurrent callers share it). The idle sweep is a `setInterval` (unref'd, 60 s) that survives a failing sweep and is stopped when the setup is replaced. `createLocalDockerProvider` was added to ai-core so `apps/web` never names a socket (rule `sandbox-import-scope`). PROVE 14 stubs; survivors were the failed-build cache and the sweep error handler (a rejected promise whose `.catch` is spied).
+- 19.2 `readUpload`: GREEN 21. Checks the declared length for an early 413 (cancelling the unread body), counts received bytes and cancels at the first byte past the cap, then checks the file size against the real limit; cap = limit + 64 KiB for the text fields. PROVE 18 stubs; survivors: `>` vs `>=` at the exact cap (a body of exactly the cap is a malformed form, not too large) and a dead `file.name === ""` branch (an empty filename is read as a string), removed.
+- 19.3 `createSessionRegistry` / `getSessionRegistry`: GREEN 13; the module-reload test shows a session made by one copy of the module is found by another. A plain `get` is not activity; expiry is checked lazily and by `sweep`.
+- 19.4 stream mapping: GREEN 23; PROVE 18 stubs. The streamer repeats the browser-protecting limits (PNG with an alt ≤ 200 characters, ≤ 1 MiB, ≤ 200 rows) on top of `runAnalysis`'s own.
+- 19.5 status route: GREEN 7. 19.6 `POST /api/analysis`: GREEN 32 (see the order in tasks.md); PROVE 29 stubs, survivors covered: astral characters in the instruction, `require: ["tools"]`, the lease being released (the idle sweep closes the sandbox after the request), raw error text in the stream, the abort signal reaching the agent (the model is asked once, not four times). 19.7 `DELETE`: GREEN 12; a session made by `POST` is closed by `DELETE` in the same process.
+- Found on the way: my first stream-error test replaced the instrumented gateway with a copy (the `adjust` hook spreads after the wrapper) and passed vacuously; the PROVE survivor exposed it.
+
+### 20.1–20.3 and the W4 adversarial review (2026-10-18)
+
+- 20.1: the five `analysis:` real-server cases passed on the first production build (see research "W4 の実サーバー確認"). The first run failed on a Node-ESM JSON import reached from the scenario fixture; fixed by splitting `MOCK_ERROR_MARKER` out. 20.2: `sandbox-import-scope` wired (it flagged my own test support; see exception (10)), Stryker targets added; the two new files scored 88.86 on their own before the review fixes.
+- Gate before the review: exit 0, 45.3 s; E2E 393 passed (3 engines); `test:container` 15; client bundle, `secret-scan`, `audit` clean.
+- **Adversarial review** (`.sdd/reviews/003-domain-agents-impl-w4-review-2026-10-18.md`): REQUEST_CHANGES (1 HIGH, 6 MEDIUM, 14 LOW). The reviewer reproduced four behaviours with throwaway probes (P1–P4). Fixed test-first: F-1 (a dead sandbox reported `succeeded`, 6 model calls, 0 attempts), F-2 (`succeeded` without a successful run), F-3 (cumulative fix budget; CL-26 rewritten), F-4 (close during container creation), F-5 (daemon log cap), F-6 (Engine call timeouts), F-7 (exemption narrowed to four files), plus F-8, F-9, F-10, F-11, F-12, F-13, F-19, F-20 and the plan sync of F-16. Deferred: F-14, F-15, F-17 (CL-21), F-18, F-21 (unverified disconnect on the real server).
+- PROVE on the fixes: about 60 stubs, all killed; the survivors were an equivalent mutant on a body cut short by a timeout (the response `error` event rejects too) and a redundant isBusy-order stub. The earlier mistake worth remembering: I had judged the W4 design done after green tests and a green E2E; the reviewer found that no test looked at the status the run ends in when the sandbox fails. Tests that assert on intermediate events do not pin the final status.
+- Gate after the fixes: exit 0, 53.5 s (root 419, `@platform/ai-core` 2,778 / 4 skipped, `web` 959); `test:container` 17 on the real engine, nothing left behind; E2E 393 passed again; `check:client-bundle` clean. A fresh re-review of the fixes was not run.
+
+## W4 ship (`/sdd-ship 003-domain-agents`, 2026-10-18)
+
+- Validation: GO. Tasks 17.1–20.3 are `[x]`; boundary exceptions (8)–(10) are recorded in `tasks.md` and were checked by the W4 review; PROVE evidence for every new test is in the sections above.
+- Gate (fresh run, before committing): `mise run gate` exit 0. Root 419 passed (1 expected fail), `@platform/ai-core` 2,778 passed / 4 skipped (135 files, lines 98.07%), `web` 959 passed, `@platform/eval-suite` 7 passed / 8 skipped, `docs:check` 110 references verified. The 18 new `sandbox/` and `analysis/` files and 3 `app/api/analysis` route files appear by name in the output.
+- Not run in ship: E2E, `test:container`, `test:mutation` (recorded above at implementation time). Open: no fresh re-review of the review fixes; CL-26 (★) awaits a human reading of Req 3.3.
+- Commits: `8510c68` (sandbox), `0114cd7` (analysis), `748cd84` (web routes); docs ride in the docs commit.
+
+
+## W5 implementation (`/sdd-impl 003-domain-agents`, 2026-10-19)
+
+- Preflight: the gate lane has no external dependency (PREFLIGHT OK); E2E (23.4) needs Playwright browsers, checked at that task. Every command ran as `env -u NODE_ENV mise exec -- …`. PROVE helper: a scratch script that applies one string mutation at a time to the source, runs the test file and restores the source (`prove.mjs`, not kept in the repo).
+- Scope: all unchecked tasks of the current wave in `tasks.md` (21.1–24.2), in order; 21.2 and 22.1 are `(P)` but small, so they ran in this session.
+
+### 21.1–21.4, 22.1 (arXiv client, research tools, budget)
+
+- 21.1 parse: GREEN 36. PROVE 34 stubs. **Survivors → tests added**: lone-`ENTITY` guard and the lower-case DOCTYPE guard were unreachable (the parser fails on those anyway) → guard narrowed to `<!DOCTYPE` (the `i` flag stays; equivalent). `isArray` was redundant with a wrapping `listOf` → `listOf` now takes arrays only. Blank author names, links without an address, decoding of attribute values, bare IDs (no abstract URL) got tests.
+- 21.2 queue: GREEN 19. PROVE 15 stubs. Interval counts from the end of the previous request. **Survivors**: an abort while an earlier task still runs must free the caller at once (`raceWithAbort`) → test added; the up-front `throwIfAborted` was redundant with `waitFor` → removed. `FakeClock` test pitfall: resolving a gate and advancing the clock in the same tick makes the task "end" at the later time → flush between them.
+- 21.3 client: GREEN 77. PROVE ~50 stubs. **Survivors → tests added**: the outer cache read (the inner re-check hid it; a cached query must answer without waiting for the spacing), the caller's signal reaching the fetcher, an aborted signal with a cached answer, a fetcher that ignores the signal (request timeout must cut it), the queue interval. Redundant code removed: the id-pattern check in `getAbstract`, the empty-`Retry-After` branch.
+- 21.4 tools: GREEN 45. PROVE 30 stubs. **Survivors → tests added**: abstract limit boundary (1,200 whole / 1,201 cut), code points vs UTF-16 units (emoji), `getPaperAbstract` lists every author, ID regex anchoring.
+- 22.1 budget: GREEN 19. PROVE 13 stubs, all killed first time.
+- `tsc` clean; `biome check --write` applied (only `useLiteralKeys` infos remain: index-signature records need brackets under `noPropertyAccessFromIndexSignature`).
+
+### 22.2–22.5 (citations, sub-agents, supervisor, m3-4 scenarios)
+
+- 22.2 citations: GREEN 113 tests. PROVE ~100 stubs in two rounds. Design settled while writing: lines (list items, table rows) go whole, a paragraph sentence goes by itself, and only the mention (with its brackets) goes when the sentence also cites a kept paper (+ a "please check" warning). A bare ID needs a real month (`1234.5678` is a number); an `arXiv:`-labelled one does not (a made-up `2499.99999` is still removed). Warnings are attached by `attachCitationWarnings`, not by `checkCitations`. **Survivors → tests**: URL scheme and host case (`(?i:…)`), `export.` / `ar5iv` / `html` links, trailing slash on site links, a list item with several sentences (bullet kinds), the line break of the last line, indentation, two removals of one sentence, the order in which a full and a partial removal arrive, five-vs-six reference warnings, the 60-character excerpt. **Removed as equivalent**: sentence-leading white space skip, `mergeSpans` (spans only repeat or follow).
+- F-10 / F-11 (deferred from the W1 review): `usageFromRun` (a run that reported no tokens is unknown), `ExternalContentLog.forAgent` and a 512-character `source` cap. Boundary exception (11). PROVE 14 stubs; survivors: the no-agent record must not carry an `agent: undefined` key (`toStrictEqual`), the `onCall` order test asserted inside the callback (swallowed by the tool wrapper) → value captured and asserted afterwards.
+- 22.3 subagents: GREEN 55. PROVE ~60 stubs. **Survivors → tests**: the abort test only checked the caller's rejection (the framework's race gives that for free) → now also that the model call saw the abort and that no failure outcome was reported; `error` reasons are fixed text, asserted by equality; the child latch was unneeded → removed. Child tool results never reach the supervisor: the output keys are exactly `status, agent, summary, paperIds`.
+- 22.4 supervisor: GREEN 29. PROVE 48 stubs. **Survivors → tests**: sub-agent limits and summary length passed through, `supervisorLimits` values, a supervisor that fails after a sub-agent returned, the fallback report skipping a failed sub-agent, trimming of the report. The first run of the new tests passed at once, which is why PROVE came before trust: 40 of 48 stubs were killed by the first set.
+- 22.5 scenarios: `m3-4/research/default` (4 sub-agent calls, 12 turns, one invented ID the check removes) and `partial-failure` (reading answers with nothing, 9 turns). The ambiguity detector passes at 13 scenarios / 63 turns. `research/scenarios.test.ts` runs each end to end with the fixture arXiv fetcher (`mock/arxiv-fixtures.ts`, refuses other hosts). PROVE: dropping the scenarios from `M3_SCENARIOS` or from the gateway defaults fails a test each; the fixture fetcher's anchoring needed two more cases.
+
+### 23.1–23.4 (research HTTP entrance)
+
+- 23.1 `createArxivClientFor` / `getArxivClient`: GREEN (platform tests 74). `mock` → the fixture feed with no spacing; elsewhere the platform's guarded `HttpFetcher` with arXiv's terms. One client on `globalThis`, a failed build not cached. PROVE 9 stubs, all killed first time.
+- 23.2 stream mapping: `createResearchStreamer` copies each detail field by name per kind and drops an unknown agent or kind; `writeResearchUsage` (state, id `usage`) and `writeResearchResult`. `runResearch` gained `onUsage` for the live spend (PROVE 7 stubs). PROVE 21 stubs on the mapping; survivors → tests for the market agent, number-typed fields, the tool input and field-by-field copying of a gap.
+- 23.3 `POST /api/research`: GREEN 27. Before this task, a fix to W5 code found while writing the route test: an unreachable arXiv was only visible to the child model, so a child could answer "could not search" and count as `ok`; `onFailure` + the `arxivDown && found.size === 0` rule makes it a gap (PROVE 8 stubs). PROVE on the route 15 stubs; survivors → a test that the requested model reaches the gateway, and one that an unexpected error's message stays out of the stream (the provider-failure test could not pin `onError`: `runResearch` turns it into a fixed-message error first; a clock whose `timeoutSignal` throws a raw error does).
+- 23.4 real server: preflight (E2E lane): `NODE_ENV=development` leaked into the shell (`env -u NODE_ENV`), port 3100 free, three engines installed, no `pre-push` hook. The 3 new cases passed in Chromium at once, `serverExternalPackages` unchanged (see research.md). PROVE: the parser made to return nothing → the `card` expectation fails; my first stub (always throw) made `next build` fail on unreachable code, which is why the stub has to compile.
+
+### W5 adversarial review and close (2026-10-19)
+
+- Review `.sdd/reviews/003-domain-agents-impl-w5-review-2026-10-19.md`: REQUEST_CHANGES (0 HIGH, 5 MEDIUM, 9 LOW). Fixed test-first: F-1 (`createBudget` `reserve`; the supervisor keeps half of the shared tokens, at most 20,000, so a run stays inside `maxTotalTokens`), F-2/F-3 (underscore emphasis, mirror sites, arXiv DOI, `dx.doi.org`, case, link text), F-5 (`getPaperAbstract` reads from the run's own set), F-6 (a child cut off by the tool time limit is a gap; supervisor duration derived from the calls). PROVE ~40 stubs on the fixes; survivors → tests (`onRead`, AbortError vs TimeoutError, case of the subject class, link-text span, alphaxiv overview). Accepted and carried to 40.4: F-4 and most LOW. **The lesson**: my own PROVE rounds had killed ~700 stubs and still missed that the budget was never checked as a whole — a stub-by-stub test cannot find a rule that no single line breaks. A test of the invariant ("the run's total ≤ `maxTotalTokens`") would have; the reviewer found it by reading CL-17.
+- Gate after the fixes: exit 0, 52.1 s; E2E 402 passed (3 engines, before the fixes; research cases re-run after); client bundle clean; Stryker (2 files) 83.22.
+
+### Human decisions (2026-10-19)
+
+- plan.md edits of W5 (C8, C9, file table, the supervisor's token reserve) approved by the user.
+- CL-26 confirmed: first run + 3 fixes = at most 4 runs; `maxFixAttempts` stays 3.
+
+
+## W6 implementation (`/sdd-impl 003-domain-agents`, 2026-10-24)
+
+- Preflight: the gate lane has no external dependency (PREFLIGHT OK). Every command ran as `env -u NODE_ENV mise exec -- …`. Single files run with `vitest run --coverage.enabled=false <path>` (the coverage threshold fails a partial run). Work was fanned out to fresh-context subagents, one task each (25.1 / 26.1 / 26.2 / 26.4 / 26.6, then 25.2 / 26.3, then 25.3 / 26.5, then 25.4 / 26.7, then 27.1 / 27.2 / 27.3 / 27.9, then 27.4 / 27.7 / 27.8, then 27.5 / 27.6); I re-ran each task's tests myself before ticking it. Each subagent had its own scratchpad subdirectory for PROVE after a shared-scratchpad name collision (two agents wrote `mut.py`; no source was damaged — `session.ts` was re-verified).
+
+### 25.x (requirements interview)
+
+- 25.1 session: 37 tests, PROVE 36 stubs (3 survived at first, 2 tests added). 25.2 personas: 26 tests, ~17 stubs (goal limits added). 25.3 interview: 42 tests, ~16 stubs. 25.4 document: 13 tests, 8 stubs; markdown-injection neutralization (a leading `#`, `>`, `-`, digits.).
+- Decisions: `round` = closed rounds; `judgeSufficiency` owns the "sufficient with missing = insufficient" rule; persona IDs are assigned by code.
+
+### 26.x (marketing)
+
+- 26.1 `onRoleOutput`: 10 new tests (28 total), 11 stubs all killed; callback errors swallowed. 26.2 `0003_marketing.sql`: `schema.db.test.ts` 62 tests on PGlite, 12 stubs killed; the `client.pg.test.ts` case is written but **not run** (needs Docker). Deviation: the persona column is `viewpoint` (plan's Data Model), not `instructions` as the task text said.
+- 26.3 catalog/seed: 15 tests, 4 survivors turned into tests. 26.4 moderator: 18 tests, 24 stubs. 26.5 council: 34 tests, 12/15 killed (+1 test), 2 equivalent. 26.6 profile: 35 tests, 36 stubs. 26.7 recommend: 21 tests, 11 stubs.
+
+### 27.x (entrance)
+
+- 27.1 scenarios: M3 went 13/63 → 19/120 scenarios/turns; no ambiguity. 27.2 `getCatalogRepo`: mock auto-seeds, local/live do not (503 + `seed:samples`). 27.3: 7 part writers; per-round ids for judgement/verdict. 27.4–27.8: 28 / 46 / 12 / 34 / 29 route tests. 27.9: `seed-samples.ts` calls `seedMarketing`; run twice in one process, nothing added the second time (no Docker for the real Postgres).
+- Problems met: (1) `check:repo-rules` rejected a non-literal dynamic import in a test (`import(specifier)`); replaced by `vi.resetModules()` + a literal import. (2) The first full gate failed on `check-repo-rules.test.mjs`: the scan-count list needed the 6 new files (37 → 43) — this is task 28.1's job. (3) Route tests that start a PGlite per test hit the 5 s limit under the gate's parallel workers; `vi.setConfig({ testTimeout: 60_000 })`. (4) A second gate run overlapped with a run I had started earlier and produced unrelated timeouts; re-run alone it was green. Lesson: never start two gates at once.
+
+### W6 adversarial review and close (2026-10-24)
+
+- Review `.sdd/reviews/003-domain-agents-impl-w6-review-2026-10-24.md`: REQUEST_CHANGES (0 HIGH, 8 MEDIUM, 15 LOW). Fixed test-first by three parallel subagents on disjoint files (council / requirements / recommend); plan.md synced. Details in the review's Responses and in `tasks.md` Implementation Notes.
+- **The lesson (again)**: ~400 stubs killed during implementation and the reviewer still found whole-run problems — the shared budget not being a ceiling (330 of 100), a double-submit closing a round twice, a second `useChat` turn rejected with 400 because the test hand-built the assistant message. My own invariant test for the budget could only pin the steady-size case; the first call of each kind can still overshoot (documented).
+- Gate after the fixes: exit 0, 76 s (root 419, `@platform/ai-core` 3,673 / 4 skipped, `web` 1,190, `@platform/eval-suite` 7 / 8 skipped, `docs:check` 110 references). Stryker (2 files): 82.89 (84.73 before the fixes). E2E and `test:container` were not run in W6 (no screens yet; E2E for these routes is 35.x).
+
+### Human decisions (2026-10-24)
+
+- Boundary exception (12) of `tasks.md` approved by the user.
+- plan.md additions of W6 approved by the user: the `data-requirements-questions` part, the `/recommend` `text` part (`id: "summary"`), and the Error Handling / CL-12 / CL-17 / `DEFAULT_COUNCIL` / C12 / C13 edits made for the review fixes.
+
+## W6 ship (`/sdd-ship 003-domain-agents`, 2026-10-24)
+
+- Validation: GO. Tasks 25.1–28.2 are `[x]` (22 of 22); boundary exceptions are recorded as (12) in `tasks.md` and were approved by the user; the plan edits were approved by the user; PROVE evidence for every new test is in the sections above.
+- Docker (Rancher Desktop) was reachable. `mise run test:db`: the first run **failed** one existing case (`does not apply a migration twice`: `expected 3 to be 2`) — task 26.2 had added `0003` and updated the applied-names list but not this count, and PGlite could not show it. Root cause fixed (`toBe(3)`, boundary exception (4)); re-run `client.pg.test.ts` 9 passed (executed=18 passed=18 for the lane). Lesson: a Docker-only lane has to be run before a task that writes a pg test is ticked.
+- Real Postgres, throwaway test (deleted afterwards): `seedMarketing` twice → first {products 10, personas 3}, second 0 inserted, totals 10 / 3; `has`, `listPersonas` order and `reset` as expected. `mise run seed:samples` with `AI_RUN_MODE=local` could not run: it needs Ollama for the FAQ embeddings (not started, per the no-provisioning rule).
+- Gate (forced, `TURBO_FORCE=true`, nothing cached): `mise run gate` exit 0, 83 s. root 419; `@platform/ai-core` 3,673 passed / 4 skipped; `web` 1,190; `@platform/eval-suite` 7 / 8 skipped; `docs:check` 110 references; `workflow-no-agent-loop` scanned 43 files.
+- Commits: `1611759` (cooperateByRole hook), `6ff1ea5` (marketing schema, catalog, seed), `1e4401e` (requirements and marketing workflows, m3-5/m3-6), `a5b44ce` (web routes), `0f603a3` (wiring); docs ride in the docs commit.
+- Not run in ship: E2E, `test:container`, full `test:mutation`. Open: no fresh re-review of the review fixes; `tasks-comp-w6.md` migration waits for CI's `ci-status`.
+
+
+## W7 implementation (`/sdd-impl 003-domain-agents`, 2026-10-25)
+
+- Preflight: the gate lane has no external dependency (PREFLIGHT OK); E2E needs Playwright browsers (three engines installed) and port 3100 (free). Every command ran as `env -u NODE_ENV mise exec -- …`. Work was fanned out to fresh-context subagents, one task each (29.1 / 30.1 / 31.1 / 31.2 / 32.1 / 33.1 / 34.1, then 29.2 / 30.2 / 31.3 / 32.2 / 33.2 / 34.2, then 35.2, 35.3, 35.4, 35.5 one after the other: Playwright uses a fixed port and `next build`). I re-ran each batch's tests myself before ticking it (components 816, then 49 files).
+- Scope: all 19 sub-tasks of the wave (29.1–36.1).
+
+### 29–34 (screens)
+
+- Components first (7 parallel tasks, PROVE 27–58 stubs each; survivors → tests), then the six panels and pages. `@testing-library/user-event` and jest-dom are not installed and adding a dependency was out of scope: keyboard checks use `focus()`, `tabIndex`, DOM order and `fireEvent`; the E2E keyboard spec covers real Tab order.
+- 29.2 was written without a separate RED run (the module did not exist, so the suite failed to load; the first real run was GREEN with one test fix). PROVE 22 stubs.
+- Decisions: figure/table limits are props (client code must not import `@platform/ai-core/config`); `AnalysisPanel` keeps `useChat` and swaps only the transport `fetch` for multipart; the research report uses a small own parser (no raw HTML, W6 F-18).
+
+### 35 (fixtures and E2E)
+
+- 35.2 added 15 generated fixtures (10 `.sse`, 5 `.json`) through the route tests' 'generated SSE fixture' cases (the existing flow; the generator script alone cannot generate). Determinism: two writes gave identical checksums. PROVE: tampered → `is stale`, deleted → `is missing`, handler change → stale.
+- 35.3 / 35.4: 15 + 15 tests (chromium); PROVE 5 and 10 breaks. The first spec for `DELETE` survived (the recorder had no method) → `page.on("request")` added.
+- 35.5 on three engines found a real bug (below), then a 1px focus ring; the first full run had 12 failures (4 tests × 3 engines), all from the multi-bundle bug.
+- Problems met and root causes: (1) `/mcp` rendered first → page bundle builds the MCP registry → route bundle's `buildToolSet` rejects its tools (`definedTools` WeakSet per module copy). Fix: globalThis holder; hardened after review. (2) `client-bundle` failed: `FigureView`/`TableView` imported `@platform/ai-core/config` and pulled the env schema's secret names into the browser bundle. (3) `biome ci` failed on generated JSON fixtures (the formatter and `JSON.stringify` disagree) → generated fixtures excluded in `biome.json`. (4) WebKit's `postData()` omits multipart file bytes → the content assertion is skipped on WebKit.
+
+### W7 adversarial review and close (2026-10-25)
+
+- Review `.sdd/reviews/003-domain-agents-impl-w7-review-2026-10-25.md`: REQUEST_CHANGES (0 CRITICAL, 1 HIGH, 9 MEDIUM, 10 LOW). Fixed test-first by parallel subagents on disjoint files, E2E last (one agent). **The HIGH (F-1)**: the mock web app never ingested the help-desk FAQ, so every sample inquiry was escalated for lack of evidence while the real-server E2E stayed green because it only asserted `T-` and `改訂 1`. A W3 carry-over addressed to 35.x that I had ticked without doing.
+- **The lessons (again)**: (1) ~700 mutation stubs killed across the wave and the reviewer still found a whole-flow defect, because no test asserted the end state of the real run. (2) Three of the six fix agents reported without running PROVE; I ran it myself (F-3/F-15 5/5 killed, F-9/F-20 6/7 with one equivalent). (3) A fix agent's own caveat: a real-server test can pass because an earlier spec filled the shared knowledge base — the seeding guarantee lives in `platform.test.ts`, not in the E2E.
+- Tooling note: the auto-mode classifier returned no verdict for Bash and Agent for a while (editor restart did not help; it recovered later). Nothing was run during the outage; the unverified F-2/F-5 code was verified afterwards (one over-strict assertion fixed, 6 mutations killed).
+- Gate after the fixes: exit 0, 87.9 s (root 419, `@platform/ai-core` 3,681 / 4 skipped, `web` 1,660, `@platform/eval-suite` 7 / 8 skipped, `docs:check` 110 references). E2E: 735 passed on three engines, 3 min 27 s. `check:client-bundle` clean (32 files). Stryker was not run (no screen component is a mutation target in the plan). A fresh re-review of the fixes was not run.
+
+### Human decisions (2026-10-25)
+
+- Boundary exception (13) of `tasks.md` approved by the user, and the plan sync was done the same day: C2 (module copies: defined-tool holder, `PlatformError` brand, `latchOfToolSet`), C13 (`ensureMockFaq`, 409 `details.reason`), C14 (no config import in client components, props for limits, unconfirmed results hidden), C16 (generated fixtures excluded from Biome), and the messages-route 409 rows in the HTTP table and Error Handling.
+
+
+## W7 ship (`/sdd-ship 003-domain-agents`, 2026-10-25)
+
+- Validation: GO. Tasks 29.1–36.1 are `[x]` (19 of 19); boundary exception (13) was approved by the user and the plan was synced; PROVE evidence for every new test is in the sections above. The review (REQUEST_CHANGES) was answered in the review file; no fresh re-review.
+- Gate (fresh run, forced, nothing cached): `mise run gate` exit 0, 70 s. root 419 (1 expected fail); `@platform/ai-core` 3,681 passed / 4 skipped (coverage lines 98.34%); `web` 1,660 passed; `@platform/eval-suite` 7 / 8 skipped; `docs:check` 110 references. 25 new component test files and `getHelpdeskStore seeds the FAQ in mock mode (4)` appear by name in the output.
+- Not re-run in ship (run earlier the same day on the same code): E2E 735 passed on three engines (3 min 27 s), `check:client-bundle` clean. Stryker not run.
+- Commits: `ac487c1` (ai-core: module copies), `473c5a4` (web server, fixtures, Biome), `1f6859b` (six screens), `5208b08` (E2E specs); docs ride in the docs commit.
+- Left alone: the Biome schema-version info (2.5.14 vs CLI 2.5.15) is pre-existing.
+
+
+## W8 implementation (`/sdd-impl 003-domain-agents`, 2026-10-29)
+
+- Preflight: the gate lane needs nothing external. `local` needs Ollama (was up); Docker (Rancher Desktop, `DOCKER_HOST=unix://$HOME/.rd/docker.sock`) came up during the session; `E2B_API_KEY`, `GITHUB_TOKEN` and `COHERE_API_KEY` were missing (optional hands-on only → recorded "未実行").
+- Work: 37.x (5 regression files, PROVE 6 / 8 / 11 / 15 stubs, sources untouched), 38.x (4 capability files + README), 39.x (measured and recorded in research.md "W8 の実測"), 40.x (six module docs by fresh agents, `REQUIRED_TOPICS`, phase-3, index), 41.x (traceability, steering, AGENTS.md, changes-from-drafts), 42.2. 42.1 and 42.3 and 38.2 are open (see tasks.md).
+- Root causes met: (1) the sandbox-import-scope rule and `rootDir` rejected a guard workaround in the analysis-fix test, and an existing test pins that the local lane blocks the Docker socket — removed the workaround instead of weakening the guard; the test now always skips. (2) `check:model-ids` forbids model IDs in docs. (3) E2E: four full runs were not green; every failure was a 30 s / 180 s timeout or a dark-mode `color-contrast` that passed alone (8/8 and 16/16); system load average was 25–31 from other processes.
+- **Lessons**: (1) I wrote a wrong causal explanation ("parallel calls queue up") into five places from one diagnosis; the reviewer disproved it from the code. Check a hypothesis against the implementation before recording it. (2) A ticked task whose test cannot run in any lane (38.2) was caught only by the review. (3) A 100-minute mutation run and a 41-minute E2E run were dominated by machine load, not by the code.
+- Review: `.sdd/reviews/003-domain-agents-impl-w8-review-2026-10-29.md` (REQUEST_CHANGES: 3 HIGH, 7 MEDIUM, 12 LOW); fixes and responses are in the same file. No fresh re-review.
+- Verification (after the fixes): `env -u NODE_ENV TURBO_FORCE=true mise run gate` exit 0 — root 427, `@platform/ai-core` 3,681 / 4 skipped, `web` 1,660, `@platform/eval-suite` 39 / 12 skipped, `docs:check` 14 documents / 247 references, 13 repo rules. `gate:repeat` 10/10 (before the fixes; docs and test comments only changed afterwards). Mutation 86.19 (threshold 70). `secret-scan` clean. `audit` fails on a `qs` advisory in the Stryker dev path (not M3). `test:container` 17 passed.
+
+### W8 follow-up after the human decisions (2026-10-29)
+
+- plan C9 → soft cap; ADR-6 → idle × 3; 38.2 and the out-of-boundary items → M4 (tasks.md "004 への引き継ぎ事項"). The `qs` override was raised to `^6.16.1` (resolved 6.17.0, lockfile diff `qs` only): `mise run audit` passes.
+- New test in `research-budget.test.ts` (soft-cap bound) with PROVE recorded in the review file; sources restored (`cmp` against a backup, `git diff` empty).
+
+
+## W8 close: 42.1 (`/sdd-impl` + `/sdd-ship 003-domain-agents`, 2026-10-29)
+
+- 42.1 done: after the load dropped (about 3), `env -u NODE_ENV mise run test:e2e` passed on three engines (735 passed, skipped 0, 3.0 min, exit 0). The four earlier failing runs happened at load 25–31 and each failed test passed alone, so the cause was load, not code. `audit` passed after the `qs` override bump.
+- Still open: 42.3 (tags wait for CI `ci-status` on the pushed branch; the W8 commits are not pushed) and 38.2 (moved to M4 by the human).
+- Gate (forced): `mise run gate` exit 0 — root 427, `@platform/eval-suite` 40 / 12 skipped, `@platform/ai-core` 3,681 / 4 skipped, `web` 1,660, `docs:check` 14 documents / 247 references. Docs-only change; no source or test file touched.

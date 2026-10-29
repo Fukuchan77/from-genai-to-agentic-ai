@@ -8,7 +8,13 @@ import { createCalculatorTool } from "../aci/tools/calculator";
 import type { GuardedToolSet } from "../aci/types";
 import { PlatformError } from "../errors";
 import { createFakeClock } from "../ports/clock";
-import { type CooperateByRoleParams, cooperateByRole, type Role } from "./role-based-cooperation";
+import { describeTool } from "../testing/tool-description";
+import {
+	type CooperateByRoleParams,
+	cooperateByRole,
+	type Role,
+	type RoleOutput,
+} from "./role-based-cooperation";
 
 // The repository rule `workflow-no-agent-loop` allows only role-based-cooperation.ts to import the
 // agents area, so this test spies on the factory through the mock registry instead of importing it.
@@ -370,7 +376,7 @@ describe("cooperateByRole", () => {
 	it("keeps the role's own tools out of the other roles", async () => {
 		const secretTool = defineAciTool({
 			name: "secret",
-			description: "only for the coder",
+			description: describeTool("only for the coder"),
 			inputSchema: z.object({}),
 			risk: "read-only",
 			execute: () => ({ ok: true }),
@@ -386,5 +392,225 @@ describe("cooperateByRole", () => {
 			Object.keys(options.tools),
 		);
 		expect(toolNames).toEqual([[], ["secret"]]);
+	});
+
+	describe("onRoleOutput", () => {
+		it("is called once per role in round-robin order, with the same RoleOutput that lands in outputs", async () => {
+			const researcher = role("researcher", [{ text: "findings" }]);
+			const coder = role("coder", [{ text: "code" }]);
+			const reviewer = role("reviewer", [{ text: "approved" }]);
+			const received: RoleOutput[] = [];
+
+			const result = await run([researcher.definition, coder.definition, reviewer.definition], {
+				onRoleOutput: (output) => {
+					received.push(output);
+				},
+			});
+
+			expect(received.map((entry) => entry.role)).toEqual(["researcher", "coder", "reviewer"]);
+			expect(received).toHaveLength(result.outputs.length);
+			result.outputs.forEach((entry, index) => {
+				expect(received[index]).toBe(entry);
+			});
+		});
+
+		it("is called right after its role finishes and before the next role starts", async () => {
+			const researcher = role("researcher", [{ text: "findings" }]);
+			const coder = role("coder", [{ text: "code" }]);
+			const reviewer = role("reviewer", [{ text: "approved" }]);
+			const callsSeen: Array<[string, number, number, number]> = [];
+
+			await run([researcher.definition, coder.definition, reviewer.definition], {
+				onRoleOutput: (output) => {
+					callsSeen.push([output.role, researcher.calls(), coder.calls(), reviewer.calls()]);
+				},
+			});
+
+			expect(callsSeen).toEqual([
+				["researcher", 1, 0, 0],
+				["coder", 1, 1, 0],
+				["reviewer", 1, 1, 1],
+			]);
+		});
+
+		it("waits for an asynchronous notification before the next role starts", async () => {
+			const researcher = role("researcher", [{ text: "findings" }]);
+			const coder = role("coder", [{ text: "code" }]);
+			let coderCallsDuringWait = -1;
+
+			await run([researcher.definition, coder.definition], {
+				onRoleOutput: async (output) => {
+					if (output.role !== "researcher") return;
+					await new Promise((resolve) => setTimeout(resolve, 20));
+					coderCallsDuringWait = coder.calls();
+				},
+			});
+
+			expect(coderCallsDuringWait).toBe(0);
+			expect(coder.calls()).toBe(1);
+		});
+
+		it("is called for the role that ended in error, with empty text, and for no later role", async () => {
+			const researcher = role("researcher", [{ text: "findings" }]);
+			const coder = role("coder", [{ fail: new Error("provider exploded") }]);
+			const reviewer = role("reviewer", [{ text: "approved" }]);
+			const received: RoleOutput[] = [];
+
+			const result = await run([researcher.definition, coder.definition, reviewer.definition], {
+				onRoleOutput: (output) => {
+					received.push(output);
+				},
+			});
+
+			expect(received.map((entry) => entry.role)).toEqual(["researcher", "coder"]);
+			expect(received[1]).toMatchObject({ output: "", run: { stopReason: "error" } });
+			expect(received[1]).toBe(result.outputs[1]);
+			expect(result.stopped).toBe("error");
+		});
+
+		it("is called for the role that was aborted or timed out", async () => {
+			const controller = new AbortController();
+			const hanging = new MockLanguageModelV4({
+				doGenerate: async (options) => {
+					controller.abort(new Error("user stopped"));
+					return untilAborted(options.abortSignal);
+				},
+			});
+			const aborted: Role = { name: "aborted", instructions: "a", model: hanging, tools: NO_TOOLS };
+			const abortedSeen: RoleOutput[] = [];
+			await run([aborted], {
+				signal: controller.signal,
+				onRoleOutput: (output) => {
+					abortedSeen.push(output);
+				},
+			});
+
+			const fake = createFakeClock();
+			const slow: Role = {
+				name: "slow",
+				instructions: "s",
+				model: new MockLanguageModelV4({
+					doGenerate: async (options) => {
+						fake.advanceBy(BUDGET.maxDurationMs);
+						return untilAborted(options.abortSignal);
+					},
+				}),
+				tools: NO_TOOLS,
+			};
+			const slowSeen: RoleOutput[] = [];
+			await run([slow], {
+				clock: fake,
+				onRoleOutput: (output) => {
+					slowSeen.push(output);
+				},
+			});
+
+			expect(abortedSeen).toHaveLength(1);
+			expect(abortedSeen[0]).toMatchObject({
+				role: "aborted",
+				output: "",
+				run: { stopReason: "aborted" },
+			});
+			expect(slowSeen).toHaveLength(1);
+			expect(slowSeen[0]).toMatchObject({
+				role: "slow",
+				output: "",
+				run: { stopReason: "timeout" },
+			});
+		});
+
+		it("is not called for a role that never ran (budget spent or signal already aborted)", async () => {
+			const researcher = role("researcher", [{ text: "findings", tokens: 1_000 }]);
+			const coder = role("coder", [{ text: "code" }]);
+			const spent: string[] = [];
+			await run([researcher.definition, coder.definition], {
+				onRoleOutput: (output) => {
+					spent.push(output.role);
+				},
+			});
+
+			const controller = new AbortController();
+			controller.abort(new Error("stop"));
+			const never = vi.fn();
+			await run([role("late", [{ text: "x" }]).definition], {
+				signal: controller.signal,
+				onRoleOutput: never,
+			});
+
+			expect(spent).toEqual(["researcher"]);
+			expect(never).not.toHaveBeenCalled();
+		});
+
+		it("is not called for a role whose environment error is rethrown", async () => {
+			const outage = new PlatformError("provider-unavailable", "down");
+			const failing: Role = {
+				name: "researcher",
+				instructions: "r",
+				model: new MockLanguageModelV4({
+					doGenerate: async () => {
+						throw outage;
+					},
+				}),
+				tools: NO_TOOLS,
+			};
+			const notify = vi.fn();
+
+			await expect(run([failing], { onRoleOutput: notify })).rejects.toBe(outage);
+			expect(notify).not.toHaveBeenCalled();
+		});
+
+		it("cannot change the result when it throws: the error is swallowed and every role still runs", async () => {
+			const withoutNotify = await run([
+				role("researcher", [{ text: "findings" }]).definition,
+				role("coder", [{ text: "code" }]).definition,
+			]);
+			const coder = role("coder", [{ text: "code" }]);
+			const notify = vi.fn(() => {
+				throw new Error("stream closed");
+			});
+
+			const result = await run(
+				[role("researcher", [{ text: "findings" }]).definition, coder.definition],
+				{ onRoleOutput: notify },
+			);
+
+			expect(notify).toHaveBeenCalledTimes(2);
+			expect(coder.calls()).toBe(1);
+			expect(result).toEqual(withoutNotify);
+		});
+
+		it("cannot change the result when it rejects: the rejection is swallowed too", async () => {
+			const coder = role("coder", [{ text: "code" }]);
+			const notify = vi.fn(async () => {
+				throw new Error("stream closed");
+			});
+
+			const result = await run(
+				[role("researcher", [{ text: "findings" }]).definition, coder.definition],
+				{
+					onRoleOutput: notify,
+				},
+			);
+
+			expect(notify).toHaveBeenCalledTimes(2);
+			expect(result.final).toBe("code");
+			expect(result).not.toHaveProperty("stopped");
+		});
+
+		it("does not change the M2 behaviour: with and without a notification the result is the same", async () => {
+			const build = () => [
+				role("researcher", [{ text: "findings", tokens: 600 }]).definition,
+				role("coder", [{ text: "code", tokens: 600 }]).definition,
+				role("reviewer", [{ text: "approved" }]).definition,
+			];
+
+			const plain = await run(build());
+			const notified = await run(build(), { onRoleOutput: () => {} });
+			const explicitUndefined = await run(build(), { onRoleOutput: undefined });
+
+			expect(notified).toEqual(plain);
+			expect(explicitUndefined).toEqual(plain);
+			expect(plain.stopped).toBe("budget-exhausted");
+		});
 	});
 });

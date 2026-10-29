@@ -1,7 +1,15 @@
-import { type Tool, type ToolExecutionOptions, tool } from "ai";
+import { jsonSchema, type Tool, type ToolExecutionOptions, tool, zodSchema } from "ai";
+import type { z } from "zod";
 import { ConfigError } from "../config/load";
 import { PlatformError } from "../errors";
 import { raceWithAbort } from "../ports/abort";
+import {
+	checkDescription,
+	checkJsonSchemaDescription,
+	type JsonSchemaNode,
+} from "./description-check";
+import { classifyToolError } from "./fatal";
+import { formatInputGuide } from "./input-guide";
 import {
 	type AciTool,
 	type AciToolDefinition,
@@ -13,8 +21,44 @@ import {
 
 const TOOL_NAME = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/u;
 
-/** Every object `defineAciTool` returned. Module-private, so nothing else can register a tool. */
-const definedTools = new WeakSet<object>();
+const DEFINED_TOOLS_KEY = Symbol.for("@platform/ai-core/aci/defined-tools");
+
+/**
+ * Every object `defineAciTool` returned. It is kept on `globalThis`, not in a module variable:
+ * Next.js bundles a page and a Route Handler separately, so one process can hold several copies of
+ * this module, and a tool defined by one copy (a registry built while rendering a page) must be
+ * accepted by the others (the `buildToolSet` of a route).
+ *
+ * What is guaranteed: the holder is installed non-writable, non-configurable and non-enumerable,
+ * so it cannot be replaced or deleted after the first copy loads, and a copy that finds a value
+ * which is not a real `WeakSet` throws instead of replacing it. What is not guaranteed: the key is
+ * `Symbol.for`, so code that runs in the process can still call `add` on the shared set (or install
+ * its own holder before any copy loads, if it is a genuine `WeakSet`) and register a look-alike
+ * without the `defineAciTool` checks. Code already in the process is trusted; `buildToolSet` still
+ * re-checks `risk`.
+ */
+const definedTools = sharedDefinedTools();
+
+function sharedDefinedTools(): WeakSet<object> {
+	const holder = globalThis as Record<symbol, unknown>;
+	const existing = holder[DEFINED_TOOLS_KEY];
+	if (existing !== undefined) {
+		if (Object.prototype.toString.call(existing) !== "[object WeakSet]") {
+			throw new ConfigError(
+				"ツールの登録簿（globalThis の @platform/ai-core/aci/defined-tools）が WeakSet ではありません。別のコードが差し替えた可能性があるため、処理を中止します。",
+			);
+		}
+		return existing as WeakSet<object>;
+	}
+	const created = new WeakSet<object>();
+	Object.defineProperty(globalThis, DEFINED_TOOLS_KEY, {
+		value: created,
+		writable: false,
+		configurable: false,
+		enumerable: false,
+	});
+	return created;
+}
 
 /**
  * True only for an object returned by `defineAciTool`; copies and hand-built look-alikes are
@@ -26,6 +70,8 @@ export function isDefinedAciTool(value: object): boolean {
 }
 const TIMEOUT_NEXT_ACTION = "入力を小さくして再試行するか、ツールを使わずに回答してください。";
 const FAILURE_NEXT_ACTION = "入力を見直して再試行するか、ツールを使わずに回答してください。";
+const FATAL_NEXT_ACTION =
+	"この実行は終了します。再試行せず、ツールを呼び出さずに回答を終えてください。";
 
 /**
  * A failure a tool reports on purpose. Its `summary` and `nextAction` are shown to the model
@@ -69,6 +115,51 @@ function assertValidDefinition<INPUT, OUTPUT>(definition: AciToolDefinition<INPU
 	if (definition.timeoutMs !== undefined && !isPositiveInteger(definition.timeoutMs)) {
 		throw new ConfigError(`ツール「${definition.name}」の timeoutMs は正の整数にしてください。`);
 	}
+	const issues =
+		definition.externalInputSchema === undefined
+			? checkDescription(definition.description, definition.inputSchema)
+			: checkJsonSchemaDescription(definition.description, definition.externalInputSchema);
+	if (issues.length > 0) {
+		throw new ConfigError(
+			`ツール「${definition.name}」の説明文が規約を満たしていません: ${issues.map((issue) => issue.message).join(" ")}`,
+		);
+	}
+}
+
+/**
+ * The AI SDK's own JSON Schema for the Zod schema (so the request sent to the model, and every
+ * recorded cassette key, is unchanged), with a validation failure that carries the fix guide
+ * instead of Zod's raw issue dump (CL-2). The SDK still prefixes `Invalid input for tool <name>:`.
+ */
+function guidedInputSchema<INPUT>(inputSchema: z.ZodType<INPUT>) {
+	const base = zodSchema(inputSchema);
+	return jsonSchema<INPUT>(() => base.jsonSchema, {
+		validate: async (value) => {
+			const result = await base.validate?.(value);
+			if (result === undefined || result.success) {
+				return result ?? { success: true, value: value as INPUT };
+			}
+			return {
+				success: false,
+				error: new Error(formatInputGuide(result.error as z.ZodError, inputSchema)),
+			};
+		},
+	});
+}
+
+/**
+ * The JSON Schema an MCP server sent, shown to the model unchanged. A failed validation carries the
+ * same fix guide as `guidedInputSchema`.
+ */
+function externalGuidedSchema<INPUT>(external: JsonSchemaNode, inputSchema: z.ZodType<INPUT>) {
+	return jsonSchema<INPUT>(external as unknown as Parameters<typeof jsonSchema>[0], {
+		validate: async (value) => {
+			const result = await inputSchema.safeParseAsync(value);
+			return result.success
+				? { success: true, value: result.data }
+				: { success: false, error: new Error(formatInputGuide(result.error, inputSchema)) };
+		},
+	});
 }
 
 export function assertValidToolRuntime(runtime: ToolRuntime): void {
@@ -77,12 +168,22 @@ export function assertValidToolRuntime(runtime: ToolRuntime): void {
 	}
 }
 
-function failureFrom(name: string, error: unknown): ToolFailure {
+function failureFrom(name: string, error: unknown, runtime: ToolRuntime): ToolFailure {
 	if (error instanceof ToolExecutionError) {
 		return {
 			kind: "recoverable",
 			summary: error.summary,
 			...(error.nextAction === undefined ? {} : { nextAction: error.nextAction }),
+		};
+	}
+	const classified = classifyToolError(error);
+	if (classified.kind === "fatal") {
+		// Without a latch the error is only reported, which is M1's behaviour (every error recoverable).
+		runtime.fatal?.trip(classified.error);
+		return {
+			kind: "recoverable",
+			summary: classified.error.learnerMessage,
+			nextAction: runtime.fatal === undefined ? FAILURE_NEXT_ACTION : FATAL_NEXT_ACTION,
 		};
 	}
 	if (error instanceof PlatformError) {
@@ -136,7 +237,7 @@ async function executeWithGuards<INPUT, OUTPUT>(
 			}
 			throw abortSignal.reason;
 		}
-		return { ok: false, failure: failureFrom(definition.name, error) };
+		return { ok: false, failure: failureFrom(definition.name, error, runtime) };
 	}
 }
 
@@ -154,6 +255,7 @@ export const defineAciTool = <INPUT, OUTPUT>(
 	const aciTool = Object.freeze({
 		name: definition.name,
 		description: definition.description,
+		inputSchema: definition.inputSchema,
 		risk: definition.risk,
 		timeoutMs: definition.timeoutMs,
 		requiredFeature: definition.requiredFeature,
@@ -162,7 +264,10 @@ export const defineAciTool = <INPUT, OUTPUT>(
 			const timeoutMs = effectiveToolTimeoutMs(definition.timeoutMs, runtime.toolTimeoutMs);
 			return tool({
 				description: definition.description,
-				inputSchema: definition.inputSchema,
+				inputSchema:
+					definition.externalInputSchema === undefined
+						? guidedInputSchema(definition.inputSchema)
+						: externalGuidedSchema(definition.externalInputSchema, definition.inputSchema),
 				execute: (input, options) =>
 					executeWithGuards(definition, runtime, timeoutMs, input, options),
 			});

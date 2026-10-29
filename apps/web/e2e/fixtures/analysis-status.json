@@ -1,0 +1,13 @@
+{
+	"sandbox": {
+		"kind": "mock"
+	},
+	"upload": {
+		"maxBytes": 20971520,
+		"accepts": [
+			".csv",
+			".xlsx",
+			".xls"
+		]
+	}
+}

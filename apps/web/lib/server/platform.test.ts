@@ -3,23 +3,50 @@ import { access } from "node:fs/promises";
 import path from "node:path";
 import { Readable } from "node:stream";
 import { gzipSync } from "node:zlib";
+import { DEFAULT_SANDBOX } from "@platform/ai-core/config";
+import { createCatalogRepo, seedMarketing } from "@platform/ai-core/marketing";
+import type { McpRegistry, McpServerConfig } from "@platform/ai-core/mcp";
 import { defaultRerankModel, ModelSelectionError } from "@platform/ai-core/models";
-import type { HttpFetcher, TranscriptSource, WebSearchProvider } from "@platform/ai-core/ports";
+import type {
+	HttpFetcher,
+	SandboxProvider,
+	TranscriptSource,
+	WebSearchProvider,
+} from "@platform/ai-core/ports";
 import { createFakeClock, createNodeHttpFetcher } from "@platform/ai-core/ports";
-import { KnowledgeBaseUnavailableError, type RagDatabaseHandle } from "@platform/ai-core/rag";
+import {
+	createKnowledgeStore,
+	createPgliteDatabase,
+	KnowledgeBaseUnavailableError,
+	type RagDatabaseHandle,
+} from "@platform/ai-core/rag";
+import { createMockSandboxProvider } from "@platform/ai-core/sandbox";
 import { ARTICLE_FETCH_LIMITS, SourceFetchError } from "@platform/ai-core/summarize";
 import { describe, expect, it, vi } from "vitest";
 import {
+	createArxivClientFor,
 	createGuardedFetch,
 	createKnowledgeBase,
+	createMcpRegistry,
 	createPlatform,
+	getArxivClient,
+	getCatalogRepo,
+	getHelpdeskStore,
 	getKnowledgeBase,
+	getMcpRegistry,
 	getPlatform,
+	getSandboxSelection,
 	type HttpRequestFunction,
+	invalidateSandboxSelection,
 	type KnowledgeBaseFactories,
+	mcpServerConfigs,
 	resolveKnowledgeEmbedding,
+	type SandboxDeps,
+	setArxivClientForTesting,
 	setKnowledgeBaseForTesting,
+	setMcpRegistryForTesting,
 	setPlatformForTesting,
+	setSandboxForTesting,
 } from "./platform";
 
 const MOCK_ENV = { VITEST: "1", AI_TEST_RUN_MODE: "mock" } as const;
@@ -730,5 +757,829 @@ describe("resolveKnowledgeEmbedding", () => {
 		const gateway = { resolveEmbedding: async () => Promise.reject(failure) };
 
 		await expect(resolveKnowledgeEmbedding({ gateway: gateway as never })).rejects.toBe(failure);
+	});
+});
+
+describe("mcpServerConfigs (plan C13, Req 1.7, 1.9)", () => {
+	const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..", "..", "..");
+	const TOKEN = "ghp_test-token-for-platform";
+
+	async function configsFor(env: Record<string, string>): Promise<readonly McpServerConfig[]> {
+		return mcpServerConfigs(await createPlatform({ env }));
+	}
+
+	it("offers only the platform's own file server in mock mode, even when a GitHub token is set", async () => {
+		const configs = await configsFor({ ...MOCK_ENV, GITHUB_TOKEN: TOKEN });
+
+		expect(configs.map((config) => config.id)).toEqual(["files"]);
+	});
+
+	it("adds the GitHub server outside mock mode only when GITHUB_TOKEN is set", async () => {
+		const without = await configsFor(LOCAL_ENV);
+		const withToken = await configsFor({ ...LOCAL_ENV, GITHUB_TOKEN: TOKEN });
+
+		expect(without.map((config) => config.id)).toEqual(["files"]);
+		expect(withToken.map((config) => config.id)).toEqual(["files", "github"]);
+	});
+
+	it("starts the file server from the repository's own source with the default allowed root", async () => {
+		const [files] = await configsFor(MOCK_ENV);
+
+		if (files?.transport.kind !== "stdio") throw new Error("expected stdio");
+		expect(files.transport.args).toEqual([
+			path.join(REPO_ROOT, "packages", "ai-core", "src", "files", "stdio.ts"),
+		]);
+		expect(files.transport.env.MCP_FS_ROOT).toBe(path.join(REPO_ROOT, "workspace"));
+		expect(files.trustErrorMeta).toBe(true);
+	});
+
+	it("resolves a relative MCP_FS_ROOT against the repository root, not the working directory", async () => {
+		const [files] = await configsFor({ ...MOCK_ENV, MCP_FS_ROOT: "notes/area" });
+
+		if (files?.transport.kind !== "stdio") throw new Error("expected stdio");
+		expect(files.transport.env.MCP_FS_ROOT).toBe(path.join(REPO_ROOT, "notes", "area"));
+	});
+
+	it("keeps an absolute MCP_FS_ROOT as it is", async () => {
+		const [files] = await configsFor({ ...MOCK_ENV, MCP_FS_ROOT: "/srv/learner-files" });
+
+		if (files?.transport.kind !== "stdio") throw new Error("expected stdio");
+		expect(files.transport.env.MCP_FS_ROOT).toBe("/srv/learner-files");
+	});
+
+	it("keeps the token out of every config but the GitHub Authorization header", async () => {
+		const configs = await configsFor({ ...LOCAL_ENV, GITHUB_TOKEN: TOKEN });
+		const [files, github] = configs;
+
+		expect(JSON.stringify(files)).not.toContain(TOKEN);
+		if (github?.transport.kind !== "http") throw new Error("expected http");
+		expect(github.transport.headers.Authorization).toBe(`Bearer ${TOKEN}`);
+	});
+});
+
+describe("createMcpRegistry and getMcpRegistry", () => {
+	function fakeRegistry(): McpRegistry {
+		return { status: () => [], toolsFor: () => [], close: async () => undefined };
+	}
+
+	it("connects to the configured servers with the platform's clock", async () => {
+		const platform = await createPlatform({ env: MOCK_ENV });
+		const registry = fakeRegistry();
+		const connect = vi.fn(async () => registry);
+
+		const created = await createMcpRegistry(platform, { connect });
+
+		expect(created).toBe(registry);
+		expect(connect).toHaveBeenCalledTimes(1);
+		const [configs, options] = connect.mock.calls[0] as unknown as [
+			readonly McpServerConfig[],
+			{ clock: unknown },
+		];
+		expect(configs.map((config) => config.id)).toEqual(["files"]);
+		expect(options.clock).toBe(platform.clock);
+	});
+
+	it("reports a failure to prepare the connections as provider-unavailable", async () => {
+		const platform = await createPlatform({ env: MOCK_ENV });
+		const connect = vi.fn(async () => {
+			throw new Error("secret detail ghp_leak");
+		});
+
+		const failure = await createMcpRegistry(platform, { connect }).catch((error: unknown) => error);
+
+		expect(failure).toMatchObject({ code: "provider-unavailable" });
+		expect(String((failure as Error).message)).not.toContain("ghp_leak");
+	});
+
+	it("builds the registry once, even for concurrent callers, and does not cache a failure", async () => {
+		setPlatformForTesting(await createPlatform({ env: MOCK_ENV }));
+		setMcpRegistryForTesting(undefined);
+		const registry = fakeRegistry();
+		let attempts = 0;
+		const connect = vi.fn(async () => {
+			attempts += 1;
+			if (attempts === 1) throw new Error("first attempt fails");
+			return registry;
+		});
+		try {
+			await expect(getMcpRegistry({ connect })).rejects.toMatchObject({
+				code: "provider-unavailable",
+			});
+
+			const [first, second] = await Promise.all([
+				getMcpRegistry({ connect }),
+				getMcpRegistry({ connect }),
+			]);
+
+			expect(first).toBe(registry);
+			expect(second).toBe(registry);
+			expect(attempts).toBe(2);
+		} finally {
+			setMcpRegistryForTesting(undefined);
+			setPlatformForTesting(undefined);
+		}
+	});
+});
+
+describe("getHelpdeskStore (plan C13, Req 2.6, 2.7)", () => {
+	async function withPlatform(env: Record<string, string>) {
+		setPlatformForTesting(
+			await createPlatform({ env, clock: createFakeClock(Date.parse("2026-10-18T00:00:00.000Z")) }),
+		);
+		setKnowledgeBaseForTesting(undefined);
+	}
+
+	it("stores tickets in the shared knowledge-base database with the platform clock", async () => {
+		await withPlatform(MOCK_ENV);
+		try {
+			const store = await getHelpdeskStore();
+
+			const ticket = await store.create({ inquiry: "VPN に接続できません" });
+			const handle = await getKnowledgeBase();
+
+			expect(ticket).toMatchObject({ id: "T-0001", status: "open" });
+			expect(ticket.createdAt).toEqual(new Date("2026-10-18T00:00:00.000Z"));
+			expect(await (await getHelpdeskStore()).get("T-0001")).toEqual(ticket);
+			expect(handle.kind).toBe("pglite");
+			await handle.close();
+		} finally {
+			setKnowledgeBaseForTesting(undefined);
+			setPlatformForTesting(undefined);
+		}
+		// Starting PGlite takes seconds when the gate runs every workspace at once.
+	}, 30_000);
+
+	it("reports an unreachable database as provider-unavailable with the start-up guidance, and tries again next time", async () => {
+		await withPlatform(LOCAL_ENV);
+		let attempts = 0;
+		const { factories } = fakeFactories({
+			postgres: async () => {
+				attempts += 1;
+				throw new KnowledgeBaseUnavailableError();
+			},
+		});
+		try {
+			const failure = await getHelpdeskStore(factories).catch((error: unknown) => error);
+
+			expect(failure).toBeInstanceOf(KnowledgeBaseUnavailableError);
+			expect(failure).toMatchObject({ code: "provider-unavailable" });
+			expect((failure as Error).message).toMatch(/services:up:db/);
+			await getHelpdeskStore(factories).catch(() => undefined);
+			expect(attempts).toBe(2);
+		} finally {
+			setKnowledgeBaseForTesting(undefined);
+			setPlatformForTesting(undefined);
+		}
+	});
+});
+
+describe("getHelpdeskStore seeds the FAQ in mock mode (W3 carry-over F-8)", () => {
+	function pgliteFactories() {
+		const handles: RagDatabaseHandle[] = [];
+		const open = async () => {
+			const handle = await createPgliteDatabase();
+			handles.push(handle);
+			return handle;
+		};
+		const factories: KnowledgeBaseFactories = { pglite: open, postgres: open };
+		return { factories, handles };
+	}
+
+	async function documentIds(factories: KnowledgeBaseFactories): Promise<string[]> {
+		const handle = await getKnowledgeBase(factories);
+		return (await createKnowledgeStore(handle.db).listDocuments()).map((document) => document.id);
+	}
+
+	async function withPlatform(env: Record<string, string>) {
+		setPlatformForTesting(await createPlatform({ env }));
+		setKnowledgeBaseForTesting(undefined);
+	}
+
+	it("puts the bundled FAQ into the throwaway knowledge base, once, so the sample inquiries find evidence", async () => {
+		await withPlatform(MOCK_ENV);
+		const { factories, handles } = pgliteFactories();
+		try {
+			await getHelpdeskStore(factories);
+			const first = await documentIds(factories);
+			await getHelpdeskStore(factories);
+
+			expect(first.length).toBeGreaterThan(0);
+			expect(first.some((id) => id.includes("vpn-connection"))).toBe(true);
+			expect(await documentIds(factories)).toEqual(first);
+		} finally {
+			setKnowledgeBaseForTesting(undefined);
+			setPlatformForTesting(undefined);
+			await Promise.all(handles.map((handle) => handle.close()));
+		}
+	}, 60_000);
+
+	it.each([
+		["local", LOCAL_ENV],
+		[
+			"live",
+			{
+				VITEST: "1",
+				AI_TEST_RUN_MODE: "live",
+				AI_LIVE_PROVIDER: "openai",
+				OPENAI_API_KEY: "test-key",
+			},
+		],
+	] as const)(
+		"does not touch a knowledge base in %s mode: the learner's own documents stay as they are",
+		async (_, env) => {
+			await withPlatform(env);
+			const { factories, handles } = pgliteFactories();
+			try {
+				await getHelpdeskStore(factories);
+
+				expect(await documentIds(factories)).toEqual([]);
+			} finally {
+				setKnowledgeBaseForTesting(undefined);
+				setPlatformForTesting(undefined);
+				await Promise.all(handles.map((handle) => handle.close()));
+			}
+		},
+		60_000,
+	);
+
+	it("seeds a database only once: what the learner removes afterwards does not come back", async () => {
+		await withPlatform(MOCK_ENV);
+		const { factories, handles } = pgliteFactories();
+		try {
+			await getHelpdeskStore(factories);
+			const handle = await getKnowledgeBase(factories);
+			await createKnowledgeStore(handle.db).reset();
+			await getHelpdeskStore(factories);
+
+			expect(await documentIds(factories)).toEqual([]);
+		} finally {
+			setKnowledgeBaseForTesting(undefined);
+			setPlatformForTesting(undefined);
+			await Promise.all(handles.map((handle) => handle.close()));
+		}
+	}, 60_000);
+});
+
+describe("getCatalogRepo (plan C13, Req 6.5, 6.6)", () => {
+	async function withPlatform(env: Record<string, string>) {
+		setPlatformForTesting(await createPlatform({ env }));
+		setKnowledgeBaseForTesting(undefined);
+	}
+
+	function pgliteFactories() {
+		const handles: RagDatabaseHandle[] = [];
+		const factories: KnowledgeBaseFactories = {
+			pglite: async () => {
+				const handle = await createPgliteDatabase();
+				handles.push(handle);
+				return handle;
+			},
+			postgres: async () => {
+				const handle = await createPgliteDatabase();
+				handles.push(handle);
+				return handle;
+			},
+		};
+		return { factories, handles };
+	}
+
+	async function cleanup() {
+		setKnowledgeBaseForTesting(undefined);
+		setPlatformForTesting(undefined);
+	}
+
+	it("seeds the sample catalog and personas in mock mode so the screens work out of the box", async () => {
+		await withPlatform(MOCK_ENV);
+		const { factories, handles } = pgliteFactories();
+		try {
+			const repo = await getCatalogRepo(factories);
+
+			expect(await repo.isSeeded()).toBe(true);
+			expect((await repo.listProducts()).length).toBeGreaterThan(0);
+			expect((await repo.listPersonas()).length).toBeGreaterThan(0);
+			// A second call on the same database neither fails nor duplicates rows.
+			const before = (await repo.listProducts()).length;
+			const again = await getCatalogRepo(factories);
+			expect((await again.listProducts()).length).toBe(before);
+		} finally {
+			await cleanup();
+			await Promise.all(handles.map((handle) => handle.close()));
+		}
+	}, 60_000);
+
+	it("shares the knowledge-base database with the other stores", async () => {
+		await withPlatform(MOCK_ENV);
+		const { factories, handles } = pgliteFactories();
+		try {
+			await getCatalogRepo(factories);
+			await getKnowledgeBase(factories);
+
+			expect(handles).toHaveLength(1);
+		} finally {
+			await cleanup();
+			await Promise.all(handles.map((handle) => handle.close()));
+		}
+	}, 60_000);
+
+	it("does not seed in local mode and answers provider-unavailable pointing at seed:samples", async () => {
+		await withPlatform(LOCAL_ENV);
+		const { factories, handles } = pgliteFactories();
+		try {
+			const failure = await getCatalogRepo(factories).catch((error: unknown) => error);
+
+			expect(failure).toBeInstanceOf(KnowledgeBaseUnavailableError);
+			expect(failure).toMatchObject({ code: "provider-unavailable" });
+			expect((failure as Error).message).toMatch(/mise run seed:samples/);
+			const handle = await getKnowledgeBase(factories);
+			expect(await createCatalogRepo(handle.db).isSeeded()).toBe(false);
+		} finally {
+			await cleanup();
+			await Promise.all(handles.map((handle) => handle.close()));
+		}
+	}, 60_000);
+
+	it("does not seed in live mode either", async () => {
+		await withPlatform({ ...LOCAL_ENV, AI_TEST_RUN_MODE: "live", ANTHROPIC_API_KEY: "changeme" });
+		const { factories, handles } = pgliteFactories();
+		try {
+			const failure = await getCatalogRepo(factories).catch((error: unknown) => error);
+
+			expect(failure).toMatchObject({ code: "provider-unavailable" });
+			expect((failure as Error).message).toMatch(/seed:samples/);
+		} finally {
+			await cleanup();
+			await Promise.all(handles.map((handle) => handle.close()));
+		}
+	}, 60_000);
+
+	it("returns the repo in local mode once the catalog has been seeded", async () => {
+		await withPlatform(LOCAL_ENV);
+		const { factories, handles } = pgliteFactories();
+		try {
+			const handle = await getKnowledgeBase(factories);
+			await seedMarketing({ db: handle.db });
+
+			const repo = await getCatalogRepo(factories);
+
+			expect(await repo.isSeeded()).toBe(true);
+		} finally {
+			await cleanup();
+			await Promise.all(handles.map((handle) => handle.close()));
+		}
+	}, 60_000);
+
+	it("reports an unreachable database with the start-up guidance, and tries again next time", async () => {
+		await withPlatform(LOCAL_ENV);
+		let attempts = 0;
+		const { factories } = fakeFactories({
+			postgres: async () => {
+				attempts += 1;
+				throw new KnowledgeBaseUnavailableError();
+			},
+		});
+		try {
+			const failure = await getCatalogRepo(factories).catch((error: unknown) => error);
+
+			expect(failure).toBeInstanceOf(KnowledgeBaseUnavailableError);
+			expect((failure as Error).message).toMatch(/services:up:db/);
+			await getCatalogRepo(factories).catch(() => undefined);
+			expect(attempts).toBe(2);
+		} finally {
+			await cleanup();
+		}
+	});
+
+	it("does not cache an unseeded failure: seeding afterwards makes the next call succeed", async () => {
+		await withPlatform(LOCAL_ENV);
+		const { factories, handles } = pgliteFactories();
+		try {
+			await getCatalogRepo(factories).catch(() => undefined);
+			const handle = await getKnowledgeBase(factories);
+			await seedMarketing({ db: handle.db });
+
+			await expect(getCatalogRepo(factories)).resolves.toBeDefined();
+		} finally {
+			await cleanup();
+			await Promise.all(handles.map((handle) => handle.close()));
+		}
+	}, 60_000);
+});
+
+describe("getSandboxSelection (plan C13, Req 3.7, 3.8, 3.10)", () => {
+	const E2B_ENV = { ...LOCAL_ENV, E2B_API_KEY: "changeme-e2b" } as const;
+	const READY = { reachable: true, imagePresent: true } as const;
+	const DOWN = { reachable: false, imagePresent: false } as const;
+
+	function fakeDeps(overrides: Partial<SandboxDeps> = {}) {
+		const created: string[] = [];
+		const deps: SandboxDeps = {
+			probe: vi.fn(async () => DOWN),
+			createE2b: vi.fn((params) => {
+				created.push(`e2b:${params.apiKey}`);
+				return {
+					...createMockSandboxProvider(),
+					kind: "e2b" as const,
+				} as unknown as SandboxProvider;
+			}),
+			createDocker: vi.fn((params) => {
+				created.push(`docker:${params.image}`);
+				return {
+					...createMockSandboxProvider(),
+					kind: "docker" as const,
+				} as unknown as SandboxProvider;
+			}),
+			createMock: vi.fn(() => {
+				created.push("mock");
+				return createMockSandboxProvider();
+			}),
+			sweepIntervalMs: null,
+			...overrides,
+		};
+		return { deps, created };
+	}
+
+	async function withPlatform(env: Record<string, string>, clock = createFakeClock(1_000)) {
+		setPlatformForTesting(await createPlatform({ env, clock }));
+		setSandboxForTesting(undefined);
+		return clock;
+	}
+
+	function cleanup() {
+		setSandboxForTesting(undefined);
+		setPlatformForTesting(undefined);
+	}
+
+	it("uses the pseudo provider in mock mode, without looking at Docker", async () => {
+		await withPlatform(MOCK_ENV);
+		const { deps, created } = fakeDeps();
+		try {
+			const setup = await getSandboxSelection(deps);
+
+			expect(setup.kind).toBe("mock");
+			if (setup.kind === "disabled") throw new Error("expected an enabled setup");
+			expect(setup.provider.kind).toBe("mock");
+			expect(created).toEqual(["mock"]);
+			expect(deps.probe).not.toHaveBeenCalled();
+		} finally {
+			cleanup();
+		}
+	});
+
+	it("prefers E2B when a key is set, and does not probe Docker", async () => {
+		await withPlatform(E2B_ENV);
+		const { deps, created } = fakeDeps({ probe: vi.fn(async () => READY) });
+		try {
+			const setup = await getSandboxSelection(deps);
+
+			expect(setup.kind).toBe("e2b");
+			expect(created).toEqual(["e2b:changeme-e2b"]);
+			expect(deps.probe).not.toHaveBeenCalled();
+		} finally {
+			cleanup();
+		}
+	});
+
+	it("uses the local container when there is no key and Docker has the image", async () => {
+		await withPlatform({
+			...LOCAL_ENV,
+			DOCKER_HOST: "unix:///custom/engine.sock",
+			DOCKER_SANDBOX_IMAGE: "my-sandbox:1",
+		});
+		const { deps, created } = fakeDeps({ probe: vi.fn(async () => READY) });
+		try {
+			const setup = await getSandboxSelection(deps);
+
+			expect(setup.kind).toBe("docker");
+			expect(created).toEqual(["docker:my-sandbox:1"]);
+			expect(deps.probe).toHaveBeenCalledWith(
+				expect.objectContaining({
+					image: "my-sandbox:1",
+					env: { DOCKER_HOST: "unix:///custom/engine.sock" },
+				}),
+			);
+			expect(deps.createDocker).toHaveBeenCalledWith(
+				expect.objectContaining({ environment: READY }),
+			);
+		} finally {
+			cleanup();
+		}
+	});
+
+	it("is disabled with the reason and the guidance when neither a key nor a container is available", async () => {
+		await withPlatform(LOCAL_ENV);
+		const { deps, created } = fakeDeps();
+		try {
+			const setup = await getSandboxSelection(deps);
+
+			expect(setup.kind).toBe("disabled");
+			if (setup.kind !== "disabled") throw new Error("expected disabled");
+			expect(setup.reason).toContain("E2B_API_KEY");
+			expect(setup.guidance).toContain("E2B_API_KEY");
+			expect(setup.guidance).toContain("mise run sandbox:build");
+			expect(created).toEqual([]);
+		} finally {
+			cleanup();
+		}
+	});
+
+	it("looks again each time while disabled, so starting Docker takes effect without a restart", async () => {
+		await withPlatform(LOCAL_ENV);
+		let ready = false;
+		const { deps } = fakeDeps({ probe: vi.fn(async () => (ready ? READY : DOWN)) });
+		try {
+			expect((await getSandboxSelection(deps)).kind).toBe("disabled");
+			ready = true;
+			expect((await getSandboxSelection(deps)).kind).toBe("docker");
+			expect(deps.probe).toHaveBeenCalledTimes(2);
+		} finally {
+			cleanup();
+		}
+	});
+
+	it("builds an enabled setup once and shares it, even between concurrent callers", async () => {
+		await withPlatform(MOCK_ENV);
+		const { deps, created } = fakeDeps();
+		try {
+			const [first, second] = await Promise.all([
+				getSandboxSelection(deps),
+				getSandboxSelection(deps),
+			]);
+			const third = await getSandboxSelection(deps);
+
+			expect(second).toBe(first);
+			expect(third).toBe(first);
+			expect(created).toEqual(["mock"]);
+		} finally {
+			cleanup();
+		}
+	});
+
+	it("gives the registry the platform clock and the ten-minute idle timeout", async () => {
+		const clock = await withPlatform(MOCK_ENV);
+		const { deps } = fakeDeps();
+		try {
+			const setup = await getSandboxSelection(deps);
+			if (setup.kind === "disabled") throw new Error("expected an enabled setup");
+			(await setup.registry.acquire("s1")).done();
+
+			clock.advanceBy(DEFAULT_SANDBOX.idleTimeoutMs);
+			expect(await setup.registry.sweep()).toEqual([]);
+			clock.advanceBy(1);
+			expect(await setup.registry.sweep()).toEqual(["s1"]);
+		} finally {
+			cleanup();
+		}
+	});
+
+	describe("the idle sweep", () => {
+		it("sweeps on a timer, and stops when the setup is replaced", async () => {
+			vi.useFakeTimers();
+			try {
+				const clock = await withPlatform(MOCK_ENV);
+				const { deps } = fakeDeps({ sweepIntervalMs: 1_000 });
+				const setup = await getSandboxSelection(deps);
+				if (setup.kind === "disabled") throw new Error("expected an enabled setup");
+				const lease = await setup.registry.acquire("s1");
+				lease.done();
+				const sweep = vi.spyOn(setup.registry, "sweep");
+
+				clock.advanceBy(DEFAULT_SANDBOX.idleTimeoutMs + 1);
+				await vi.advanceTimersByTimeAsync(1_000);
+				expect(sweep).toHaveBeenCalledTimes(1);
+				expect(await lease.session.isAlive()).toBe(false);
+
+				setSandboxForTesting(undefined);
+				await vi.advanceTimersByTimeAsync(5_000);
+				expect(sweep).toHaveBeenCalledTimes(1);
+			} finally {
+				vi.useRealTimers();
+				cleanup();
+			}
+		});
+
+		it("keeps sweeping after a sweep fails", async () => {
+			vi.useFakeTimers();
+			try {
+				await withPlatform(MOCK_ENV);
+				const { deps } = fakeDeps({ sweepIntervalMs: 1_000 });
+				const setup = await getSandboxSelection(deps);
+				if (setup.kind === "disabled") throw new Error("expected an enabled setup");
+				const failure = Promise.reject(new Error("boom"));
+				// The test itself handles it at once, so Node does not report it before the timer
+				// fires; the spy below then counts only the handlers the code under test adds.
+				failure.catch(() => undefined);
+				const handled = vi.spyOn(failure, "catch");
+				const sweep = vi.spyOn(setup.registry, "sweep").mockReturnValue(failure);
+
+				await vi.advanceTimersByTimeAsync(3_000);
+
+				expect(sweep).toHaveBeenCalledTimes(3);
+				// Each failed sweep is caught, not left as an unhandled rejection.
+				expect(handled).toHaveBeenCalledTimes(3);
+			} finally {
+				vi.useRealTimers();
+				cleanup();
+			}
+		});
+	});
+
+	it("does not keep a failed build, so the next request tries again", async () => {
+		await withPlatform(MOCK_ENV);
+		let attempts = 0;
+		const { deps } = fakeDeps({
+			createMock: vi.fn(() => {
+				attempts += 1;
+				if (attempts === 1) throw new Error("first attempt fails");
+				return createMockSandboxProvider();
+			}),
+		});
+		try {
+			await expect(getSandboxSelection(deps)).rejects.toThrow("first attempt fails");
+
+			expect((await getSandboxSelection(deps)).kind).toBe("mock");
+			expect(attempts).toBe(2);
+		} finally {
+			cleanup();
+		}
+	});
+
+	it("caps the sandboxes alive at once at the configured number", async () => {
+		await withPlatform(MOCK_ENV);
+		const { deps } = fakeDeps();
+		try {
+			const setup = await getSandboxSelection(deps);
+			if (setup.kind === "disabled") throw new Error("expected an enabled setup");
+			const leases = [];
+			for (let index = 0; index < DEFAULT_SANDBOX.maxSessions; index += 1) {
+				leases.push(await setup.registry.acquire(`session-${index}`));
+			}
+
+			await expect(setup.registry.acquire("one-too-many")).rejects.toMatchObject({
+				code: "provider-unavailable",
+			});
+			leases[0]?.done();
+			await expect(setup.registry.acquire("now-there-is-room")).resolves.toBeDefined();
+		} finally {
+			cleanup();
+		}
+	});
+
+	describe("invalidateSandboxSelection", () => {
+		it("closes every session, stops the sweep, and makes the next request choose again", async () => {
+			vi.useFakeTimers();
+			try {
+				await withPlatform(MOCK_ENV);
+				const { deps, created } = fakeDeps({ sweepIntervalMs: 1_000 });
+				const setup = await getSandboxSelection(deps);
+				if (setup.kind === "disabled") throw new Error("expected an enabled setup");
+				const lease = await setup.registry.acquire("s1");
+				const sweep = vi.spyOn(setup.registry, "sweep");
+
+				await invalidateSandboxSelection();
+				await vi.advanceTimersByTimeAsync(5_000);
+
+				expect(await lease.session.isAlive()).toBe(false);
+				expect(sweep).not.toHaveBeenCalled();
+				const next = await getSandboxSelection(deps);
+				expect(next).not.toBe(setup);
+				expect(created).toEqual(["mock", "mock"]);
+			} finally {
+				vi.useRealTimers();
+				cleanup();
+			}
+		});
+
+		it("is harmless when nothing has been chosen yet, or the choice was disabled", async () => {
+			await withPlatform(MOCK_ENV);
+			try {
+				await expect(invalidateSandboxSelection()).resolves.toBeUndefined();
+				setSandboxForTesting({ kind: "disabled", reason: "r", guidance: "g" });
+				await expect(invalidateSandboxSelection()).resolves.toBeUndefined();
+			} finally {
+				cleanup();
+			}
+		});
+	});
+
+	it("can be replaced for a test and cleared", async () => {
+		await withPlatform(MOCK_ENV);
+		const provider = createMockSandboxProvider();
+		const installed = { kind: "disabled", reason: "r", guidance: "g" } as const;
+		try {
+			setSandboxForTesting(installed);
+			expect(await getSandboxSelection(fakeDeps().deps)).toBe(installed);
+			setSandboxForTesting(undefined);
+			expect((await getSandboxSelection(fakeDeps().deps)).kind).toBe("mock");
+			void provider;
+		} finally {
+			cleanup();
+		}
+	});
+});
+
+// --- arXiv client (plan C13, Req 4.3, 4.7) ---
+
+describe("createArxivClientFor and getArxivClient (plan C13, Req 4.3, 4.7)", () => {
+	const FEED = `<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"><entry><id>http://arxiv.org/abs/2401.01234v1</id><published>2024-01-02T00:00:00Z</published><title>Live Paper</title><summary>S</summary><author><name>A</name></author></entry></feed>`;
+
+	async function settle(): Promise<void> {
+		for (let turn = 0; turn < 10; turn += 1) await new Promise<void>((r) => setImmediate(r));
+	}
+
+	function livePorts() {
+		const fetch = vi.fn(async (_url: string) => ({ status: 200, headers: {}, body: FEED }));
+		return {
+			fetch,
+			ports: {
+				http: { fetch } satisfies HttpFetcher,
+				transcript: { fetchTranscript: vi.fn() } as unknown as TranscriptSource,
+				webSearch: { search: vi.fn(async () => []) } satisfies WebSearchProvider,
+			},
+		};
+	}
+
+	it("answers from the fixture feed in mock mode without a network and without waiting", async () => {
+		const platform = await createPlatform({ env: MOCK_ENV });
+		const client = createArxivClientFor(platform);
+		const started = Date.now();
+
+		const first = await client.search("hierarchical agents", { maxResults: 10 });
+		const second = await client.search("planning", { maxResults: 5 });
+
+		expect(first.map((paper) => paper.arxivId)).toEqual(["2401.01234", "2403.05678", "cs/0501001"]);
+		expect(second).toHaveLength(3);
+		// The 3 s spacing is for the real arXiv; the fixture needs none.
+		expect(Date.now() - started).toBeLessThan(1_000);
+	});
+
+	it("outside mock mode asks the platform's http port at the arXiv API, and keeps the spacing on the platform clock", async () => {
+		const clock = createFakeClock();
+		const { fetch, ports } = livePorts();
+		const platform = await createPlatform({ env: LOCAL_ENV, clock, productionPorts: ports });
+		const client = createArxivClientFor(platform);
+
+		const first = client.search("agents", { maxResults: 1 });
+		await settle();
+		expect(fetch).toHaveBeenCalledTimes(1);
+		expect(String(fetch.mock.calls[0]?.[0])).toMatch(
+			/^https:\/\/export\.arxiv\.org\/api\/query\?/u,
+		);
+		expect((await first).map((paper) => paper.arxivId)).toEqual(["2401.01234"]);
+
+		const second = client.search("planning", { maxResults: 1 });
+		await settle();
+		clock.advanceBy(2_999);
+		await settle();
+		expect(fetch).toHaveBeenCalledTimes(1);
+		clock.advanceBy(1);
+		await settle();
+		expect(fetch).toHaveBeenCalledTimes(2);
+		await second;
+	});
+
+	it("hands out one shared client, so its cache and its queue are the process's", async () => {
+		setPlatformForTesting(await createPlatform({ env: MOCK_ENV }));
+		setArxivClientForTesting(undefined);
+		try {
+			const [first, second] = await Promise.all([getArxivClient(), getArxivClient()]);
+			expect(first).toBe(second);
+			expect(await getArxivClient()).toBe(first);
+			await first.search("agents", { maxResults: 10 });
+			expect(
+				(await getArxivClient().then((client) => client.getAbstract("2401.01234")))?.title,
+			).toContain("Hierarchical");
+		} finally {
+			setArxivClientForTesting(undefined);
+			setPlatformForTesting(undefined);
+		}
+	});
+
+	it("can be replaced and cleared for tests", async () => {
+		setPlatformForTesting(await createPlatform({ env: MOCK_ENV }));
+		const replacement = { search: vi.fn(), getAbstract: vi.fn() };
+		setArxivClientForTesting(replacement);
+		try {
+			expect(await getArxivClient()).toBe(replacement);
+			setArxivClientForTesting(undefined);
+			expect(await getArxivClient()).not.toBe(replacement);
+		} finally {
+			setArxivClientForTesting(undefined);
+			setPlatformForTesting(undefined);
+		}
+	});
+
+	it("does not keep a client when the platform could not be built", async () => {
+		setPlatformForTesting(undefined);
+		setArxivClientForTesting(undefined);
+		vi.stubEnv("AI_TEST_RUN_MODE", "not-a-mode");
+		try {
+			await expect(getArxivClient()).rejects.toThrow();
+			vi.stubEnv("AI_TEST_RUN_MODE", "mock");
+			expect(await getArxivClient()).toBeDefined();
+		} finally {
+			vi.unstubAllEnvs();
+			setArxivClientForTesting(undefined);
+			setPlatformForTesting(undefined);
+		}
 	});
 });

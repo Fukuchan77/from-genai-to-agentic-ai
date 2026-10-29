@@ -9,10 +9,25 @@ import path from "node:path";
 import { pipeline, type Readable, type Transform } from "node:stream";
 import { createBrotliDecompress, createUnzip } from "node:zlib";
 import type { ToolRuntime } from "@platform/ai-core/aci";
-import { type EnvSource, loadPlatformConfig, type PlatformConfig } from "@platform/ai-core/config";
+import {
+	DEFAULT_SANDBOX,
+	type EnvSource,
+	loadPlatformConfig,
+	type PlatformConfig,
+} from "@platform/ai-core/config";
 import { PlatformError } from "@platform/ai-core/errors";
+import { createTicketStore, FAQ_DIRECTORY, type TicketStore } from "@platform/ai-core/helpdesk";
+import { type CatalogRepo, createCatalogRepo, seedMarketing } from "@platform/ai-core/marketing";
+import {
+	connectMcpServers,
+	filesServerConfig,
+	githubServerConfig,
+	type McpRegistry,
+	type McpServerConfig,
+} from "@platform/ai-core/mcp";
 import {
 	CASSETTE_FIXTURE_DIRECTORY,
+	createArxivFixtureFetcher,
 	createCassetteStore,
 	createFixtureHttpFetcher,
 	createFixtureTranscriptSource,
@@ -43,6 +58,7 @@ import {
 	createYoutubeiTranscriptSource,
 	type HttpFetcher,
 	type RerankProvider,
+	type SandboxProvider,
 	systemClock,
 	type TranscriptSource,
 	type WebSearchProvider,
@@ -51,8 +67,21 @@ import {
 	createLexicalRerank,
 	createPgliteDatabase,
 	createPostgresDatabase,
+	ingestDocuments,
+	KnowledgeBaseUnavailableError,
+	listIngestableFiles,
 	type RagDatabaseHandle,
 } from "@platform/ai-core/rag";
+import { type ArxivClient, createArxivClient } from "@platform/ai-core/research";
+import {
+	createE2bProvider,
+	createLocalDockerProvider,
+	createMockSandboxProvider,
+	createSandboxRegistry,
+	probeDockerEnvironment,
+	type SandboxRegistry,
+	selectSandboxProvider,
+} from "@platform/ai-core/sandbox";
 import {
 	ARTICLE_FETCH_LIMITS,
 	isBlockedHostname,
@@ -541,4 +570,348 @@ export async function resolveKnowledgeEmbedding(
 		}
 		throw error;
 	}
+}
+
+// --- MCP servers (plan C13, Req 1.7-1.10) ---
+
+// The repository root, derived from the fixtures directory (`packages/ai-core/fixtures`) like the
+// knowledge roots: `next dev` runs in `apps/web`, other tools run at the repository root.
+const REPOSITORY_ROOT = path.resolve(DEFAULT_FIXTURE_DIRECTORY, "..", "..", "..");
+
+/** The entry the platform's own file server is started from (CL-3). */
+const FILES_SERVER_FILE = path.resolve(DEFAULT_FIXTURE_DIRECTORY, "..", "src", "files", "stdio.ts");
+
+/**
+ * The servers this process connects to. The file server needs no key and runs in every mode. GitHub
+ * is offered only outside `mock` and only with `GITHUB_TOKEN`, so the gate never reaches the network
+ * and a learner without a token sees no GitHub server (Req 1.9). A relative `MCP_FS_ROOT` is
+ * resolved against the repository root.
+ */
+export function mcpServerConfigs(
+	platform: Pick<Platform, "mode" | "config">,
+): readonly McpServerConfig[] {
+	const configs: McpServerConfig[] = [
+		filesServerConfig({
+			root: path.resolve(REPOSITORY_ROOT, platform.config.mcpFsRoot),
+			serverFile: FILES_SERVER_FILE,
+		}),
+	];
+	if (platform.mode !== "mock") {
+		const github = githubServerConfig({ GITHUB_TOKEN: platform.config.credentials.github });
+		if (!("reason" in github)) configs.push(github);
+	}
+	return configs;
+}
+
+export interface McpRegistryDeps {
+	readonly connect: typeof connectMcpServers;
+}
+
+const DEFAULT_MCP_DEPS: McpRegistryDeps = { connect: connectMcpServers };
+
+/**
+ * Connects to every configured server. A server that cannot be reached is recorded in the
+ * registry's status, not thrown; only a failure to prepare the connections is an error, and its
+ * cause (which may hold a header or a path) stays out of the message.
+ */
+export async function createMcpRegistry(
+	platform: Pick<Platform, "mode" | "config" | "clock">,
+	deps: McpRegistryDeps = DEFAULT_MCP_DEPS,
+): Promise<McpRegistry> {
+	try {
+		return await deps.connect(mcpServerConfigs(platform), { clock: platform.clock });
+	} catch {
+		throw new PlatformError(
+			"provider-unavailable",
+			"MCP サーバーへの接続を準備できませんでした。サーバーの設定を確認してください。",
+		);
+	}
+}
+
+const MCP_REGISTRY_KEY = Symbol.for("from-genai-to-agentic-ai.mcp-registry");
+
+type McpRegistryHolder = { [MCP_REGISTRY_KEY]?: Promise<McpRegistry> };
+
+/**
+ * The shared registry, created on first use and kept on `globalThis` (a Route Handler can be a
+ * separate bundle and dev reloads modules, so a module variable would start a second set of child
+ * processes). A failed creation is not cached.
+ */
+export function getMcpRegistry(deps: McpRegistryDeps = DEFAULT_MCP_DEPS): Promise<McpRegistry> {
+	const holder = globalThis as McpRegistryHolder;
+	const existing = holder[MCP_REGISTRY_KEY];
+	if (existing) return existing;
+	const created = getPlatform().then((platform) => createMcpRegistry(platform, deps));
+	holder[MCP_REGISTRY_KEY] = created;
+	created.catch(() => {
+		if (holder[MCP_REGISTRY_KEY] === created) delete holder[MCP_REGISTRY_KEY];
+	});
+	return created;
+}
+
+/** Test seam: installs `registry` as the shared one, or clears it with `undefined`. */
+export function setMcpRegistryForTesting(registry: McpRegistry | undefined): void {
+	const holder = globalThis as McpRegistryHolder;
+	if (registry) holder[MCP_REGISTRY_KEY] = Promise.resolve(registry);
+	else delete holder[MCP_REGISTRY_KEY];
+}
+
+// --- Help-desk tickets (plan C13, Req 2.6, 2.7) ---
+
+/**
+ * The ticket store, on the knowledge base's database (one PGlite in `mock`, the Compose Postgres
+ * elsewhere) and the platform clock. An unreachable Postgres is `provider-unavailable` with the
+ * start-up guidance, exactly as for the knowledge base; the store itself holds no state.
+ */
+export async function getHelpdeskStore(
+	factories: KnowledgeBaseFactories = DEFAULT_KNOWLEDGE_BASE_FACTORIES,
+): Promise<TicketStore> {
+	const [platform, handle] = await Promise.all([getPlatform(), getKnowledgeBase(factories)]);
+	if (platform.mode === "mock") await ensureMockFaq(platform, handle);
+	return createTicketStore(handle.db, { clock: platform.clock });
+}
+
+/** The throwaway databases whose FAQ was already ingested, so a request does not ingest again. */
+const FAQ_SEEDED = new WeakSet<object>();
+
+/**
+ * `mock` runs on an empty throwaway PGlite, so without this every sample inquiry would be
+ * escalated for lack of evidence (W3 carry-over F-8). Only the FAQ goes in, not the sample tickets,
+ * so the first ticket of a run is still `T-0001`. `local` and `live` never seed: their knowledge
+ * base holds the learner's own documents, and `mise run seed:samples` is the explicit way in.
+ */
+async function ensureMockFaq(
+	platform: Pick<Platform, "gateway" | "clock">,
+	handle: RagDatabaseHandle,
+): Promise<void> {
+	if (FAQ_SEEDED.has(handle.db)) return;
+	await ingestDocuments({
+		db: handle.db,
+		embedding: await resolveKnowledgeEmbedding(platform),
+		source: "knowledge",
+		root: FAQ_DIRECTORY,
+		files: await listIngestableFiles(FAQ_DIRECTORY),
+		clock: platform.clock,
+	});
+	FAQ_SEEDED.add(handle.db);
+}
+
+// --- Marketing catalog (plan C13, Req 6.5, 6.6) ---
+
+/**
+ * The product catalog and council personas, on the knowledge base's database. `mock` seeds the
+ * bundled samples into its throwaway PGlite (idempotent), so the screens work out of the box;
+ * `local` and `live` never seed: an empty catalog is `provider-unavailable` pointing at
+ * `mise run seed:samples`.
+ */
+export async function getCatalogRepo(
+	factories: KnowledgeBaseFactories = DEFAULT_KNOWLEDGE_BASE_FACTORIES,
+): Promise<CatalogRepo> {
+	const [platform, handle] = await Promise.all([getPlatform(), getKnowledgeBase(factories)]);
+	const repo = createCatalogRepo(handle.db);
+	if (await repo.isSeeded()) return repo;
+	if (platform.mode === "mock") {
+		await seedMarketing({ db: handle.db });
+		return repo;
+	}
+	throw new KnowledgeBaseUnavailableError(
+		"商品カタログとペルソナが未投入です。`mise run seed:samples` でサンプルデータを投入してから、もう一度実行してください。",
+	);
+}
+
+// --- Sandbox (plan C13, Req 3.7, 3.8, 3.10) ---
+
+/**
+ * Where generated code runs, chosen when first asked. `mock` uses the pseudo provider; elsewhere the
+ * E2B key comes first, then a local container, and with neither the analysis is disabled with the
+ * reason and what to set up (Req 3.8).
+ */
+export type SandboxSetup =
+	| {
+			readonly kind: "e2b" | "docker" | "mock";
+			readonly provider: SandboxProvider;
+			/** One sandbox per learner session, closed on release or after ten idle minutes. */
+			readonly registry: SandboxRegistry;
+			/** Stops the idle sweep. */
+			readonly stop: () => void;
+	  }
+	| { readonly kind: "disabled"; readonly reason: string; readonly guidance: string };
+
+export interface SandboxDeps {
+	readonly probe: typeof probeDockerEnvironment;
+	readonly createE2b: typeof createE2bProvider;
+	readonly createDocker: typeof createLocalDockerProvider;
+	readonly createMock: typeof createMockSandboxProvider;
+	/** How often idle sandboxes are swept. `null` starts no timer (tests). */
+	readonly sweepIntervalMs: number | null;
+}
+
+const DEFAULT_SANDBOX_DEPS: SandboxDeps = {
+	probe: probeDockerEnvironment,
+	createE2b: createE2bProvider,
+	createDocker: createLocalDockerProvider,
+	createMock: createMockSandboxProvider,
+	sweepIntervalMs: 60_000,
+};
+
+const NO_DOCKER = { reachable: false, imagePresent: false } as const;
+
+function startSweep(registry: SandboxRegistry, intervalMs: number | null): () => void {
+	if (intervalMs === null) return () => undefined;
+	const timer = setInterval(() => {
+		// A failed sweep is tried again at the next tick; it must not stop the timer.
+		registry.sweep().catch(() => undefined);
+	}, intervalMs);
+	// The sweep must not keep the process alive on its own.
+	timer.unref?.();
+	return () => clearInterval(timer);
+}
+
+/** Builds the sandbox setup for this platform. Never throws for a missing key or a missing Docker. */
+export async function createSandboxSetup(
+	platform: Pick<Platform, "mode" | "config" | "clock">,
+	deps: SandboxDeps = DEFAULT_SANDBOX_DEPS,
+): Promise<SandboxSetup> {
+	const { config } = platform;
+	let kind: "e2b" | "docker" | "mock";
+	let provider: SandboxProvider;
+
+	if (platform.mode === "mock") {
+		kind = "mock";
+		provider = deps.createMock();
+	} else {
+		const e2bKey = config.credentials.e2b;
+		// With a key Docker is not consulted, so no socket is touched for nothing.
+		const docker = e2bKey
+			? NO_DOCKER
+			: await deps.probe({ env: { DOCKER_HOST: config.docker.host }, image: config.docker.image });
+		const selection = selectSandboxProvider({
+			env: { E2B_API_KEY: e2bKey, DOCKER_SANDBOX_IMAGE: config.docker.image },
+			dockerProbe: docker,
+		});
+		if (selection.kind === "disabled") return selection;
+		kind = selection.kind;
+		provider =
+			selection.kind === "e2b"
+				? deps.createE2b({ apiKey: e2bKey })
+				: deps.createDocker({
+						environment: docker,
+						image: config.docker.image,
+						clock: platform.clock,
+						onWarning: (message) => console.warn(message),
+					});
+	}
+
+	const registry = createSandboxRegistry({
+		provider,
+		clock: platform.clock,
+		idleTimeoutMs: DEFAULT_SANDBOX.idleTimeoutMs,
+		maxSessions: DEFAULT_SANDBOX.maxSessions,
+	});
+	return { kind, provider, registry, stop: startSweep(registry, deps.sweepIntervalMs) };
+}
+
+const SANDBOX_KEY = Symbol.for("from-genai-to-agentic-ai.sandbox");
+
+type SandboxHolder = { [SANDBOX_KEY]?: Promise<SandboxSetup> };
+
+function stopSetup(setup: SandboxSetup | undefined): void {
+	if (setup && setup.kind !== "disabled") setup.stop();
+}
+
+/**
+ * The shared sandbox setup, kept on `globalThis` (a Route Handler can be a separate bundle and dev
+ * reloads modules, so a module variable would hold a second registry and a second timer: a session
+ * made by one route could not be released by another). An enabled setup is built once. A disabled
+ * one is not kept, so starting Docker or setting a key takes effect on the next request.
+ */
+export function getSandboxSelection(
+	deps: SandboxDeps = DEFAULT_SANDBOX_DEPS,
+): Promise<SandboxSetup> {
+	const holder = globalThis as SandboxHolder;
+	const existing = holder[SANDBOX_KEY];
+	if (existing) return existing;
+	const created = getPlatform().then((platform) => createSandboxSetup(platform, deps));
+	holder[SANDBOX_KEY] = created;
+	created.then(
+		(setup) => {
+			if (setup.kind === "disabled" && holder[SANDBOX_KEY] === created) delete holder[SANDBOX_KEY];
+		},
+		() => {
+			if (holder[SANDBOX_KEY] === created) delete holder[SANDBOX_KEY];
+		},
+	);
+	return created;
+}
+
+/**
+ * Forgets the shared setup: the idle sweep stops, every session is closed, and the next request
+ * chooses again. Used when the sandbox turned out to be gone after it had been chosen (Docker
+ * stopped, for one), so the status shows the truth and the guidance, not a stale `docker`.
+ */
+export async function invalidateSandboxSelection(): Promise<void> {
+	const holder = globalThis as SandboxHolder;
+	const previous = holder[SANDBOX_KEY];
+	delete holder[SANDBOX_KEY];
+	if (!previous) return;
+	const setup = await previous.catch(() => undefined);
+	if (!setup || setup.kind === "disabled") return;
+	setup.stop();
+	await setup.registry.closeAll();
+}
+
+/** Test seam: installs `setup` as the shared one (stopping the previous sweep), or clears it. */
+export function setSandboxForTesting(setup: SandboxSetup | undefined): void {
+	const holder = globalThis as SandboxHolder;
+	const previous = holder[SANDBOX_KEY];
+	if (previous) void previous.then(stopSetup, () => undefined);
+	if (setup) holder[SANDBOX_KEY] = Promise.resolve(setup);
+	else delete holder[SANDBOX_KEY];
+}
+
+// --- arXiv client (plan C13, Req 4.3, 4.7) ---
+
+/**
+ * The arXiv client for this platform. `mock` reads the fixture feed and needs no spacing; elsewhere
+ * the platform's guarded `HttpFetcher` is used (so `AI_RECORD=1` records arXiv too) and the client
+ * keeps arXiv's terms: one connection, three seconds apart, a day-long cache.
+ */
+export function createArxivClientFor(
+	platform: Pick<Platform, "mode" | "ports" | "clock">,
+): ArxivClient {
+	return platform.mode === "mock"
+		? createArxivClient({
+				fetcher: createArxivFixtureFetcher(),
+				clock: platform.clock,
+				options: { minIntervalMs: 0 },
+			})
+		: createArxivClient({ fetcher: platform.ports.http, clock: platform.clock });
+}
+
+const ARXIV_CLIENT_KEY = Symbol.for("from-genai-to-agentic-ai.arxiv-client");
+
+type ArxivClientHolder = { [ARXIV_CLIENT_KEY]?: Promise<ArxivClient> };
+
+/**
+ * The shared client, kept on `globalThis` for the reason the platform is: a Route Handler can be a
+ * separate bundle and dev reloads modules, and a second client would be a second queue (breaking
+ * "one connection") and a second cache. A failed build is not cached.
+ */
+export function getArxivClient(): Promise<ArxivClient> {
+	const holder = globalThis as ArxivClientHolder;
+	const existing = holder[ARXIV_CLIENT_KEY];
+	if (existing) return existing;
+	const created = getPlatform().then(createArxivClientFor);
+	holder[ARXIV_CLIENT_KEY] = created;
+	created.catch(() => {
+		if (holder[ARXIV_CLIENT_KEY] === created) delete holder[ARXIV_CLIENT_KEY];
+	});
+	return created;
+}
+
+/** Test seam: installs `client` as the shared one, or clears it with `undefined`. */
+export function setArxivClientForTesting(client: ArxivClient | undefined): void {
+	const holder = globalThis as ArxivClientHolder;
+	if (client) holder[ARXIV_CLIENT_KEY] = Promise.resolve(client);
+	else delete holder[ARXIV_CLIENT_KEY];
 }

@@ -102,9 +102,12 @@ export function createSearchKnowledgeBaseTool(deps: {
 }): AciTool<z.output<typeof searchInputSchema>, SearchKnowledgeBaseResult> {
 	return defineAciTool<z.output<typeof searchInputSchema>, SearchKnowledgeBaseResult>({
 		name: SEARCH_KNOWLEDGE_BASE_TOOL_NAME,
-		description:
-			"社内ナレッジベース（取り込み済みの資料）を検索して、関連する箇所の文書名・場所・抜粋と、引用用の番号 label を返します。" +
-			"資料に基づいて答えるときに使い、答えの文末に使った資料の番号を [label] の形で付けてください。",
+		description: [
+			"社内ナレッジベース（取り込み済みの資料）を検索して、関連する箇所の文書名・場所・抜粋と、引用用の番号 label を返す。",
+			"使うとき: 取り込み済みの資料に基づいて答えるとき。答えの文末に、使った資料の番号を [label] の形で付ける。",
+			"使わないとき: 資料と関係のない一般的な質問のとき、最新の Web の情報が必要なとき。",
+			'例: query="返品の受付期間は何日ですか"',
+		].join("\n"),
 		inputSchema: searchInputSchema,
 		risk: "read-only",
 		execute: async ({ query, documentIds }, context) => {

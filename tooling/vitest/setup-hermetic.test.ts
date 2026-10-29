@@ -367,6 +367,65 @@ describe("hermetic network guards", () => {
 		expect(consumeBlockedConnections()).toEqual(["127.0.0.1:5432"]);
 	});
 
+	it("allows only the Docker Engine sockets, and no TCP, in the container suite", () => {
+		restoreHermeticNetworkGuards();
+		vi.stubEnv("AI_TEST_SUITE", "container");
+		vi.stubEnv("DOCKER_HOST", "unix:///custom/engine.sock");
+		vi.stubEnv("HOME", "/Users/learner");
+		const connectMock = vi
+			.spyOn(net.Socket.prototype, "connect")
+			.mockImplementation(function connect(this: net.Socket) {
+				return this;
+			});
+		installHermeticNetworkGuards();
+
+		expect(net.connect({ path: "/custom/engine.sock" })).toBeInstanceOf(net.Socket);
+		expect(net.connect({ path: "/Users/learner/.docker/run/docker.sock" })).toBeInstanceOf(
+			net.Socket,
+		);
+		expect(net.connect("/var/run/docker.sock")).toBeInstanceOf(net.Socket);
+		// `Socket#connect` also takes the path as a plain string.
+		expect(new net.Socket().connect("/var/run/docker.sock")).toBeInstanceOf(net.Socket);
+		expect(connectMock).toHaveBeenCalledTimes(4);
+
+		expect(() => net.connect({ path: "/var/run/other.sock" })).toThrowError(NetworkBlockedError);
+		expect(() => net.connect({ path: "/custom/engine.sock.evil" })).toThrowError(
+			NetworkBlockedError,
+		);
+		expect(() => net.connect({ path: "/tmp/docker.sock" })).toThrowError(NetworkBlockedError);
+		expect(() => new net.Socket().connect("/tmp/docker.sock")).toThrowError(NetworkBlockedError);
+		expect(() => net.connect({ host: "127.0.0.1", port: 2375 })).toThrowError(NetworkBlockedError);
+		expect(consumeBlockedConnections()).toEqual([
+			"/var/run/other.sock",
+			"/custom/engine.sock.evil",
+			"/tmp/docker.sock",
+			"/tmp/docker.sock",
+			"127.0.0.1:2375",
+		]);
+	});
+
+	it("ignores a DOCKER_HOST that is not a unix socket in the container suite", () => {
+		restoreHermeticNetworkGuards();
+		vi.stubEnv("AI_TEST_SUITE", "container");
+		vi.stubEnv("DOCKER_HOST", "tcp://127.0.0.1:2375");
+		vi.stubEnv("HOME", "/Users/learner");
+		installHermeticNetworkGuards();
+
+		expect(() => net.connect({ host: "127.0.0.1", port: 2375 })).toThrowError(NetworkBlockedError);
+		expect(consumeBlockedConnections()).toEqual(["127.0.0.1:2375"]);
+	});
+
+	it.each(["gate", "pg", "local"])("keeps the Docker sockets blocked in the %s suite", (suite) => {
+		restoreHermeticNetworkGuards();
+		vi.stubEnv("AI_TEST_SUITE", suite);
+		vi.stubEnv("DOCKER_HOST", "unix:///custom/engine.sock");
+		installHermeticNetworkGuards();
+
+		expect(() => net.connect({ path: "/var/run/docker.sock" })).toThrowError(NetworkBlockedError);
+		expect(() => net.connect({ path: "/custom/engine.sock" })).toThrowError(NetworkBlockedError);
+		expect(consumeBlockedConnections()).toEqual(["/var/run/docker.sock", "/custom/engine.sock"]);
+	});
+
 	it("blocks dgram sends and connects with the destination in the error", () => {
 		const socket = dgram.createSocket("udp4");
 		try {

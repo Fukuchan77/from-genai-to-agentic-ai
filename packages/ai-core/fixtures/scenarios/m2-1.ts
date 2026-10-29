@@ -138,7 +138,14 @@ export const M2_1_SCENARIOS: readonly ScenarioDefinition[] = [
 				},
 			},
 			{
-				match: { purpose: "chat", stepIndex: 1, toolResultFor: "searchKnowledgeBase" },
+				// Named by its question like the first turn: a turn that answered every search result would
+				// also answer the help desk's (003 m3-2), which searches with the same tool.
+				match: {
+					purpose: "chat",
+					lastUserTextIncludes: M2_1_SAMPLE_QUESTIONS.agenticSearch,
+					stepIndex: 1,
+					toolResultFor: "searchKnowledgeBase",
+				},
 				respond: {
 					text: "固定の RAG は毎回一回だけ検索しますが、Agentic RAG は検索の要否や回数をエージェントが決めます [1]。",
 					chunkSize: 8,

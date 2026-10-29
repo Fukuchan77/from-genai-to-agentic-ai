@@ -1,0 +1,20 @@
+data: {"type":"data-council-turn","id":"turn-1","data":{"round":1,"personaId":"marketer-strict","personaName":"厳しいマーケター","text":"【ボトル案・第 1 回】誰に何を訴えたいのかが見えません。「お得」の根拠も示してください。\n<draft>通勤の 1 杯を 6 時間あたたかく。ステンレス保温ボトル 500ml、2,480 円。</draft>","failed":false}}
+
+data: {"type":"data-council-turn","id":"turn-2","data":{"round":1,"personaId":"consumer","personaName":"購入を検討する生活者","text":"【ボトル案・第 1 回】6 時間という数字は分かりやすいです。ただ、洗いやすさが書かれていないのが気になります。\n<draft>通勤の 1 杯を 6 時間あたたかく。口が広くて洗いやすい、ステンレス保温ボトル 500ml、2,480 円。</draft>","failed":false}}
+
+data: {"type":"data-council-turn","id":"turn-3","data":{"round":1,"personaId":"seo-specialist","personaName":"SEO 担当者","text":"【ボトル案・第 1 回】「保温ボトル」「ステンレス」を見出しに入れると探されやすくなります。\n<draft>【保温ボトル】通勤の 1 杯を 6 時間あたたかく。口が広くて洗いやすい、ステンレス製 500ml、2,480 円。</draft>","failed":false}}
+
+data: {"type":"data-council-verdict","id":"verdict-1","data":{"round":1,"agreed":false,"reason":"価格の根拠と検索語句について、まだ意見がそろっていません。","remainingObjections":["2,480 円が妥当な理由が示されていない","検索されやすい語句が足りない"]}}
+
+data: {"type":"data-council-turn","id":"turn-4","data":{"round":2,"personaId":"marketer-strict","personaName":"厳しいマーケター","text":"【ボトル案・第 2 回】価格の理由が入りました。この方向で問題ありません。賛成です。\n<draft>【保温ボトル】通勤の 1 杯を 6 時間あたたかく。洗いやすい広口のステンレス製 500ml、買いやすい 2,480 円。</draft>","failed":false}}
+
+data: {"type":"data-council-turn","id":"turn-5","data":{"round":2,"personaId":"consumer","personaName":"購入を検討する生活者","text":"【ボトル案・第 2 回】広口で洗いやすいと分かり、安心して選べます。賛成です。\n<draft>【保温ボトル】通勤の 1 杯を 6 時間あたたかく。洗いやすい広口のステンレス製 500ml、毎日使える 2,480 円。</draft>","failed":false}}
+
+data: {"type":"data-council-turn","id":"turn-6","data":{"round":2,"personaId":"seo-specialist","personaName":"SEO 担当者","text":"【ボトル案・第 2 回】見出しの語句も自然に入りました。この案で賛成します。\n<draft>【保温ボトル】通勤の 1 杯を 6 時間あたたかく。洗いやすい広口のステンレス製 500ml、毎日使える 2,480 円（税込）。</draft>","failed":false}}
+
+data: {"type":"data-council-verdict","id":"verdict-2","data":{"round":2,"agreed":true,"reason":"三者とも改善後の文案の方向に賛成しており、反対意見は残っていません。","remainingObjections":[]}}
+
+data: {"type":"data-council-result","id":"result","data":{"improvedDraft":"【保温ボトル】通勤の 1 杯を 6 時間あたたかく。洗いやすい広口のステンレス製 500ml、毎日使える 2,480 円（税込）。","endReason":"agreed","rounds":[{"round":1,"statements":3,"missing":[],"verdict":{"agreed":false,"reason":"価格の根拠と検索語句について、まだ意見がそろっていません。","remainingObjections":["2,480 円が妥当な理由が示されていない","検索されやすい語句が足りない"]}},{"round":2,"statements":3,"missing":[],"verdict":{"agreed":true,"reason":"三者とも改善後の文案の方向に賛成しており、反対意見は残っていません。","remainingObjections":[]}}],"usage":{"byRole":{"marketer-strict":{"inputTokens":1240,"outputTokens":420,"totalTokens":1660,"calls":2,"unknownCalls":0},"consumer":{"inputTokens":1240,"outputTokens":420,"totalTokens":1660,"calls":2,"unknownCalls":0},"seo-specialist":{"inputTokens":1240,"outputTokens":420,"totalTokens":1660,"calls":2,"unknownCalls":0},"moderator":{"inputTokens":1960,"outputTokens":180,"totalTokens":2140,"calls":2,"unknownCalls":0}},"total":{"inputTokens":5680,"outputTokens":1440,"totalTokens":7120}}}}
+
+data: [DONE]
+

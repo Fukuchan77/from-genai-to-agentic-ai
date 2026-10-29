@@ -32,12 +32,16 @@ interface GuardPolicy {
 	dnsHostnames: ReadonlySet<string>;
 	fetchOrigins: ReadonlySet<string>;
 	sockets: readonly HostPort[];
+	/** Exact unix socket paths (the Docker Engine, in the container suite only). */
+	unixSockets: ReadonlySet<string>;
 }
 
 interface SocketDestination {
 	display: string;
 	hostname?: string;
 	port?: number;
+	/** Set for a unix socket connection. */
+	path?: string;
 }
 
 interface InstalledGuards {
@@ -127,10 +131,25 @@ function postgresPort(env: NodeJS.ProcessEnv): number | undefined {
 	return port !== undefined && port > 0 && port < 65_536 ? port : undefined;
 }
 
+/**
+ * The sockets the sandbox's Docker probe may use (`sandbox/docker/probe.ts`): the unix socket in
+ * `DOCKER_HOST`, then the two default locations. Nothing else, and never TCP.
+ */
+function dockerSocketPaths(env: NodeJS.ProcessEnv): string[] {
+	const paths: string[] = [];
+	const host = env.DOCKER_HOST?.trim();
+	if (host?.startsWith("unix:///")) paths.push(host.slice("unix://".length));
+	const home = env.HOME?.trim();
+	if (home) paths.push(`${home.replace(/\/+$/u, "")}/.docker/run/docker.sock`);
+	paths.push("/var/run/docker.sock");
+	return paths;
+}
+
 function guardPolicy(env: NodeJS.ProcessEnv): GuardPolicy {
 	const dnsHostnames = new Set<string>();
 	const fetchOrigins = new Set<string>();
 	const sockets: HostPort[] = [];
+	const unixSockets = new Set<string>();
 
 	const ollama = ollamaDestination(env);
 	if (ollama) {
@@ -147,7 +166,11 @@ function guardPolicy(env: NodeJS.ProcessEnv): GuardPolicy {
 		}
 	}
 
-	return { dnsHostnames, fetchOrigins, sockets };
+	if (env.AI_TEST_SUITE === "container") {
+		for (const socketPath of dockerSocketPaths(env)) unixSockets.add(socketPath);
+	}
+
+	return { dnsHostnames, fetchOrigins, sockets, unixSockets };
 }
 
 function fetchDestination(input: RequestInfo | URL): { display: string; origin?: string } {
@@ -170,10 +193,10 @@ function socketDestination(args: readonly unknown[]): SocketDestination {
 			port: first,
 		};
 	}
-	if (typeof first === "string") return { display: first };
+	if (typeof first === "string") return { display: first, path: first };
 	if (typeof first === "object" && first !== null) {
 		const options = first as { host?: string; path?: string; port?: number | string };
-		if (options.path) return { display: options.path };
+		if (options.path) return { display: options.path, path: options.path };
 		const hostname = options.host ?? DEFAULT_HOST;
 		const port = parsePort(options.port);
 		return {
@@ -206,6 +229,7 @@ function isDnsResolverMethod(name: string): boolean {
 }
 
 function isAllowedSocketDestination(destination: SocketDestination, policy: GuardPolicy): boolean {
+	if (destination.path !== undefined) return policy.unixSockets.has(destination.path);
 	return policy.sockets.some(
 		(allowed) => destination.hostname === allowed.hostname && destination.port === allowed.port,
 	);
@@ -252,7 +276,9 @@ export function restoreHermeticNetworkGuards(): void {
 /**
  * Blocks fetch, `node:net` sockets, `node:dgram` sends/connects, and `node:dns` lookups.
  * Allowed only: the Ollama origin (from `OLLAMA_BASE_URL`, default in `./ollama`) when
- * `AI_TEST_RUN_MODE=local`, and `127.0.0.1`/`localhost` at `POSTGRES_PORT` when `AI_TEST_SUITE=pg`.
+ * `AI_TEST_RUN_MODE=local`, `127.0.0.1`/`localhost` at `POSTGRES_PORT` when `AI_TEST_SUITE=pg`, and
+ * the Docker Engine unix sockets (`DOCKER_HOST`, `~/.docker/run/docker.sock`,
+ * `/var/run/docker.sock`) when `AI_TEST_SUITE=container`.
  */
 export function installHermeticNetworkGuards(env: NodeJS.ProcessEnv = process.env): void {
 	restoreHermeticNetworkGuards();

@@ -1,0 +1,52 @@
+data: {"type":"data-research-event","id":"event-1","data":{"agent":"supervisor","kind":"call","detail":{"callee":"search","task":"階層型エージェントのツール利用"}}}
+
+data: {"type":"data-research-event","id":"event-2","data":{"agent":"search","kind":"tool","detail":{"name":"searchArxiv","input":"hierarchical agents tool use"}}}
+
+data: {"type":"data-research-event","id":"event-3","data":{"agent":"search","kind":"card","detail":{"arxivId":"2401.01234","title":"Hierarchical Agents & Tool Use in Practice","authors":["Ann Example","Bo Sample"],"publishedAt":"2024-01-02","url":"https://arxiv.org/abs/2401.01234"}}}
+
+data: {"type":"data-research-event","id":"event-4","data":{"agent":"search","kind":"card","detail":{"arxivId":"2403.05678","title":"Evaluating Research Agents","authors":["Chi Demo"],"publishedAt":"2024-03-09","url":"https://arxiv.org/abs/2403.05678"}}}
+
+data: {"type":"data-research-event","id":"event-5","data":{"agent":"search","kind":"card","detail":{"arxivId":"cs/0501001","title":"An Early Paper With an Old-Style Identifier","authors":["Dee Old"],"publishedAt":"2005-01-04","url":"https://arxiv.org/abs/cs/0501001"}}}
+
+data: {"type":"data-research-event","id":"event-6","data":{"agent":"search","kind":"summary","detail":{"text":"2401.01234 階層型の計画でツールを担当ごとに分ける。2403.05678 研究エージェントの評価基準を提案。cs/0501001 は古い形式の ID の例。"}}}
+
+data: {"type":"data-research-usage","id":"usage","data":{"byRole":{"search":{"inputTokens":1970,"outputTokens":250,"totalTokens":2220,"calls":1,"unknownCalls":0}},"total":{"inputTokens":1970,"outputTokens":250,"totalTokens":2220},"calls":1,"maxCalls":8}}
+
+data: {"type":"data-research-event","id":"event-7","data":{"agent":"supervisor","kind":"call","detail":{"callee":"search","task":"hierarchical agents evaluation"}}}
+
+data: {"type":"data-research-event","id":"event-8","data":{"agent":"search","kind":"tool","detail":{"name":"searchArxiv","input":"research agents evaluation benchmark"}}}
+
+data: {"type":"data-research-event","id":"event-9","data":{"agent":"search","kind":"card","detail":{"arxivId":"2401.01234","title":"Hierarchical Agents & Tool Use in Practice","authors":["Ann Example","Bo Sample"],"publishedAt":"2024-01-02","url":"https://arxiv.org/abs/2401.01234"}}}
+
+data: {"type":"data-research-event","id":"event-10","data":{"agent":"search","kind":"card","detail":{"arxivId":"2403.05678","title":"Evaluating Research Agents","authors":["Chi Demo"],"publishedAt":"2024-03-09","url":"https://arxiv.org/abs/2403.05678"}}}
+
+data: {"type":"data-research-event","id":"event-11","data":{"agent":"search","kind":"card","detail":{"arxivId":"cs/0501001","title":"An Early Paper With an Old-Style Identifier","authors":["Dee Old"],"publishedAt":"2005-01-04","url":"https://arxiv.org/abs/cs/0501001"}}}
+
+data: {"type":"data-research-event","id":"event-12","data":{"agent":"search","kind":"summary","detail":{"text":"2403.05678 研究エージェントの評価基準。2401.01234 は評価に階層型の計画を使う。"}}}
+
+data: {"type":"data-research-usage","id":"usage","data":{"byRole":{"search":{"inputTokens":3940,"outputTokens":500,"totalTokens":4440,"calls":2,"unknownCalls":0}},"total":{"inputTokens":3940,"outputTokens":500,"totalTokens":4440},"calls":2,"maxCalls":8}}
+
+data: {"type":"data-research-event","id":"event-13","data":{"agent":"supervisor","kind":"call","detail":{"callee":"reading","task":"手法の違いと評価に使ったデータ"}}}
+
+data: {"type":"data-research-event","id":"event-14","data":{"agent":"reading","kind":"tool","detail":{"name":"getPaperAbstract","input":"2401.01234"}}}
+
+data: {"type":"data-research-event","id":"event-15","data":{"agent":"reading","kind":"card","detail":{"arxivId":"2401.01234","title":"Hierarchical Agents & Tool Use in Practice","authors":["Ann Example","Bo Sample"],"publishedAt":"2024-01-02","url":"https://arxiv.org/abs/2401.01234"}}}
+
+data: {"type":"data-research-event","id":"event-16","data":{"agent":"reading","kind":"summary","detail":{"text":"2401.01234 は上位の計画を担当ごとに分けて実行する。限界は担当間の調整コスト。2403.05678 は評価の指標を提案する。"}}}
+
+data: {"type":"data-research-usage","id":"usage","data":{"byRole":{"search":{"inputTokens":3940,"outputTokens":500,"totalTokens":4440,"calls":2,"unknownCalls":0},"reading":{"inputTokens":1970,"outputTokens":250,"totalTokens":2220,"calls":1,"unknownCalls":0}},"total":{"inputTokens":5910,"outputTokens":750,"totalTokens":6660},"calls":3,"maxCalls":8}}
+
+data: {"type":"data-research-event","id":"event-17","data":{"agent":"supervisor","kind":"call","detail":{"callee":"market","task":"階層型エージェントの最新動向"}}}
+
+data: {"type":"data-research-event","id":"event-18","data":{"agent":"market","kind":"summary","detail":{"text":"導入は段階的に広がる見込み。評価基準が揃うまでは影響は限定的で、前提は担当間の責任分界が整うこと。"}}}
+
+data: {"type":"data-research-usage","id":"usage","data":{"byRole":{"search":{"inputTokens":3940,"outputTokens":500,"totalTokens":4440,"calls":2,"unknownCalls":0},"reading":{"inputTokens":1970,"outputTokens":250,"totalTokens":2220,"calls":1,"unknownCalls":0},"market":{"inputTokens":900,"outputTokens":140,"totalTokens":1040,"calls":1,"unknownCalls":0}},"total":{"inputTokens":6810,"outputTokens":890,"totalTokens":7700},"calls":4,"maxCalls":8}}
+
+data: {"type":"data-research-usage","id":"usage","data":{"byRole":{"search":{"inputTokens":3940,"outputTokens":500,"totalTokens":4440,"calls":2,"unknownCalls":0},"reading":{"inputTokens":1970,"outputTokens":250,"totalTokens":2220,"calls":1,"unknownCalls":0},"market":{"inputTokens":900,"outputTokens":140,"totalTokens":1040,"calls":1,"unknownCalls":0},"supervisor":{"inputTokens":6000,"outputTokens":780,"totalTokens":6780,"calls":1,"unknownCalls":0}},"total":{"inputTokens":12810,"outputTokens":1670,"totalTokens":14480},"calls":4,"maxCalls":8}}
+
+data: {"type":"data-research-event","id":"event-19","data":{"agent":"supervisor","kind":"summary","detail":{"characters":236,"missing":0}}}
+
+data: {"type":"data-research-result","id":"result","data":{"report":"# 階層型エージェントの最新動向\n\n## 手法\n- 階層型の計画（2401.01234）は、上位の計画を担当ごとに分けて実行する。\n- 研究エージェントの評価基準（2403.05678）が提案された。\n\n## 市場への影響\n導入は段階的に広がるが、評価基準が揃うまでは限定的である。\n\n## 今後の課題\n- 評価基準の統一\n- 担当間の責任分界\n\n---\n\n## 引用の確認\n\n- 「2412.99999」は、検索で取得した論文の集合に無いため、その言及を除去しました。\n","warnings":["「2412.99999」は、検索で取得した論文の集合に無いため、その言及を除去しました。"],"missing":[]}}
+
+data: [DONE]
+

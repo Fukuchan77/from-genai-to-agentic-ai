@@ -1,0 +1,34 @@
+data: {"type":"data-helpdesk-plan","id":"plan","data":{"revision":0,"tasks":[{"id":"t1","description":"共有プリンターが一覧に表示されないときの手順を調べる","dependsOn":[],"state":"pending"},{"id":"t2","description":"プリンターの追加方法を調べる","dependsOn":["t1"],"state":"pending"}]}}
+
+data: {"type":"data-helpdesk-progress","id":"progress","data":{"stepsUsed":1,"maxSteps":12}}
+
+data: {"type":"data-helpdesk-plan","id":"plan","data":{"revision":0,"tasks":[{"id":"t1","description":"共有プリンターが一覧に表示されないときの手順を調べる","dependsOn":[],"state":"running"},{"id":"t2","description":"プリンターの追加方法を調べる","dependsOn":["t1"],"state":"pending"}]}}
+
+data: {"type":"data-helpdesk-progress","id":"progress","data":{"stepsUsed":1,"maxSteps":12,"current":"t1"}}
+
+data: {"type":"data-helpdesk-plan","id":"plan","data":{"revision":0,"tasks":[{"id":"t1","description":"共有プリンターが一覧に表示されないときの手順を調べる","dependsOn":[],"state":"done"},{"id":"t2","description":"プリンターの追加方法を調べる","dependsOn":["t1"],"state":"pending"}]}}
+
+data: {"type":"data-helpdesk-progress","id":"progress","data":{"stepsUsed":2,"maxSteps":12}}
+
+data: {"type":"data-helpdesk-progress","id":"progress","data":{"stepsUsed":2,"maxSteps":12,"decision":{"decision":"replan","reason":"接続方法が原因だと分かったので、追加方法ではなくネットワークの接続手順を調べる計画に変える。"}}}
+
+data: {"type":"data-helpdesk-plan","id":"plan","data":{"revision":1,"tasks":[{"id":"t1","description":"共有プリンターが一覧に表示されないときの手順を調べる","dependsOn":[],"state":"done"},{"id":"t3","description":"社員用の無線ネットワークへの接続手順を調べる","dependsOn":["t1"],"state":"pending"}],"diff":{"added":["t3"],"removed":["t2"],"changed":[]}}}
+
+data: {"type":"data-helpdesk-progress","id":"progress","data":{"stepsUsed":3,"maxSteps":12}}
+
+data: {"type":"data-helpdesk-plan","id":"plan","data":{"revision":1,"tasks":[{"id":"t1","description":"共有プリンターが一覧に表示されないときの手順を調べる","dependsOn":[],"state":"done"},{"id":"t3","description":"社員用の無線ネットワークへの接続手順を調べる","dependsOn":["t1"],"state":"running"}],"diff":{"added":["t3"],"removed":["t2"],"changed":[]}}}
+
+data: {"type":"data-helpdesk-progress","id":"progress","data":{"stepsUsed":3,"maxSteps":12,"current":"t3"}}
+
+data: {"type":"data-helpdesk-plan","id":"plan","data":{"revision":1,"tasks":[{"id":"t1","description":"共有プリンターが一覧に表示されないときの手順を調べる","dependsOn":[],"state":"done"},{"id":"t3","description":"社員用の無線ネットワークへの接続手順を調べる","dependsOn":["t1"],"state":"done"}],"diff":{"added":["t3"],"removed":["t2"],"changed":[]}}}
+
+data: {"type":"data-helpdesk-progress","id":"progress","data":{"stepsUsed":4,"maxSteps":12}}
+
+data: {"type":"data-helpdesk-progress","id":"progress","data":{"stepsUsed":4,"maxSteps":12,"decision":{"decision":"finish","reason":"原因と対処が分かった。"}}}
+
+data: {"type":"data-helpdesk-result","id":"result-1","data":{"ticketId":"T-0001","status":"resolved","answer":"VPN 経由では共有プリンターを使えません。出社している場合は、社員用の無線ネットワークに接続し直してから、プリンターを追加してください。"}}
+
+data: {"type":"message-metadata","messageMetadata":{"ticketId":"T-0001","status":"resolved"}}
+
+data: [DONE]
+

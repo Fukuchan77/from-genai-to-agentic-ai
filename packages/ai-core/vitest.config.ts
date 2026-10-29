@@ -1,9 +1,11 @@
 import { configDefaults, defineConfig } from "vitest/config";
 
 const suites = {
-	gate: { suffix: "test", exclude: ["**/*.pg.test.*"] },
+	gate: { suffix: "test", exclude: ["**/*.pg.test.*", "**/*.container.test.*"] },
 	local: { suffix: "local.test", exclude: [] },
 	pg: { suffix: "pg.test", exclude: [] },
+	// Needs a Docker Engine socket; `mise run test:container` only (003 CL-9).
+	container: { suffix: "container.test", exclude: [] },
 } as const;
 
 const suiteName = process.env.AI_TEST_SUITE || "gate";
@@ -32,7 +34,12 @@ export default defineConfig({
 			provider: "v8",
 			reporter: ["text"],
 			include: ["src/**/*.ts"],
-			exclude: ["src/**/*.test.ts", "src/**/*.local.test.ts", "src/**/*.pg.test.ts"],
+			exclude: [
+				"src/**/*.test.ts",
+				"src/**/*.local.test.ts",
+				"src/**/*.pg.test.ts",
+				"src/**/*.container.test.ts",
+			],
 			...(suiteName === "gate"
 				? {
 						thresholds: {

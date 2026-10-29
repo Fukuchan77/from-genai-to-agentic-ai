@@ -5,6 +5,12 @@ import { M2_1_SCENARIOS } from "../../fixtures/scenarios/m2-1";
 import { M2_2_SCENARIOS } from "../../fixtures/scenarios/m2-2";
 import { M2_3_SCENARIOS } from "../../fixtures/scenarios/m2-3";
 import { M2_4_SCENARIOS } from "../../fixtures/scenarios/m2-4";
+import { M3_1_SCENARIOS } from "../../fixtures/scenarios/m3-1";
+import { M3_2_SCENARIOS } from "../../fixtures/scenarios/m3-2";
+import { M3_3_SCENARIOS } from "../../fixtures/scenarios/m3-3";
+import { M3_4_SCENARIOS } from "../../fixtures/scenarios/m3-4";
+import { M3_5_SCENARIOS } from "../../fixtures/scenarios/m3-5";
+import { M3_6_SCENARIOS } from "../../fixtures/scenarios/m3-6";
 import type { PlatformConfig } from "../config";
 import { type CassetteStore, createCassetteStore } from "../mock/cassette-store";
 import { createDeterministicEmbeddingModel } from "../mock/deterministic-embedding";
@@ -137,6 +143,8 @@ function credentialSecrets(credentials: PlatformConfig["credentials"]) {
 		GOOGLE_GENERATIVE_AI_API_KEY: credentials.google,
 		TAVILY_API_KEY: credentials.tavily,
 		COHERE_API_KEY: credentials.cohere,
+		E2B_API_KEY: credentials.e2b,
+		GITHUB_TOKEN: credentials.github,
 	};
 }
 
@@ -160,6 +168,12 @@ export function createModelGateway(deps: GatewayDeps): ModelGateway {
 		...M2_2_SCENARIOS,
 		...M2_3_SCENARIOS,
 		...M2_4_SCENARIOS,
+		...M3_1_SCENARIOS,
+		...M3_2_SCENARIOS,
+		...M3_3_SCENARIOS,
+		...M3_4_SCENARIOS,
+		...M3_5_SCENARIOS,
+		...M3_6_SCENARIOS,
 	];
 	const cassettes = deps.mock?.cassettes ?? createCassetteStore(CASSETTE_FIXTURE_DIRECTORY);
 	const embeddingDimensions = deps.mock?.embeddingDimensions ?? MOCK_EMBEDDING_DIMENSIONS;

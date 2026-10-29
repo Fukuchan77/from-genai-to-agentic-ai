@@ -1,0 +1,24 @@
+{
+	"highLevel": {
+		"steps": 2,
+		"tokens": 890,
+		"stopReason": "completed",
+		"toolsCalled": [
+			"findAndReadFiles"
+		]
+	},
+	"lowLevel": {
+		"steps": 3,
+		"tokens": 1478,
+		"stopReason": "completed",
+		"toolsCalled": [
+			"searchFiles",
+			"readFile"
+		]
+	},
+	"comparison": {
+		"steps": 1,
+		"tokens": 588,
+		"ratio": 0.6021650879566982
+	}
+}

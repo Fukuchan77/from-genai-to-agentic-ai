@@ -21,6 +21,7 @@ import {
 import { z } from "zod";
 import { M1_2_SCENARIOS } from "../../fixtures/scenarios/m1-2";
 import { defineAciTool } from "../aci/define-tool";
+import { FatalLatch, FatalToolError } from "../aci/fatal";
 import { buildToolSet } from "../aci/tool-set";
 import { createCalculatorTool } from "../aci/tools/calculator";
 import type { AnyAciTool, GuardedToolSet } from "../aci/types";
@@ -29,6 +30,7 @@ import { PlatformError } from "../errors";
 import { defineScenario } from "../mock/scenario";
 import { createScenarioModel } from "../mock/scenario-model";
 import { createFakeClock, type FakeClock } from "../ports/clock";
+import { describeTool } from "../testing/tool-description";
 import {
 	AGENT_RUN_ERROR_MESSAGE,
 	type AgentRunSummary,
@@ -76,8 +78,8 @@ const CALCULATION_SCENARIO = defineScenario({
 
 const weatherTool = defineAciTool({
 	name: "weather",
-	description: "Returns fixed weather.",
-	inputSchema: z.object({ city: z.string() }),
+	description: describeTool("Returns fixed weather."),
+	inputSchema: z.object({ city: z.string().describe("都市名") }),
 	risk: "read-only",
 	execute: ({ city }) => ({ city, condition: "晴れ", temperatureC: 22 }),
 });
@@ -245,8 +247,8 @@ describe("createGuardedAgent: run summary", () => {
 		const clock = createFakeClock(5_000);
 		const slowWeather = defineAciTool({
 			name: "weather",
-			description: "Takes three seconds.",
-			inputSchema: z.object({ city: z.string() }),
+			description: describeTool("Takes three seconds."),
+			inputSchema: z.object({ city: z.string().describe("都市名") }),
 			risk: "read-only",
 			execute: ({ city }) => {
 				clock.advanceBy(3_000);
@@ -297,6 +299,186 @@ describe("createGuardedAgent: run summary", () => {
 		const guarded = createGuardedAgent(options({ clock }));
 
 		expect(() => guarded.summary()).toThrow(PlatformError);
+	});
+});
+
+/** A model that asks for the same tool call at every step and counts how often it is called. */
+function toolLoopModel(toolName: string): { model: MockLanguageModelV4; calls: () => number } {
+	let calls = 0;
+	const usage = {
+		inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
+		outputTokens: { total: 1, text: 1, reasoning: 0 },
+	};
+	const finishReason = { unified: "tool-calls", raw: undefined } as const;
+	const toolCall = () => ({
+		type: "tool-call" as const,
+		toolCallId: `call-${calls}`,
+		toolName,
+		input: "{}",
+	});
+	const model = new MockLanguageModelV4({
+		doGenerate: async () => {
+			calls += 1;
+			return { content: [toolCall()], finishReason, usage, warnings: [] };
+		},
+		doStream: async () => {
+			calls += 1;
+			return {
+				stream: simulateReadableStream({
+					chunks: [
+						{ type: "stream-start", warnings: [] },
+						toolCall(),
+						{ type: "finish", finishReason, usage },
+					],
+					initialDelayInMs: null,
+					chunkDelayInMs: null,
+				}),
+			};
+		},
+	});
+	return { model, calls: () => calls };
+}
+
+describe("createGuardedAgent: fatal tool errors (S-1: the latch is read by stopWhen)", () => {
+	const LEARNER_MESSAGE = "許可されたワークスペースの外は操作できません（/workspace）。";
+
+	function fatalSetup(code: "not-allowed" | "attempt-limit" = "not-allowed", withLatch = true) {
+		const clock = createFakeClock();
+		const fatal = new FatalLatch();
+		const toolRuns = { count: 0 };
+		const failing = defineAciTool({
+			name: "failing",
+			description: describeTool("Always fails fatally."),
+			inputSchema: z.object({}),
+			risk: "read-only",
+			execute: () => {
+				toolRuns.count += 1;
+				throw new FatalToolError(code, LEARNER_MESSAGE);
+			},
+		});
+		const tools = buildToolSet(
+			[failing],
+			{},
+			{ clock, toolTimeoutMs: LIMITS.toolTimeoutMs, ...(withLatch ? { fatal } : {}) },
+		).tools;
+		const { model, calls } = toolLoopModel("failing");
+		return { clock, fatal, tools, model, calls, toolRuns };
+	}
+
+	it("stops generate() after the step with the fatal error and reports stop reason error", async () => {
+		const { clock, tools, model, calls, toolRuns } = fatalSetup();
+		const guarded = createGuardedAgent(options({ clock, model, tools }));
+
+		await guarded.agent.generate({ prompt: "go", abortSignal: guarded.abortSignal });
+
+		expect(calls()).toBe(1);
+		expect(toolRuns.count).toBe(1);
+		expect(await guarded.done).toMatchObject({
+			stopReason: "error",
+			steps: 1,
+			error: { code: "not-allowed", message: LEARNER_MESSAGE },
+		});
+	});
+
+	it("stops the UI stream with a normal finish chunk that carries the learner-facing message", async () => {
+		const { clock, tools, model, calls } = fatalSetup();
+		const guarded = createGuardedAgent(options({ clock, model, tools }));
+
+		const chunks = await runToEnd(guarded, "go");
+
+		expect(calls()).toBe(1);
+		const finish = chunks.find((chunk) => chunk.type === "finish");
+		expect(finish).toMatchObject({
+			messageMetadata: {
+				run: { stopReason: "error", error: { code: "not-allowed", message: LEARNER_MESSAGE } },
+			},
+		});
+		expect(chunks.some((chunk) => chunk.type === "abort")).toBe(false);
+		expect(guarded.abortSignal.aborted).toBe(false);
+	});
+
+	it("stops on an attempt-limit error through the same path", async () => {
+		const { clock, tools, model, calls } = fatalSetup("attempt-limit");
+		const guarded = createGuardedAgent(options({ clock, model, tools }));
+
+		await runToEnd(guarded, "go");
+
+		expect(calls()).toBe(1);
+		expect(await guarded.done).toMatchObject({
+			stopReason: "error",
+			error: { code: "attempt-limit" },
+		});
+	});
+
+	it("tells the observers the same summary", async () => {
+		const { clock, tools, model } = fatalSetup();
+		const observer = recordingObserver();
+		const guarded = createGuardedAgent(options({ clock, model, tools, observers: [observer] }));
+
+		await runToEnd(guarded, "go");
+
+		expect(observer.calls).toHaveLength(1);
+		expect(observer.calls[0]).toMatchObject({ stopReason: "error", toolsCalled: ["failing"] });
+	});
+
+	it("does not change a run whose latch is never tripped", async () => {
+		const clock = createFakeClock();
+		const fatal = new FatalLatch();
+		const tools = buildToolSet(
+			[createCalculatorTool()],
+			{},
+			{ clock, toolTimeoutMs: LIMITS.toolTimeoutMs, fatal },
+		).tools;
+		const guarded = createGuardedAgent(options({ clock, tools }));
+
+		await runToEnd(guarded, "計算してください");
+
+		expect(await guarded.done).toMatchObject({
+			stopReason: "completed",
+			steps: 3,
+			error: undefined,
+		});
+	});
+
+	it("rejects a tool set whose latch is already tripped (one latch per run)", () => {
+		const { clock, fatal, tools, model } = fatalSetup();
+		fatal.trip(new FatalToolError("auth-failed", "stale"));
+
+		expect(() => createGuardedAgent(options({ clock, model, tools }))).toThrow(ConfigError);
+	});
+
+	it("keeps M1's behaviour when no latch is given: the loop runs to the step limit", async () => {
+		const clock = createFakeClock();
+		const { tools, model, calls } = fatalSetup("not-allowed", false);
+		const guarded = createGuardedAgent(
+			options({ clock, model, tools, limits: { ...LIMITS, maxSteps: 3 } }),
+		);
+
+		await runToEnd(guarded, "go");
+
+		expect(calls()).toBe(3);
+		expect(await guarded.done).toMatchObject({ stopReason: "step-limit" });
+	});
+
+	it("keeps a stop that already happened: a later latch does not rewrite the summary", async () => {
+		const clock = createFakeClock();
+		const fatal = new FatalLatch();
+		const tools = buildToolSet(
+			[createCalculatorTool()],
+			{},
+			{ clock, toolTimeoutMs: LIMITS.toolTimeoutMs, fatal },
+		).tools;
+		const caller = new AbortController();
+		const { model, called } = hangingModel();
+		const guarded = createGuardedAgent(options({ clock, model, tools, signal: caller.signal }));
+
+		const run = runToEnd(guarded, "go");
+		await called;
+		caller.abort();
+		await run;
+		fatal.trip(new FatalToolError("auth-failed", "late"));
+
+		expect(await guarded.done).toMatchObject({ stopReason: "aborted", error: undefined });
 	});
 });
 
@@ -631,7 +813,7 @@ describe("createGuardedAgent: validation", () => {
 		return Array.from({ length: count }, (_, index) =>
 			defineAciTool({
 				name: `tool${index}`,
-				description: `Tool ${index}.`,
+				description: describeTool(`Tool ${index}.`),
 				inputSchema: z.object({}),
 				risk: "read-only",
 				execute: () => index,

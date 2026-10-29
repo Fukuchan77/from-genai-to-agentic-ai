@@ -3,7 +3,32 @@ export {
 	effectiveToolTimeoutMs,
 	ToolExecutionError,
 } from "./define-tool";
-export { buildToolSet, toolAvailabilityFromConfig } from "./tool-set";
+export {
+	checkDescription,
+	checkJsonSchemaDescription,
+	DESCRIPTION_HEADINGS,
+	type DescriptionIssue,
+	type DescriptionIssueCode,
+	type JsonSchemaNode,
+} from "./description-check";
+export {
+	classifyToolError,
+	FATAL_ERROR_CODES,
+	type FatalErrorCode,
+	FatalLatch,
+	FatalToolError,
+	type ToolErrorClassification,
+} from "./fatal";
+export { type ApproachComparison, compareApproaches, type RunMetrics } from "./high-level-compare";
+export { formatInputGuide } from "./input-guide";
+export {
+	applyResponseFormat,
+	type ResponseFormat,
+	type ResponseFormatOptions,
+} from "./response-format";
+export { type ShortIdEntry, ShortIdIndex } from "./short-id";
+export { createThinkTool, THINK_TOOL_NAME } from "./think-tool";
+export { buildToolSet, fatalLatchOf, toolAvailabilityFromConfig } from "./tool-set";
 export {
 	CALCULATOR_TOOL_NAME,
 	type CalculatorResult,

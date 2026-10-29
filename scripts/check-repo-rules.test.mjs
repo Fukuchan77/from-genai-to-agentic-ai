@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -877,11 +877,344 @@ describe("no-sql-raw", () => {
 	});
 });
 
+describe("workflow-no-agent-loop: M3 files", () => {
+	const MESSAGE = "workflows and patterns must not use the agent loop";
+
+	test.each([
+		"packages/ai-core/src/helpdesk/planner.ts",
+		"packages/ai-core/src/helpdesk/replanner.ts",
+		"packages/ai-core/src/helpdesk/helpdesk.ts",
+		"packages/ai-core/src/requirements/interview.ts",
+		"packages/ai-core/src/requirements/personas.ts",
+		"packages/ai-core/src/marketing/council.ts",
+		"packages/ai-core/src/marketing/moderator.ts",
+		"packages/ai-core/src/marketing/profile.ts",
+		"packages/ai-core/src/marketing/recommend.ts",
+	])("detects the agent loop in %s", async (file) => {
+		await expectViolation(
+			"workflow-no-agent-loop",
+			{
+				"packages/ai-core/src/workflows/routing.ts": "export {};\n",
+				[file]: 'import { ToolLoopAgent } from "ai";\nexport { ToolLoopAgent };\n',
+			},
+			MESSAGE,
+		);
+		await expectViolation(
+			"workflow-no-agent-loop",
+			{
+				"packages/ai-core/src/workflows/routing.ts": "export {};\n",
+				[file]: 'import { createGuardedAgent } from "../agents";\n',
+			},
+			MESSAGE,
+		);
+	});
+
+	test("does not scan the other files of those areas, where the agent loop is allowed", async () => {
+		const root = await fixture({
+			"packages/ai-core/src/workflows/routing.ts": "export {};\n",
+			"packages/ai-core/src/helpdesk/run-helpdesk.ts":
+				'import { createGuardedAgent } from "../agents";\n',
+			"packages/ai-core/src/marketing/agents.ts":
+				'import { createGuardedAgent } from "../agents";\n',
+		});
+		await expect(run(root, "workflow-no-agent-loop")).resolves.toMatchObject({
+			reports: [{ fileCount: 1, violations: [] }],
+		});
+	});
+
+	test("scans only the listed files that exist and counts them", async () => {
+		const root = await fixture({
+			"packages/ai-core/src/workflows/a.ts": "export {};\n",
+			"packages/ai-core/src/helpdesk/planner.ts": "export {};\n",
+			"packages/ai-core/src/marketing/moderator.ts": "export {};\n",
+		});
+		const result = await run(root, "workflow-no-agent-loop");
+		expect(result.output).toBe("workflow-no-agent-loop: scanned 3 FILES");
+	});
+
+	test("scans the listed files even when workflows/ and patterns/ are empty", async () => {
+		const root = await fixture({ "packages/ai-core/src/helpdesk/planner.ts": "export {};\n" });
+		await expect(run(root, "workflow-no-agent-loop")).resolves.toMatchObject({
+			reports: [{ fileCount: 1, violations: [] }],
+		});
+	});
+});
+
+describe("mcp-import-scope", () => {
+	const MESSAGE = "@ai-sdk/mcp may be imported only inside packages/ai-core/src/mcp/";
+
+	test.each([
+		["a static import", 'import { createMCPClient } from "@ai-sdk/mcp";\n'],
+		["a type-only import", 'import type { MCPClient } from "@ai-sdk/mcp";\n'],
+		["a re-export", 'export { createMCPClient } from "@ai-sdk/mcp";\n'],
+		["a sub-path import", 'import { x } from "@ai-sdk/mcp/mcp-stdio";\n'],
+		["a side-effect import", 'import "@ai-sdk/mcp";\n'],
+		["a dynamic import", 'const mod = await import("@ai-sdk/mcp");\n'],
+		["a require call", 'const mod = require("@ai-sdk/mcp");\n'],
+	])("detects %s outside mcp/", async (_name, source) => {
+		await expectViolation(
+			"mcp-import-scope",
+			{
+				"packages/ai-core/src/mcp/client.ts": "export {};\n",
+				"packages/ai-core/src/agents/x.ts": source,
+			},
+			MESSAGE,
+		);
+	});
+
+	test.each([
+		"apps/web/lib/server/mcp.ts",
+		"packages/ai-core/src/files/server.ts",
+		"packages/ai-core/src/mcpish/client.ts",
+		"packages/eval-suite/tests/x.test.ts",
+	])("detects the import in %s", async (file) => {
+		await expectViolation(
+			"mcp-import-scope",
+			{ [file]: 'import { createMCPClient } from "@ai-sdk/mcp";\n' },
+			MESSAGE,
+		);
+	});
+
+	test("allows the import anywhere inside packages/ai-core/src/mcp/, tests included", async () => {
+		const root = await fixture({
+			"packages/ai-core/src/mcp/client.ts": 'import { createMCPClient } from "@ai-sdk/mcp";\n',
+			"packages/ai-core/src/mcp/stdio/transport.ts": 'import { x } from "@ai-sdk/mcp/mcp-stdio";\n',
+			"packages/ai-core/src/mcp/client.test.ts": 'import type { MCPClient } from "@ai-sdk/mcp";\n',
+			"apps/web/lib/server/platform.ts":
+				'import { createMcpRegistry } from "@platform/ai-core/mcp";\n',
+		});
+		await expect(run(root, "mcp-import-scope")).resolves.toMatchObject({
+			reports: [{ rule: "mcp-import-scope", fileCount: 4, violations: [] }],
+		});
+	});
+
+	test("does not flag similar package names, strings, or comments", async () => {
+		const root = await fixture({
+			"packages/ai-core/src/agents/safe.ts": [
+				'import { a } from "@ai-sdk/mcp-extras";',
+				'import { b } from "@ai-sdk/anthropic";',
+				'const note = "@ai-sdk/mcp";',
+				'// import { c } from "@ai-sdk/mcp";',
+				"export { a, b, note };",
+			].join("\n"),
+		});
+		await expect(run(root, "mcp-import-scope")).resolves.toMatchObject({
+			reports: [{ fileCount: 1, violations: [] }],
+		});
+	});
+
+	test("reports the file and line", async () => {
+		const root = await fixture({
+			"apps/web/lib/a.ts": 'export {};\nimport { x } from "@ai-sdk/mcp";\n',
+		});
+		const error = await run(root, "mcp-import-scope").catch((rejection) => rejection);
+		expect(error.result.reports[0].violations).toEqual([
+			expect.stringContaining("apps/web/lib/a.ts:2:"),
+		]);
+	});
+
+	test("fails when there is no code to scan", async () => {
+		const root = await fixture({ "README.md": "empty\n" });
+		await expect(run(root, "mcp-import-scope")).rejects.toThrow(
+			"mcp-import-scope: scanned 0 FILES",
+		);
+	});
+});
+
+describe("import scope rules: indirect forms", () => {
+	const DYNAMIC = "dynamic import/require needs a string literal specifier";
+
+	test.each([
+		["mcp-import-scope", "a template-literal import", "await import(`@ai-sdk/mcp`);\n", DYNAMIC],
+		[
+			"mcp-import-scope",
+			"a variable specifier",
+			"const name = 'x';\nawait import(name);\n",
+			DYNAMIC,
+		],
+		[
+			"mcp-import-scope",
+			"a createRequire alias",
+			'import { createRequire } from "node:module";\nconst load = createRequire(import.meta.url);\nload("@ai-sdk/mcp");\n',
+			"@ai-sdk/mcp may be imported only inside",
+		],
+		[
+			"sandbox-import-scope",
+			"a createRequire alias",
+			'import { createRequire } from "node:module";\nconst r = createRequire(import.meta.url);\nr("@e2b/code-interpreter");\n',
+			"@e2b/code-interpreter may be imported only in",
+		],
+		["sandbox-import-scope", "a variable specifier", "await import(name);\n", DYNAMIC],
+	])("%s detects %s", async (rule, _name, source, message) => {
+		await expectViolation(rule, { "packages/ai-core/src/analysis/a.ts": source }, message);
+	});
+
+	test.each([
+		["packages/ai-core/src/agents/d.mjs", 'import { x } from "@ai-sdk/mcp";\n'],
+		["packages/ai-core/src/agents/e.js", 'const x = require("@ai-sdk/mcp");\n'],
+		["scripts/seed.ts", 'import { x } from "@ai-sdk/mcp";\n'],
+		["tooling/vitest/x.mts", 'import { x } from "@ai-sdk/mcp";\n'],
+	])("mcp-import-scope scans %s", async (file, source) => {
+		await expectViolation(
+			"mcp-import-scope",
+			{ [file]: source },
+			"@ai-sdk/mcp may be imported only inside",
+		);
+	});
+
+	test("allows a createRequire alias for other packages and literal dynamic imports", async () => {
+		const root = await fixture({
+			"packages/ai-core/src/agents/ok.ts":
+				'import { createRequire } from "node:module";\nconst r = createRequire(import.meta.url);\nr("zod");\nawait import("zod");\n',
+		});
+		await expect(run(root, "mcp-import-scope")).resolves.toMatchObject({
+			reports: [{ fileCount: 1, violations: [] }],
+		});
+	});
+
+	test("does not apply the dynamic-specifier ban inside the allowed places", async () => {
+		const mcp = await fixture({ "packages/ai-core/src/mcp/loader.ts": "await import(name);\n" });
+		await expect(run(mcp, "mcp-import-scope")).resolves.toMatchObject({
+			reports: [{ violations: [] }],
+		});
+		const e2b = await fixture({ "packages/ai-core/src/sandbox/e2b.ts": "await import(name);\n" });
+		await expect(run(e2b, "sandbox-import-scope")).resolves.toMatchObject({
+			reports: [{ violations: [] }],
+		});
+	});
+});
+
+describe("sandbox-import-scope", () => {
+	const E2B_MESSAGE =
+		"@e2b/code-interpreter may be imported only in packages/ai-core/src/sandbox/e2b.ts";
+	const DOCKER_MESSAGE =
+		"Docker socket access may appear only inside packages/ai-core/src/sandbox/docker/";
+
+	test.each([
+		["a static import", 'import { Sandbox } from "@e2b/code-interpreter";\n'],
+		["a type-only import", 'import type { Sandbox } from "@e2b/code-interpreter";\n'],
+		["a dynamic import", 'const sdk = await import("@e2b/code-interpreter");\n'],
+		["a re-export", 'export { Sandbox } from "@e2b/code-interpreter";\n'],
+	])("detects %s outside sandbox/e2b.ts", async (_name, source) => {
+		await expectViolation(
+			"sandbox-import-scope",
+			{ "packages/ai-core/src/sandbox/mock.ts": source },
+			E2B_MESSAGE,
+		);
+	});
+
+	test("does not allow the e2b SDK in the e2b test or in other sandbox files", async () => {
+		await expectViolation(
+			"sandbox-import-scope",
+			{
+				"packages/ai-core/src/sandbox/e2b.test.ts":
+					'import { Sandbox } from "@e2b/code-interpreter";\n',
+			},
+			E2B_MESSAGE,
+		);
+	});
+
+	test.each([
+		["a socketPath option", 'const options = { socketPath: "/var/run/docker.sock" };\n'],
+		["a socketPath property read", "const path = agent.socketPath;\n"],
+		["a docker.sock path string", 'const sock = "/var/run/docker.sock";\n'],
+		["a macOS docker.sock path", 'const sock = ".docker/run/docker.sock";\n'],
+	])("detects %s outside sandbox/docker/", async (_name, source) => {
+		await expectViolation(
+			"sandbox-import-scope",
+			{ "packages/ai-core/src/analysis/run.ts": source },
+			DOCKER_MESSAGE,
+		);
+	});
+
+	test("allows the SDK in sandbox/e2b.ts and the socket in sandbox/docker/", async () => {
+		const root = await fixture({
+			"packages/ai-core/src/sandbox/e2b.ts": 'import { Sandbox } from "@e2b/code-interpreter";\n',
+			"packages/ai-core/src/sandbox/docker/engine.ts":
+				'import http from "node:http";\nconst options = { socketPath: "/var/run/docker.sock" };\n',
+			"packages/ai-core/src/sandbox/docker/engine.test.ts":
+				'const sock = "/var/run/docker.sock";\n',
+			"packages/ai-core/src/ports/http.ts": 'import http from "node:http";\nexport { http };\n',
+		});
+		await expect(run(root, "sandbox-import-scope")).resolves.toMatchObject({
+			reports: [{ rule: "sandbox-import-scope", fileCount: 4, violations: [] }],
+		});
+	});
+
+	test("allows the test support that opens the Docker socket to the container suite", async () => {
+		// The hermetic guard names the sockets it lets the container suite reach, and the skip helper
+		// reads the probe's result; neither opens a connection. Other test files are still held to the rule.
+		const root = await fixture({
+			"tooling/vitest/network-guard.ts":
+				'const paths = ["/var/run/docker.sock"];\nexport { paths };\n',
+			"tooling/vitest/setup-hermetic.test.ts":
+				'const sock = "/var/run/docker.sock";\nexport { sock };\n',
+			"packages/ai-core/src/testing/container-only.ts": "export const s = result.socketPath;\n",
+			"packages/ai-core/src/testing/container-only.test.ts":
+				'export const s = { socketPath: "/s.sock" };\n',
+		});
+		await expect(run(root, "sandbox-import-scope")).resolves.toMatchObject({
+			reports: [{ rule: "sandbox-import-scope", fileCount: 4, violations: [] }],
+		});
+	});
+
+	test("still flags the socket in other tooling and testing files", async () => {
+		await expectViolation(
+			"sandbox-import-scope",
+			{
+				"tooling/vitest/global-setup-local.ts": 'const sock = "/var/run/docker.sock";\n',
+				"tooling/vitest/network-guard.test.ts": 'const sock = "/var/run/docker.sock";\n',
+				"packages/ai-core/src/testing/local-only.ts": "export const s = agent.socketPath;\n",
+				"packages/ai-core/src/testing/container-only-extra.ts":
+					"export const s = agent.socketPath;\n",
+			},
+			DOCKER_MESSAGE,
+		);
+	});
+
+	test("does not flag node:http used without a Docker socket", async () => {
+		const root = await fixture({
+			"packages/ai-core/src/ports/http.ts": 'import http from "node:http";\nexport { http };\n',
+		});
+		await expect(run(root, "sandbox-import-scope")).resolves.toMatchObject({
+			reports: [{ fileCount: 1, violations: [] }],
+		});
+	});
+
+	test("does not flag similar names or comments", async () => {
+		const root = await fixture({
+			"packages/ai-core/src/analysis/safe.ts": [
+				'import { a } from "@e2b/other";',
+				"// socketPath docker.sock @e2b/code-interpreter",
+				"const socketPathLabel = 1;",
+				"export { a, socketPathLabel };",
+			].join("\n"),
+		});
+		await expect(run(root, "sandbox-import-scope")).resolves.toMatchObject({
+			reports: [{ fileCount: 1, violations: [] }],
+		});
+	});
+
+	test("fails when there is no code to scan", async () => {
+		const root = await fixture({ "README.md": "empty\n" });
+		await expect(run(root, "sandbox-import-scope")).rejects.toThrow(
+			"sandbox-import-scope: scanned 0 FILES",
+		);
+	});
+});
+
 describe("rule registry", () => {
-	test("lists eleven rules including the two M2 rules", async () => {
+	test("lists thirteen rules including the M2 and M3 rules", async () => {
 		const { RULE_NAMES } = await import("./check-repo-rules.mjs");
-		expect(RULE_NAMES).toHaveLength(11);
-		expect(RULE_NAMES).toEqual(expect.arrayContaining(["workflow-no-agent-loop", "no-sql-raw"]));
+		expect(RULE_NAMES).toHaveLength(13);
+		expect(RULE_NAMES).toEqual(
+			expect.arrayContaining([
+				"workflow-no-agent-loop",
+				"no-sql-raw",
+				"mcp-import-scope",
+				"sandbox-import-scope",
+			]),
+		);
 		expect(new Set(RULE_NAMES).size).toBe(RULE_NAMES.length);
 	});
 
@@ -931,5 +1264,49 @@ describe("check-repo-rules CLI", () => {
 
 		expect(source).toContain("await runIfMain(import.meta.url, main);");
 		expect(source).not.toMatch(/process\.(argv|exitCode)/u);
+	});
+});
+
+// The M3 files whose control flow must be plain code. Each wave that adds one lists it here, so a
+// file that is renamed or never created fails this test instead of silently leaving the rule's scan
+// (003 W1 review F-17). The rule scans only the listed files that exist.
+const M3_WORKFLOW_FILES_NOW = [
+	"packages/ai-core/src/helpdesk/planner.ts",
+	"packages/ai-core/src/helpdesk/replanner.ts",
+	"packages/ai-core/src/helpdesk/helpdesk.ts",
+	"packages/ai-core/src/requirements/interview.ts",
+	"packages/ai-core/src/requirements/personas.ts",
+	"packages/ai-core/src/marketing/council.ts",
+	"packages/ai-core/src/marketing/moderator.ts",
+	"packages/ai-core/src/marketing/profile.ts",
+	"packages/ai-core/src/marketing/recommend.ts",
+];
+
+describe("workflow-no-agent-loop: the real tree", () => {
+	const repoRoot = path.resolve(import.meta.dirname, "..");
+
+	function countTypeScriptFiles(directory) {
+		return readdirSync(path.join(repoRoot, directory), { recursive: true }).filter((name) =>
+			String(name).endsWith(".ts"),
+		).length;
+	}
+
+	test("the M3 files of this wave exist", () => {
+		for (const file of M3_WORKFLOW_FILES_NOW) {
+			expect(existsSync(path.join(repoRoot, file)), file).toBe(true);
+		}
+	});
+
+	test("scans every file of workflows/ and patterns/ and every M3 file listed above, and no other", async () => {
+		const expected =
+			countTypeScriptFiles("packages/ai-core/src/workflows") +
+			countTypeScriptFiles("packages/ai-core/src/patterns") +
+			M3_WORKFLOW_FILES_NOW.length;
+
+		const { reports } = await checkRepoRules({ root: repoRoot, only: ["workflow-no-agent-loop"] });
+
+		expect(reports).toHaveLength(1);
+		expect(reports[0].violations).toEqual([]);
+		expect(reports[0].fileCount).toBe(expected);
 	});
 });

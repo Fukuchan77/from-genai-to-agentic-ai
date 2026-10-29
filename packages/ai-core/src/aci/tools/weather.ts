@@ -132,7 +132,12 @@ export function createWeatherTool(
 ): AciTool<z.output<typeof weatherInputSchema>, WeatherReport> {
 	return defineAciTool({
 		name: WEATHER_TOOL_NAME,
-		description: "指定した都市の現在の天気と気温を Open-Meteo から取得します。",
+		description: [
+			"指定した都市の現在の天気と気温を Open-Meteo から取得する。",
+			"使うとき: 対応している都市の「今」の天気や気温を知りたいとき。",
+			"使わないとき: 明日以降の天気予報が必要なとき、対応していない都市のとき。",
+			'例: city="Tokyo"',
+		].join("\n"),
 		inputSchema: weatherInputSchema,
 		risk: "read-only",
 		execute: async ({ city }, context) => {

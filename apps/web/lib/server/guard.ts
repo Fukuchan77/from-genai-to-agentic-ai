@@ -116,6 +116,23 @@ function reject<T>(error: GuardError): GuardResult<T> {
 }
 
 /**
+ * The last check of every LLM-calling route: in `live` mode a request counts against the shared
+ * window, and one over the limit is rejected with the time to wait. Other modes are never limited.
+ * A route that reads its own body (the multipart upload) calls this after its own checks, so a
+ * rejected request never spends quota.
+ */
+export function rateLimitRejection(deps: GuardDeps): GuardError | undefined {
+	if (deps.mode !== "live") return undefined;
+	const decision = deps.limiter.check();
+	if (decision.allowed) return undefined;
+	return new GuardError(
+		"rate-limited",
+		`リクエストの回数が上限に達しました。${decision.retryAfterSeconds} 秒後にもう一度お試しください。`,
+		{ retryAfterSeconds: decision.retryAfterSeconds },
+	);
+}
+
+/**
  * Checks `request` against `policy` in the documented order. On success the parsed body is
  * returned; on failure `response` is the JSON error to send and `error` says why.
  */
@@ -145,18 +162,8 @@ export async function guardRequest<T>(
 	const violation = policy.inspect(parsed.data);
 	if (violation) return reject(violation);
 
-	if (deps.mode === "live") {
-		const decision = deps.limiter.check();
-		if (!decision.allowed) {
-			return reject(
-				new GuardError(
-					"rate-limited",
-					`リクエストの回数が上限に達しました。${decision.retryAfterSeconds} 秒後にもう一度お試しください。`,
-					{ retryAfterSeconds: decision.retryAfterSeconds },
-				),
-			);
-		}
-	}
+	const limited = rateLimitRejection(deps);
+	if (limited) return reject(limited);
 
 	return { ok: true, body: parsed.data };
 }

@@ -1,0 +1,54 @@
+{
+	"servers": [
+		{
+			"id": "files",
+			"state": "connected",
+			"tools": [
+				{
+					"name": "listFiles",
+					"risk": "read-only",
+					"registered": true
+				},
+				{
+					"name": "readFile",
+					"risk": "read-only",
+					"registered": true
+				},
+				{
+					"name": "searchFiles",
+					"risk": "read-only",
+					"registered": true
+				},
+				{
+					"name": "findAndReadFiles",
+					"risk": "read-only",
+					"registered": true
+				},
+				{
+					"name": "writeFile",
+					"risk": "destructive",
+					"registered": false,
+					"disabledReason": "許可リストにありません。"
+				},
+				{
+					"name": "deleteFile",
+					"risk": "destructive",
+					"registered": false,
+					"disabledReason": "許可リストにありません。"
+				}
+			]
+		},
+		{
+			"id": "github",
+			"state": "unavailable",
+			"reason": "起動コマンドが見つかりません（ENOENT）。",
+			"tools": []
+		}
+	],
+	"limits": {
+		"maxTools": 20
+	},
+	"think": {
+		"enabled": true
+	}
+}

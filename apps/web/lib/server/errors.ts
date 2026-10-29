@@ -55,6 +55,8 @@ export class GuardError extends Error {
 export interface PublicErrorDetails {
 	readonly reason?: string;
 	readonly status?: number;
+	/** What to set up, for a `provider-unavailable` error (for example a disabled sandbox). Fixed text. */
+	readonly guidance?: string;
 }
 
 export interface PublicError {
@@ -88,6 +90,9 @@ const PUBLIC_INVALID_REQUEST_REASONS: ReadonlySet<string> = new Set([
 	"embedding-model-changed",
 	"too-many-files",
 	"invalid-file-name",
+	// The two 409s of the requirements interview: finished for good, or a round still in flight.
+	"completed",
+	"busy",
 ]);
 
 function invalidRequestDetails(
@@ -96,6 +101,24 @@ function invalidRequestDetails(
 	const { reason } = details;
 	return typeof reason === "string" && PUBLIC_INVALID_REQUEST_REASONS.has(reason)
 		? { reason }
+		: undefined;
+}
+
+const MAX_GUIDANCE_CHARACTERS = 500;
+
+/**
+ * A `provider-unavailable` error may carry `guidance`: the fixed sentence that tells the learner
+ * what to set up (Req 3.8). It is built by the platform from names of settings and tasks, never from
+ * an error's own text.
+ */
+function unavailableDetails(
+	details: Readonly<Record<string, unknown>>,
+): PublicErrorDetails | undefined {
+	const { guidance } = details;
+	return typeof guidance === "string" &&
+		guidance.length > 0 &&
+		[...guidance].length <= MAX_GUIDANCE_CHARACTERS
+		? { guidance }
 		: undefined;
 }
 
@@ -108,7 +131,9 @@ export function toPublicError(error: unknown): PublicError {
 				? publicDetails(error.details)
 				: error.code === "invalid-request"
 					? invalidRequestDetails(error.details)
-					: undefined;
+					: error.code === "provider-unavailable"
+						? unavailableDetails(error.details)
+						: undefined;
 		return {
 			code: error.code,
 			message: error.message,
@@ -133,6 +158,18 @@ export function toErrorResponse(error: unknown): Response {
 	return new Response(JSON.stringify({ error: publicError }), {
 		status: HTTP_STATUS_BY_CODE[publicError.code],
 		headers,
+	});
+}
+
+/**
+ * A missing resource: 404 with the shared JSON error shape. The code stays `invalid-request` (the
+ * closed vocabulary has no `not-found`), so a client reads it like any other rejected request. The
+ * message must not echo the request, only the resource's own name.
+ */
+export function toNotFoundResponse(message: string): Response {
+	return new Response(JSON.stringify({ error: { code: "invalid-request", message } }), {
+		status: 404,
+		headers: { "content-type": "application/json; charset=utf-8" },
 	});
 }
 

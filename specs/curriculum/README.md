@@ -153,7 +153,7 @@ LLM の呼び出し先は、コードを変えずに設定だけで3種を切り
 | AI | Vercel AI SDK v7 + Zod | エージェントは `ToolLoopAgent`、ワークフローは素の TypeScript。構造化出力は `Output.object`、ツール入力は `inputSchema` |
 | ツール連携 | MCP（公式 SDK + AI SDK の MCP クライアント） | M3 から |
 | データ | Postgres + pgvector（Docker Compose） | M2 から。検索は pgvector + Reciprocal Rank Fusion |
-| サンドボックス | E2B（キーがなければローカルのコンテナ） | LLM が生成したコードの実行専用。ホストでは実行しない |
+| サンドボックス | E2B（キーがなければローカルのコンテナ。どちらもなければ分析エージェントを無効にする） | LLM が生成したコードの実行専用。ホストでは実行しない |
 | 評価 | Vitest（Capability / Regression、LLM-as-a-Judge） | M4 で本体。回帰評価は `mock` で品質ゲートに含める |
 | 観測 | OpenTelemetry（OTLP）+ Langfuse | M4 から |
 | lint / format | Biome | リポジトリ全体で単一の規約 |

@@ -1,6 +1,6 @@
 [tools]
-node = "26.10.0"
-pnpm = "12.6.0"
+node = "26.12.0"
+pnpm = "12.13.0"
 gitleaks = "8.30.1"
 
 [tasks.setup]
@@ -57,6 +57,25 @@ description = "Start Postgres and run Docker-backed database tests"
 depends = ["services:up:db"]
 env = { AI_TEST_RUN_MODE = "mock", AI_TEST_SUITE = "pg" }
 run = "pnpm exec turbo run test"
+
+[tasks."sandbox:build"]
+description = "Build the Docker image for the data-analysis sandbox (needs Docker and network access to pull the base image and Python packages)"
+run = 'docker build --tag "${DOCKER_SANDBOX_IMAGE:-agentic-ai-sandbox:local}" docker/sandbox'
+
+[tasks."sandbox:clean"]
+description = "Remove sandbox containers (and their volumes) that a crashed server left behind; running analyses are cut short"
+run = 'ids=$(docker ps -aq --filter label=agentic-ai.sandbox=1); if [ -n "$ids" ]; then docker rm -f -v $ids; else echo "No sandbox containers to remove."; fi'
+
+[tasks."test:container"]
+description = "Run Docker-backed sandbox tests (skipped with a reason when Docker is unreachable)"
+env = { AI_TEST_RUN_MODE = "mock", AI_TEST_SUITE = "container" }
+# Only @platform/ai-core has container tests, so the other workspaces' configs need no such suite.
+run = "pnpm --filter @platform/ai-core run test"
+
+[tasks."seed:samples"]
+description = "Seed the sample data for the M3 modules (help-desk FAQ and tickets); --reset empties the help-desk tables first"
+# local / live seed the Compose Postgres (run services:up:db first); mock seeds a throwaway in-memory database.
+run = "node --env-file-if-exists=.env.local scripts/seed-samples.ts"
 
 [tasks."e2e:fixtures"]
 description = "Regenerate the E2E SSE fixtures from the Route Handlers in mock mode"
@@ -175,12 +194,12 @@ run = "node scripts/check-model-ids.mjs"
 
 [tasks."check:client-bundle"]
 description = "Build the web app with sentinel secrets and check the client bundle for them"
-env = { AI_RUN_MODE = "mock", NODE_ENV = "production", ANTHROPIC_API_KEY = "changeme-bundle-sentinel-anthropic", TAVILY_API_KEY = "changeme-bundle-sentinel-tavily", COHERE_API_KEY = "changeme-bundle-sentinel-cohere" }
+env = { AI_RUN_MODE = "mock", NODE_ENV = "production", ANTHROPIC_API_KEY = "changeme-bundle-sentinel-anthropic", TAVILY_API_KEY = "changeme-bundle-sentinel-tavily", COHERE_API_KEY = "changeme-bundle-sentinel-cohere", E2B_API_KEY = "changeme-bundle-sentinel-e2b", GITHUB_TOKEN = "changeme-bundle-sentinel-github" }
 run = """
 pnpm --filter web exec next build
-node scripts/check-client-bundle.mjs --dir apps/web/.next/static --sentinel changeme-bundle-sentinel-anthropic --sentinel changeme-bundle-sentinel-tavily --sentinel changeme-bundle-sentinel-cohere
+node scripts/check-client-bundle.mjs --dir apps/web/.next/static --sentinel changeme-bundle-sentinel-anthropic --sentinel changeme-bundle-sentinel-tavily --sentinel changeme-bundle-sentinel-cohere --sentinel changeme-bundle-sentinel-e2b --sentinel changeme-bundle-sentinel-github
 """
 
 [tasks."check:repo-rules"]
 description = "Validate repository governance rules"
-run = "node scripts/check-repo-rules.mjs --only no-dynamic-eval,actions-pinned,frozen-lockfile,allow-builds-reasoned,no-deprecated-object-api,guarded-agent-only,ai-core-no-ui-deps,no-sensitive-logging,tool-risk-declared,no-sql-raw,workflow-no-agent-loop"
+run = "node scripts/check-repo-rules.mjs --only no-dynamic-eval,actions-pinned,frozen-lockfile,allow-builds-reasoned,no-deprecated-object-api,guarded-agent-only,ai-core-no-ui-deps,no-sensitive-logging,tool-risk-declared,no-sql-raw,workflow-no-agent-loop,mcp-import-scope,sandbox-import-scope"

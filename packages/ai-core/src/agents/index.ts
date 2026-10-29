@@ -16,6 +16,16 @@ export {
 	type RunObserver,
 } from "./guarded-agent";
 export {
+	createExternalContentLog,
+	createNamedObserver,
+	EXTERNAL_CONTENT_KINDS,
+	type ExternalContentIngestion,
+	type ExternalContentKind,
+	type ExternalContentLog,
+	MAX_EXTERNAL_SOURCE_CHARACTERS,
+	type RunEvent,
+} from "./observer";
+export {
 	createRunStopConditions,
 	createStopConditionRecord,
 	deadline,
@@ -37,3 +47,11 @@ export {
 	type StopReason,
 	type StopReasonInput,
 } from "./stop-reason";
+export {
+	type RoleUsage,
+	type TokenBreakdown,
+	TokenLedger,
+	type UsageInput,
+	type UsageTotals,
+	usageFromRun,
+} from "./token-ledger";

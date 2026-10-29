@@ -65,7 +65,12 @@ export function createCurrentTimeTool(
 ): AciTool<z.output<typeof currentTimeInputSchema>, CurrentTimeResult> {
 	return defineAciTool({
 		name: CURRENT_TIME_TOOL_NAME,
-		description: "現在の日時を返します。日付や時刻、曜日を答えるときに使ってください。",
+		description: [
+			"現在の日時（日付・時刻・曜日）を返す。",
+			"使うとき: 今日の日付、現在の時刻、曜日を答えるとき。",
+			"使わないとき: 過去や未来の日付の計算だけが必要なとき、日時に関係しない質問のとき。",
+			'例: timeZone="Asia/Tokyo"',
+		].join("\n"),
 		inputSchema: currentTimeInputSchema,
 		risk: "read-only",
 		execute: ({ timeZone }) => describeInstant(clock.now(), timeZone ?? DEFAULT_TIME_ZONE),

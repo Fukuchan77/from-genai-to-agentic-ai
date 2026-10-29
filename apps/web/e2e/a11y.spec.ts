@@ -8,7 +8,19 @@ import { errorReply, jsonReply, mapEvents, mockApi, streamReply } from "./suppor
 // is a `.dark` class on <html>, so it is checked explicitly rather than through
 // prefers-color-scheme.
 
-const PATHS = ["/chat", "/agent", "/summarize", "/rag", "/workflows"] as const;
+const PATHS = [
+	"/chat",
+	"/agent",
+	"/summarize",
+	"/rag",
+	"/workflows",
+	"/mcp",
+	"/helpdesk",
+	"/analysis",
+	"/research",
+	"/requirements",
+	"/marketing",
+] as const;
 const SCHEMES: readonly ColorScheme[] = ["light", "dark"];
 
 for (const path of PATHS) {
@@ -75,6 +87,53 @@ const KNOWLEDGE_AFTER_INGEST = {
 	available: { knowledge: [], evalCorpus: ["01-rag-overview.md"] },
 	rerank: { available: true },
 };
+
+// Module 3 screens (plan C14, Req 1.7, 3.1): the helpers reach each screen's richest states, with
+// the same mocked streams the per-screen specs use.
+
+async function fillAndClick(
+	page: Page,
+	label: string,
+	text: string,
+	button: string,
+): Promise<void> {
+	await fillUntilEnabled(
+		page.getByLabel(label, { exact: true }),
+		text,
+		page.getByRole("button", { name: button, exact: true }),
+	);
+	await page.getByRole("button", { name: button, exact: true }).click();
+}
+
+async function analyseCsv(page: Page): Promise<void> {
+	await page.getByLabel("分析するファイル").setInputFiles({
+		name: "sales.csv",
+		mimeType: "text/csv",
+		buffer: Buffer.from("date,sales\n2026-01-05,120000\n2026-02-05,98000\n"),
+	});
+	await fillAndClick(page, "分析の指示", "月ごとの売上を集計してください", "分析する");
+}
+
+async function startInterview(page: Page): Promise<void> {
+	await fillAndClick(
+		page,
+		"プロダクトの概要",
+		"社内の問い合わせを自動で振り分けるチャットボット",
+		"面接を始める",
+	);
+}
+
+async function answerInterview(page: Page): Promise<void> {
+	const field = page.getByLabel("今の振り分けで、いちばん時間がかかっているのはどの作業ですか。");
+	await fillUntilEnabled(
+		field,
+		"問い合わせの分類に時間がかかります。",
+		page.getByRole("button", { name: "回答を送信" }),
+	);
+	await page.getByRole("button", { name: "回答を送信" }).click();
+}
+
+const REQUIREMENTS_MESSAGES = "/api/requirements/sessions/[id]/messages" as const;
 
 /** A rendered state: its mocked API, the screen, and how to reach the state on that screen. */
 interface RenderedState {
@@ -293,6 +352,184 @@ const STATES: readonly RenderedState[] = [
 		reach: async (page) => {
 			await page.getByRole("button", { name: "実行" }).click();
 			await expect(page.getByRole("button", { name: "再送信" })).toBeVisible();
+		},
+	},
+	{
+		name: "mcp chat with tool calls, then the comparison",
+		path: "/mcp",
+		routes: {
+			"/api/mcp/chat": streamReply("mcp-chat"),
+			"/api/mcp/compare": jsonReply("mcp-compare"),
+		},
+		reach: async (page) => {
+			await fillAndClick(page, "メッセージ", "許可ルートのファイルを一覧してください。", "送信");
+			await expect(page.getByRole("log", { name: "会話" })).toContainText("listFiles");
+			await page.getByRole("button", { name: "比較を実行" }).click();
+			await expect(page.getByRole("table").first()).toBeVisible();
+		},
+	},
+	{
+		name: "mcp fatal tool error",
+		path: "/mcp",
+		routes: { "/api/mcp/chat": streamReply("mcp-chat-error") },
+		reach: async (page) => {
+			await fillAndClick(
+				page,
+				"メッセージ",
+				"許可ルートの外の /etc/hosts を読んでください。",
+				"送信",
+			);
+			await expect(
+				page.getByRole("alert").filter({ hasText: "実行がエラーで終了しました" }),
+			).toBeVisible();
+		},
+	},
+	{
+		name: "mcp server list after a refresh",
+		path: "/mcp",
+		routes: { "/api/mcp/servers": jsonReply("mcp-servers") },
+		reach: async (page) => {
+			await page.getByRole("button", { name: "状態を更新" }).click();
+			await expect(page.locator("[data-server='github']")).toContainText("利用不可");
+		},
+	},
+	{
+		name: "helpdesk run with a revised plan and the ticket list",
+		path: "/helpdesk",
+		routes: {
+			"/api/helpdesk": streamReply("helpdesk"),
+			"/api/helpdesk/tickets": jsonReply("helpdesk-tickets"),
+		},
+		reach: async (page) => {
+			await fillAndClick(
+				page,
+				"問い合わせ",
+				"共有プリンターを追加したいのですが、表示されません。",
+				"問い合わせる",
+			);
+			await expect(page.getByRole("region", { name: "最終結果" })).toBeVisible();
+			await expect(page.getByRole("region", { name: "修正された計画" })).toContainText("改訂 1");
+			await expect(page.locator("[data-ticket-id='T-0003']")).toBeVisible();
+		},
+	},
+	{
+		name: "helpdesk error with resend",
+		path: "/helpdesk",
+		routes: {
+			"/api/helpdesk": errorReply(503, {
+				code: "provider-unavailable",
+				message: "モデルに接続できませんでした。",
+			}),
+			"/api/helpdesk/tickets": jsonReply("helpdesk-tickets"),
+		},
+		reach: async (page) => {
+			await fillAndClick(page, "問い合わせ", "共有プリンターを追加したい。", "問い合わせる");
+			await expect(page.getByRole("button", { name: "再送信" })).toBeVisible();
+		},
+	},
+	{
+		name: "analysis result with the figure, the table and the attempt history",
+		path: "/analysis",
+		routes: { "/api/analysis": streamReply("analysis") },
+		reach: async (page) => {
+			await analyseCsv(page);
+			await expect(page.getByRole("img", { name: "Monthly sales bar chart" })).toBeVisible();
+			await expect(page.getByRole("table", { name: "Monthly sales" })).toBeVisible();
+			await expect(page.getByRole("region", { name: "試行履歴" })).toContainText("成功");
+		},
+	},
+	{
+		name: "analysis stopped at the attempt limit",
+		path: "/analysis",
+		routes: { "/api/analysis": streamReply("analysis-attempt-limit") },
+		reach: async (page) => {
+			await analyseCsv(page);
+			await expect(page.getByRole("region", { name: "試行履歴" }).getByRole("alert")).toContainText(
+				"修正回数の上限に達したため停止しました",
+			);
+		},
+	},
+	{
+		name: "research report with a citation warning and the token breakdown",
+		path: "/research",
+		routes: { "/api/research": streamReply("research") },
+		reach: async (page) => {
+			await fillAndClick(page, "テーマ", "階層型エージェントの最新動向", "リサーチする");
+			await expect(page.getByRole("status", { name: "引用の警告" })).toBeVisible();
+			await expect(page.getByRole("table", { name: "役割別のトークン内訳" })).toBeVisible();
+		},
+	},
+	{
+		name: "research report with a missing aspect",
+		path: "/research",
+		routes: { "/api/research": streamReply("research-partial") },
+		reach: async (page) => {
+			await fillAndClick(page, "テーマ", "リサーチエージェントの評価手法", "リサーチする");
+			await expect(page.getByRole("status", { name: "欠落した観点" })).toBeVisible();
+		},
+	},
+	{
+		name: "requirements preview and an insufficient verdict",
+		path: "/requirements",
+		routes: {
+			"/api/requirements/sessions": jsonReply("requirements-session"),
+			[REQUIREMENTS_MESSAGES]: streamReply("requirements"),
+		},
+		reach: async (page) => {
+			await startInterview(page);
+			await answerInterview(page);
+			await expect(page.getByRole("region", { name: "十分性の判定" })).toContainText(
+				"情報が不足しています",
+			);
+			await expect(page.getByRole("region", { name: "要件プレビュー" })).toContainText("機能要件");
+		},
+	},
+	{
+		name: "requirements sufficient verdict with the download link",
+		path: "/requirements",
+		routes: {
+			"/api/requirements/sessions": jsonReply("requirements-session"),
+			[REQUIREMENTS_MESSAGES]: streamReply("requirements", {
+				transform: (events) =>
+					mapEvents(
+						events.filter((event) => event.type !== "data-requirements-questions"),
+						"data-requirements-judgement",
+						(event) => ({
+							...event,
+							data: { round: 1, sufficient: true, missing: [], forcedEnd: false },
+						}),
+					),
+			}),
+		},
+		reach: async (page) => {
+			await startInterview(page);
+			await answerInterview(page);
+			await expect(
+				page.getByRole("link", { name: "requirements.md をダウンロード" }),
+			).toBeVisible();
+		},
+	},
+	{
+		name: "marketing council with rounds and the result",
+		path: "/marketing",
+		routes: { "/api/marketing/council": streamReply("marketing-council") },
+		reach: async (page) => {
+			await fillAndClick(page, "広告文案", "ステンレス保温ボトル 500ml。", "合議を始める");
+			await expect(page.getByRole("region", { name: "合議の結果" })).toBeVisible();
+		},
+	},
+	{
+		name: "marketing recommendation cards and the profile",
+		path: "/marketing",
+		routes: { "/api/marketing/recommend": streamReply("marketing-recommend") },
+		reach: async (page) => {
+			await fillAndClick(
+				page,
+				"メッセージ",
+				"ランニングを始めたいです。予算は 1 万円です。",
+				"送信",
+			);
+			await expect(page.getByRole("article", { name: "P-006 ランニングシューズ" })).toBeVisible();
 		},
 	},
 ];

@@ -1,0 +1,30 @@
+{
+	"tickets": [
+		{
+			"id": "T-0003",
+			"inquiry": "三件目",
+			"status": "escalated",
+			"escalationReason": "根拠がありません",
+			"stepsUsed": 2,
+			"createdAt": "2026-10-18T00:00:02.000Z",
+			"updatedAt": "2026-10-18T00:00:02.000Z"
+		},
+		{
+			"id": "T-0002",
+			"inquiry": "二件目",
+			"status": "open",
+			"stepsUsed": 0,
+			"createdAt": "2026-10-18T00:00:01.000Z",
+			"updatedAt": "2026-10-18T00:00:01.000Z"
+		},
+		{
+			"id": "T-0001",
+			"inquiry": "一件目",
+			"status": "resolved",
+			"answer": "回答です",
+			"stepsUsed": 3,
+			"createdAt": "2026-10-18T00:00:00.000Z",
+			"updatedAt": "2026-10-18T00:00:02.000Z"
+		}
+	]
+}

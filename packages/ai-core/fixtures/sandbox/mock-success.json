@@ -1,0 +1,4 @@
+{
+	"stdout": "rows: 3\n__PNG__:{\"alt\":\"Monthly sales bar chart\",\"base64\":\"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==\"}\n__TABLE__:{\"caption\":\"Monthly sales\",\"columns\":[\"month\",\"sales\"],\"rows\":[[\"2026-01\",120000],[\"2026-02\",98000],[\"2026-03\",134000]],\"totalRows\":3}\nsummary: sales peaked in 2026-03\n",
+	"stderr": ""
+}

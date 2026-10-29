@@ -1,0 +1,12 @@
+data: {"type":"data-marketing-profile","id":"profile","data":{"interests":["ランニング","シューズ"],"budgetYen":10000,"concerns":[]}}
+
+data: {"type":"data-marketing-recommendation","id":"recommendation","data":{"items":[{"productId":"P-006","name":"ランニングシューズ","priceYen":12800,"reason":"ランニングを始める方向けの定番のシューズです。（予算（10000円）を超えます）","overBudget":true},{"productId":"P-010","name":"ヨガマットとブロックのセット","priceYen":5980,"reason":"走る前後のストレッチに使えます。","overBudget":false}],"dropped":1,"reason":"ランニングを始める方に合う商品を選びました。"}}
+
+data: {"type":"text-start","id":"summary"}
+
+data: {"type":"text-delta","id":"summary","delta":"2 件をおすすめします。"}
+
+data: {"type":"text-end","id":"summary"}
+
+data: [DONE]
+

@@ -2,6 +2,8 @@ import type { Tool, ToolSet } from "ai";
 import type { z } from "zod";
 import type { FeatureId, RequiredEnvVariable } from "../config/feature-requirements";
 import type { Clock } from "../ports/clock";
+import type { JsonSchemaNode } from "./description-check";
+import type { FatalLatch } from "./fatal";
 
 /** Risk class of a tool. M1 registers only `read-only` tools (constitution principle 6). */
 export const TOOL_RISKS = ["read-only", "write", "destructive"] as const;
@@ -27,6 +29,11 @@ export interface ToolRuntime {
 	readonly clock: Clock;
 	/** Upper bound for one tool execution, from `AGENT_TOOL_TIMEOUT_MS`. */
 	readonly toolTimeoutMs: number;
+	/**
+	 * This run's fatal-error latch. Omit it to keep M1's behaviour, where every tool error is
+	 * recoverable and the loop continues.
+	 */
+	readonly fatal?: FatalLatch | undefined;
 }
 
 export interface AciToolContext {
@@ -40,6 +47,13 @@ export interface AciToolDefinition<INPUT, OUTPUT> {
 	readonly name: string;
 	readonly description: string;
 	readonly inputSchema: z.ZodType<INPUT>;
+	/**
+	 * Set for a tool whose input is described by a JSON Schema from outside, such as an MCP server's
+	 * (003 CL-25). The model receives this schema as it is, the description check reads it with
+	 * `checkJsonSchemaDescription`, and `inputSchema` only validates the input before the call (the
+	 * server validates it again).
+	 */
+	readonly externalInputSchema?: JsonSchemaNode | undefined;
 	readonly risk: ToolRisk;
 	/** Can only shorten `ToolRuntime.toolTimeoutMs`, never extend it. */
 	readonly timeoutMs?: number | undefined;
@@ -58,6 +72,8 @@ interface AciToolMetadata {
 	readonly [aciToolBrand]: true;
 	readonly name: string;
 	readonly description: string;
+	/** The Zod schema the tool was defined with (the model receives its JSON Schema). */
+	readonly inputSchema: z.ZodType;
 	readonly risk: ToolRisk;
 	readonly timeoutMs: number | undefined;
 	readonly requiredFeature: FeatureId | undefined;

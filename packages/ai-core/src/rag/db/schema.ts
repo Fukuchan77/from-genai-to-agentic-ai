@@ -1,9 +1,12 @@
 import { sql } from "drizzle-orm";
 import {
+	check,
 	customType,
 	index,
 	integer,
+	jsonb,
 	pgTable,
+	primaryKey,
 	text,
 	timestamp,
 	unique,
@@ -61,4 +64,75 @@ export const ragChunks = pgTable(
 		index("rag_chunks_embedding_hnsw").using("hnsw", table.embedding.op("vector_cosine_ops")),
 		index("rag_chunks_tsv_gin").using("gin", table.tsv),
 	],
+);
+
+/** Status of a help-desk ticket; a ticket only moves from `open` to one of the other two. */
+export const HELPDESK_TICKET_STATUSES = ["open", "resolved", "escalated"] as const;
+/** Why an `open` ticket stopped running (003 CL-14). */
+export const HELPDESK_STOPPED_REASONS = ["step-limit", "aborted"] as const;
+
+// 0002_helpdesk.sql. Timestamps are set by the application's Clock, so there is no default.
+export const helpdeskTickets = pgTable(
+	"helpdesk_tickets",
+	{
+		id: text("id").primaryKey(),
+		inquiry: text("inquiry").notNull(),
+		status: text("status", { enum: HELPDESK_TICKET_STATUSES }).notNull(),
+		answer: text("answer"),
+		escalationReason: text("escalation_reason"),
+		stepsUsed: integer("steps_used").notNull(),
+		stoppedReason: text("stopped_reason", { enum: HELPDESK_STOPPED_REASONS }),
+		createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+		updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+	},
+	(table) => [
+		check("helpdesk_tickets_id_check", sql`${table.id} ~ '^T-[0-9]{4,}$'`),
+		check("helpdesk_tickets_steps_used_check", sql`${table.stepsUsed} >= 0`),
+	],
+);
+
+// The plan and the diff are validated with Zod where they are read (`helpdesk/ticket-store.ts`).
+export const helpdeskPlanRevisions = pgTable(
+	"helpdesk_plan_revisions",
+	{
+		ticketId: text("ticket_id")
+			.notNull()
+			.references(() => helpdeskTickets.id, { onDelete: "cascade" }),
+		revision: integer("revision").notNull(),
+		plan: jsonb("plan").notNull(),
+		diff: jsonb("diff"),
+		reason: text("reason").notNull(),
+		createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+	},
+	(table) => [primaryKey({ columns: [table.ticketId, table.revision] })],
+);
+
+// 0003_marketing.sql. The id pattern is the key that recommendations are checked against (003
+// CL-15), so it is a database CHECK as well as a seed convention.
+export const marketingProducts = pgTable(
+	"marketing_products",
+	{
+		id: text("id").primaryKey(),
+		name: text("name").notNull(),
+		category: text("category").notNull(),
+		priceYen: integer("price_yen").notNull(),
+		description: text("description").notNull(),
+		tags: text("tags").array().notNull().default(sql`'{}'`),
+	},
+	(table) => [
+		check("marketing_products_id_check", sql`${table.id} ~ '^P-[0-9]{3}$'`),
+		check("marketing_products_price_yen_check", sql`${table.priceYen} >= 0`),
+	],
+);
+
+// `ordinal` is the round-robin order of the council; `viewpoint` is the role's standpoint.
+export const marketingPersonas = pgTable(
+	"marketing_personas",
+	{
+		id: text("id").primaryKey(),
+		name: text("name").notNull(),
+		viewpoint: text("viewpoint").notNull(),
+		ordinal: integer("ordinal").notNull(),
+	},
+	(table) => [unique("marketing_personas_ordinal_unique").on(table.ordinal)],
 );

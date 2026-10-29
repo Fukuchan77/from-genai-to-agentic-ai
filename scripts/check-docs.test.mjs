@@ -184,6 +184,30 @@ describe("checkModuleDoc", () => {
 		}
 	});
 
+	it("keeps the Phase 3 topics defined for all six modules", () => {
+		for (const id of ["3-1", "3-2", "3-3", "3-4", "3-5", "3-6"]) {
+			expect(Object.keys(REQUIRED_TOPICS), id).toContain(id);
+			expect(REQUIRED_TOPICS[id].length, id).toBeGreaterThan(0);
+		}
+	});
+
+	it.each(["3-1", "3-2", "3-3", "3-4", "3-5", "3-6"])(
+		"reports each missing required topic heading of Phase 3 module %s",
+		(id) => {
+			expect(checkModuleDoc({ id, text: validDoc({ id }) })).toEqual([]);
+			for (const topic of REQUIRED_TOPICS[id]) {
+				const text = validDoc({ id }).replace(`## ${topic}`, "## 別の話題");
+
+				expect(checkModuleDoc({ id, text }), topic).toEqual([`missing topic heading: ${topic}`]);
+			}
+		},
+	);
+
+	it("requires the single-agent token comparison topic in 3-4 and 3-6", () => {
+		expect(REQUIRED_TOPICS["3-4"].some((topic) => topic.includes("単一エージェント"))).toBe(true);
+		expect(REQUIRED_TOPICS["3-6"].some((topic) => topic.includes("単一エージェント"))).toBe(true);
+	});
+
 	it("keeps the Phase 2 topics defined for all four modules", () => {
 		for (const id of ["2-1", "2-2", "2-3", "2-4"]) {
 			expect(Object.keys(REQUIRED_TOPICS), id).toContain(id);

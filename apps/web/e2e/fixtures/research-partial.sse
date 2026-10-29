@@ -1,0 +1,38 @@
+data: {"type":"data-research-event","id":"event-1","data":{"agent":"supervisor","kind":"call","detail":{"callee":"search","task":"研究エージェントの評価ベンチマーク"}}}
+
+data: {"type":"data-research-event","id":"event-2","data":{"agent":"search","kind":"tool","detail":{"name":"searchArxiv","input":"research agents evaluation benchmark"}}}
+
+data: {"type":"data-research-event","id":"event-3","data":{"agent":"search","kind":"card","detail":{"arxivId":"2401.01234","title":"Hierarchical Agents & Tool Use in Practice","authors":["Ann Example","Bo Sample"],"publishedAt":"2024-01-02","url":"https://arxiv.org/abs/2401.01234"}}}
+
+data: {"type":"data-research-event","id":"event-4","data":{"agent":"search","kind":"card","detail":{"arxivId":"2403.05678","title":"Evaluating Research Agents","authors":["Chi Demo"],"publishedAt":"2024-03-09","url":"https://arxiv.org/abs/2403.05678"}}}
+
+data: {"type":"data-research-event","id":"event-5","data":{"agent":"search","kind":"card","detail":{"arxivId":"cs/0501001","title":"An Early Paper With an Old-Style Identifier","authors":["Dee Old"],"publishedAt":"2005-01-04","url":"https://arxiv.org/abs/cs/0501001"}}}
+
+data: {"type":"data-research-event","id":"event-6","data":{"agent":"search","kind":"summary","detail":{"text":"2403.05678 研究エージェントの評価基準を提案。2401.01234 は階層型の計画。"}}}
+
+data: {"type":"data-research-usage","id":"usage","data":{"byRole":{"search":{"inputTokens":1970,"outputTokens":250,"totalTokens":2220,"calls":1,"unknownCalls":0}},"total":{"inputTokens":1970,"outputTokens":250,"totalTokens":2220},"calls":1,"maxCalls":8}}
+
+data: {"type":"data-research-event","id":"event-7","data":{"agent":"supervisor","kind":"call","detail":{"callee":"reading","task":"ベンチマークの設計と指標"}}}
+
+data: {"type":"data-research-event","id":"event-8","data":{"agent":"reading","kind":"tool","detail":{"name":"getPaperAbstract","input":"2403.05678"}}}
+
+data: {"type":"data-research-event","id":"event-9","data":{"agent":"reading","kind":"card","detail":{"arxivId":"2403.05678","title":"Evaluating Research Agents","authors":["Chi Demo"],"publishedAt":"2024-03-09","url":"https://arxiv.org/abs/2403.05678"}}}
+
+data: {"type":"data-research-event","id":"event-10","data":{"agent":"reading","kind":"error","detail":{"reason":"要約が空だったため、調査の結果を得られませんでした。"}}}
+
+data: {"type":"data-research-usage","id":"usage","data":{"byRole":{"search":{"inputTokens":1970,"outputTokens":250,"totalTokens":2220,"calls":1,"unknownCalls":0},"reading":{"inputTokens":1970,"outputTokens":250,"totalTokens":2220,"calls":1,"unknownCalls":0}},"total":{"inputTokens":3940,"outputTokens":500,"totalTokens":4440},"calls":2,"maxCalls":8}}
+
+data: {"type":"data-research-event","id":"event-11","data":{"agent":"supervisor","kind":"call","detail":{"callee":"market","task":"リサーチエージェントの評価手法"}}}
+
+data: {"type":"data-research-event","id":"event-12","data":{"agent":"market","kind":"summary","detail":{"text":"評価基準が整えば導入判断の材料になる。ただし精読が済んでいないため、指標の妥当性は未確認。"}}}
+
+data: {"type":"data-research-usage","id":"usage","data":{"byRole":{"search":{"inputTokens":1970,"outputTokens":250,"totalTokens":2220,"calls":1,"unknownCalls":0},"reading":{"inputTokens":1970,"outputTokens":250,"totalTokens":2220,"calls":1,"unknownCalls":0},"market":{"inputTokens":800,"outputTokens":120,"totalTokens":920,"calls":1,"unknownCalls":0}},"total":{"inputTokens":4740,"outputTokens":620,"totalTokens":5360},"calls":3,"maxCalls":8}}
+
+data: {"type":"data-research-usage","id":"usage","data":{"byRole":{"search":{"inputTokens":1970,"outputTokens":250,"totalTokens":2220,"calls":1,"unknownCalls":0},"reading":{"inputTokens":1970,"outputTokens":250,"totalTokens":2220,"calls":1,"unknownCalls":0},"market":{"inputTokens":800,"outputTokens":120,"totalTokens":920,"calls":1,"unknownCalls":0},"supervisor":{"inputTokens":4300,"outputTokens":690,"totalTokens":4990,"calls":1,"unknownCalls":0}},"total":{"inputTokens":9040,"outputTokens":1310,"totalTokens":10350},"calls":3,"maxCalls":8}}
+
+data: {"type":"data-research-event","id":"event-13","data":{"agent":"supervisor","kind":"summary","detail":{"characters":165,"missing":1}}}
+
+data: {"type":"data-research-result","id":"result","data":{"report":"# リサーチエージェントの評価手法\n\n## 手法\n- 研究エージェントの評価基準（2403.05678）が提案された。\n\n## 市場への影響\n評価基準が整えば、導入判断の材料になる。\n\n## 今後の課題\n- 指標の妥当性の検証\n\n## 調査できなかった観点\n\n- 論文精読: 要約が空だったため、調査の結果を得られませんでした。\n","warnings":[],"missing":[{"agent":"reading","reason":"要約が空だったため、調査の結果を得られませんでした。"}]}}
+
+data: [DONE]
+

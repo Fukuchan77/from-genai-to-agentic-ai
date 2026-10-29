@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -99,5 +99,50 @@ describe("check-client-bundle", () => {
 		const empty = io([]);
 		expect(main(empty)).toBe(1);
 		expect(empty.stderrText()).toContain("no secret variable names");
+	});
+});
+
+describe("the repository's sentinel configuration", () => {
+	const repoRoot = path.resolve(import.meta.dirname, "..");
+	const schemaSource = readFileSync(
+		path.join(repoRoot, "packages/ai-core/src/config/env-schema.ts"),
+		"utf8",
+	);
+	const mise = readFileSync(path.join(repoRoot, "mise.toml"), "utf8");
+	const task = mise
+		.split(/^\[tasks\./mu)
+		.find((block) => block.startsWith('"check:client-bundle"]'));
+
+	it("treats the M3 credentials as secret names", () => {
+		const names = secretEnvNames(schemaSource);
+
+		expect(names).toContain("E2B_API_KEY");
+		expect(names).toContain("GITHUB_TOKEN");
+		// A token budget is an ordinary setting, not a credential.
+		expect(names).not.toContain("AGENT_MAX_TOTAL_TOKENS");
+	});
+
+	it.each(["ANTHROPIC_API_KEY", "TAVILY_API_KEY", "COHERE_API_KEY", "E2B_API_KEY", "GITHUB_TOKEN"])(
+		"sets %s to a sentinel in the environment and passes the same value to --sentinel",
+		(name) => {
+			expect(task, "check:client-bundle task").toBeDefined();
+			const value = new RegExp(`\\b${name} = "([^"]+)"`, "u").exec(task ?? "")?.[1];
+
+			expect(value, `${name} sentinel in env`).toBeDefined();
+			expect(task).toContain(`--sentinel ${value}`);
+			expect(value).toMatch(/^changeme-/u);
+		},
+	);
+
+	it("detects each new sentinel value in a bundle without echoing it", () => {
+		for (const name of ["E2B_API_KEY", "GITHUB_TOKEN"]) {
+			const value = new RegExp(`\\b${name} = "([^"]+)"`, "u").exec(task ?? "")?.[1] ?? "";
+			writeFileSync(path.join(bundle, "leak.js"), `const k = "${value}";`);
+			const run = io(["--sentinel", value]);
+
+			expect(main(run)).toBe(1);
+			expect(run.stderrText()).toContain("leak.js: sentinel value #1");
+			expect(run.stderrText()).not.toContain(value);
+		}
 	});
 });

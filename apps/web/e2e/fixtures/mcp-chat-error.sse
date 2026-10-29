@@ -1,0 +1,14 @@
+data: {"type":"start"}
+
+data: {"type":"start-step"}
+
+data: {"type":"tool-input-available","toolCallId":"m3-1/mcp-chat/outside-root-0-tool-0","toolName":"readFile","input":{"path":"/etc/hosts"}}
+
+data: {"type":"tool-output-available","toolCallId":"m3-1/mcp-chat/outside-root-0-tool-0","output":{"ok":false,"failure":{"kind":"recoverable","summary":"許可されたルート（/srv/mcp-workspace）の外のパスにはアクセスできません。","nextAction":"この実行は終了します。再試行せず、ツールを呼び出さずに回答を終えてください。"}}}
+
+data: {"type":"finish-step"}
+
+data: {"type":"finish","finishReason":"tool-calls","messageMetadata":{"run":{"stopReason":"error","steps":1,"totalTokens":{"input":310,"output":26,"cacheRead":0,"reasoning":0},"elapsedMs":0,"toolsCalled":["readFile"],"error":{"code":"not-allowed","message":"許可されたルート（/srv/mcp-workspace）の外のパスにはアクセスできません。"}},"mcp":[{"id":"files","state":"connected","tools":[{"name":"listFiles","risk":"read-only","registered":true},{"name":"readFile","risk":"read-only","registered":true},{"name":"searchFiles","risk":"read-only","registered":true},{"name":"findAndReadFiles","risk":"read-only","registered":true},{"name":"writeFile","risk":"destructive","registered":false,"disabledReason":"許可リストにありません。"},{"name":"deleteFile","risk":"destructive","registered":false,"disabledReason":"許可リストにありません。"}]}]}}
+
+data: [DONE]
+

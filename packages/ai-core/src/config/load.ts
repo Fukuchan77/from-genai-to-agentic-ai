@@ -1,7 +1,12 @@
 import { PlatformError } from "../errors";
 import { type CatalogModelId, defaultModelFor, MODEL_CATALOG } from "../models/catalog";
 import type { ModelPurpose, ProviderId, RunMode } from "../models/types";
-import { DEFAULT_DATABASE, DEFAULT_INPUT_LIMITS } from "./defaults";
+import {
+	DEFAULT_DATABASE,
+	DEFAULT_INPUT_LIMITS,
+	DEFAULT_MCP_FS_ROOT,
+	DEFAULT_SANDBOX,
+} from "./defaults";
 import { type EnvSource, envSchema, type ParsedEnv } from "./env-schema";
 import {
 	FEATURE_REQUIREMENTS,
@@ -37,6 +42,8 @@ export interface PlatformConfig {
 		google?: string;
 		tavily?: string;
 		cohere?: string;
+		e2b?: string;
+		github?: string;
 	}>;
 	readonly agent: Readonly<{
 		maxSteps: number;
@@ -53,6 +60,10 @@ export interface PlatformConfig {
 		database: string;
 	}>;
 	readonly input: typeof DEFAULT_INPUT_LIMITS;
+	/** Allowed root of the file MCP server; resolved to a real path when the server starts. */
+	readonly mcpFsRoot: string;
+	/** Local container sandbox settings. Whether Docker is usable is decided by a socket probe. */
+	readonly docker: Readonly<{ host: string | undefined; image: string }>;
 }
 
 function featureForLiveProvider(provider: ParsedEnv["AI_LIVE_PROVIDER"]): FeatureId {
@@ -195,6 +206,8 @@ export function loadPlatformConfig(
 				: {}),
 			...(parsed.data.TAVILY_API_KEY ? { tavily: parsed.data.TAVILY_API_KEY } : {}),
 			...(parsed.data.COHERE_API_KEY ? { cohere: parsed.data.COHERE_API_KEY } : {}),
+			...(parsed.data.E2B_API_KEY ? { e2b: parsed.data.E2B_API_KEY } : {}),
+			...(parsed.data.GITHUB_TOKEN ? { github: parsed.data.GITHUB_TOKEN } : {}),
 		},
 		agent: {
 			maxSteps: parsed.data.AGENT_MAX_STEPS,
@@ -208,5 +221,10 @@ export function loadPlatformConfig(
 		},
 		database: resolveDatabase(parsed.data),
 		input: DEFAULT_INPUT_LIMITS,
+		mcpFsRoot: parsed.data.MCP_FS_ROOT ?? DEFAULT_MCP_FS_ROOT,
+		docker: {
+			host: parsed.data.DOCKER_HOST,
+			image: parsed.data.DOCKER_SANDBOX_IMAGE ?? DEFAULT_SANDBOX.image,
+		},
 	};
 }

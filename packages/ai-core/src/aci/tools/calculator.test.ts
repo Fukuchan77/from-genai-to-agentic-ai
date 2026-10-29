@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import type { z } from "zod";
 import { createFakeClock } from "../../ports/clock";
 import { ToolExecutionError } from "../define-tool";
 import type { ToolOutcome } from "../types";
@@ -120,7 +119,7 @@ describe("createCalculatorTool", () => {
 	});
 
 	it("limits the expression length in its input schema", () => {
-		const schema = createCalculatorTool().toTool(runtime).inputSchema as z.ZodType;
+		const schema = createCalculatorTool().inputSchema;
 		expect(schema.safeParse({ expression: "1".repeat(200) }).success).toBe(true);
 		expect(schema.safeParse({ expression: "1".repeat(201) }).success).toBe(false);
 	});

@@ -1,0 +1,12 @@
+data: {"type":"data-requirements-preview","id":"preview","data":{"functional":[{"text":"問い合わせの内容から担当部署を自動で判定して振り分ける","personaId":"persona-1"}],"nonFunctional":[],"constraints":[],"unconfirmed":[]}}
+
+data: {"type":"data-requirements-preview","id":"preview","data":{"functional":[{"text":"問い合わせの内容から担当部署を自動で判定して振り分ける","personaId":"persona-1"},{"text":"問い合わせの進み具合をチャットで確認できる","personaId":"persona-2"}],"nonFunctional":[{"text":"質問への応答が待たされない","personaId":"persona-2"}],"constraints":[],"unconfirmed":[]}}
+
+data: {"type":"data-requirements-preview","id":"preview","data":{"functional":[{"text":"問い合わせの内容から担当部署を自動で判定して振り分ける","personaId":"persona-1"},{"text":"問い合わせの進み具合をチャットで確認できる","personaId":"persona-2"}],"nonFunctional":[{"text":"質問への応答が待たされない","personaId":"persona-2"}],"constraints":[{"text":"社内ネットワークの外に情報を出さない","personaId":"persona-3"}],"unconfirmed":[]}}
+
+data: {"type":"data-requirements-judgement","id":"judgement-1","data":{"round":1,"sufficient":false,"missing":["応答時間の目標値","運用にかけられる予算の上限"],"forcedEnd":false}}
+
+data: {"type":"data-requirements-questions","id":"questions-2","data":{"round":2,"questions":[{"id":"q-2-1","personaId":"persona-1","text":"応答はどのくらいの時間で返ってくれば、待たされていないと感じますか。"},{"id":"q-2-2","personaId":"persona-2","text":"問い合わせが増えたとき、どの程度の件数まで同時に扱えれば十分ですか。"},{"id":"q-2-3","personaId":"persona-3","text":"導入と運用にかけられる予算の上限はどのくらいですか。"}]}}
+
+data: [DONE]
+

@@ -11,9 +11,10 @@ allowBuilds:
 
 overrides:
   # typed-rest-client 2.3.1 (via @stryker-mutator/core 10.0.0) pins qs 6.15.1, which is affected by
-  # GHSA-q8mj-m7cp-5q26, GHSA-x5fp-wj9c-mxmx, and GHSA-4mjr-xmp4-gh2g. Remove once Stryker ships a
-  # typed-rest-client release that depends on qs >=6.16.0.
-  "typed-rest-client>qs": "^6.16.0"
+  # GHSA-q8mj-m7cp-5q26, GHSA-x5fp-wj9c-mxmx, GHSA-4mjr-xmp4-gh2g, and (up to 6.16.0)
+  # GHSA-6pq8-jhm2-2vcw. Remove once Stryker ships a typed-rest-client release that depends on
+  # qs >=6.16.1.
+  "typed-rest-client>qs": "^6.16.1"
 
 # @stryker-mutator/vitest-runner 10.0.0 joins suite and test names with a space when it builds the
 # per-mutant testNamePattern, but Vitest 5 matches the pattern against "suite > test". Every

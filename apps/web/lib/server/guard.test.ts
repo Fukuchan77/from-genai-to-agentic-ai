@@ -12,6 +12,7 @@ import {
 	guardRequest,
 	type InputLimits,
 	type RateLimiter,
+	rateLimitRejection,
 } from "./guard";
 
 const MODEL_ID = Object.keys(MODEL_CATALOG)[0] as string;
@@ -473,6 +474,31 @@ describe("guardRequest: rate limit (429)", () => {
 			expect(third.error.code).toBe("rate-limited");
 			expect(third.response.headers.get("retry-after")).toBe("60");
 		}
+	});
+});
+
+describe("rateLimitRejection", () => {
+	it("is a 429-style rejection with the retry time when a live request is denied", () => {
+		const rejection = rateLimitRejection({ mode: "live", limiter: limiterSpy(false) });
+
+		expect(rejection).toBeInstanceOf(GuardError);
+		expect(rejection?.code).toBe("rate-limited");
+		expect(rejection?.retryAfterSeconds).toBe(7);
+		expect(rejection?.message).toContain("7 秒");
+	});
+
+	it("is nothing when a live request is allowed, and counts it", () => {
+		const limiter = limiterSpy(true);
+
+		expect(rateLimitRejection({ mode: "live", limiter })).toBeUndefined();
+		expect(limiter.check).toHaveBeenCalledTimes(1);
+	});
+
+	it.each(["mock", "local"] as const)("never consults the limiter in %s mode", (mode) => {
+		const limiter = limiterSpy(false);
+
+		expect(rateLimitRejection({ mode, limiter })).toBeUndefined();
+		expect(limiter.check).not.toHaveBeenCalled();
 	});
 });
 
