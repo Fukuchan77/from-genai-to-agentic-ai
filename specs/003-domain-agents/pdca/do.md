@@ -422,3 +422,10 @@
 
 - plan C9 → soft cap; ADR-6 → idle × 3; 38.2 and the out-of-boundary items → M4 (tasks.md "004 への引き継ぎ事項"). The `qs` override was raised to `^6.16.1` (resolved 6.17.0, lockfile diff `qs` only): `mise run audit` passes.
 - New test in `research-budget.test.ts` (soft-cap bound) with PROVE recorded in the review file; sources restored (`cmp` against a backup, `git diff` empty).
+
+
+## W8 close: 42.1 (`/sdd-impl` + `/sdd-ship 003-domain-agents`, 2026-10-29)
+
+- 42.1 done: after the load dropped (about 3), `env -u NODE_ENV mise run test:e2e` passed on three engines (735 passed, skipped 0, 3.0 min, exit 0). The four earlier failing runs happened at load 25–31 and each failed test passed alone, so the cause was load, not code. `audit` passed after the `qs` override bump.
+- Still open: 42.3 (tags wait for CI `ci-status` on the pushed branch; the W8 commits are not pushed) and 38.2 (moved to M4 by the human).
+- Gate (forced): `mise run gate` exit 0 — root 427, `@platform/eval-suite` 40 / 12 skipped, `@platform/ai-core` 3,681 / 4 skipped, `web` 1,660, `docs:check` 14 documents / 247 references. Docs-only change; no source or test file touched.

@@ -426,7 +426,7 @@ _Depends:_ 41.4
 _Requirements:_ 1.4, 1.5, 3.9, 6.5
 _Traces:_ REQ-001, REQ-003, REQ-006, C16
 
-- [ ] 42.1 `mise run gate:repeat`（10 回、同じ判定）、`mise run test:mutation`、`mise run test:e2e`（3 エンジン）、`mise run audit`、`mise run secret-scan` を実行し、結果を research.md に引用する。失敗が M3 以前から存在する場合は、新しい失敗と分けて報告する
+- [x] 42.1 `mise run gate:repeat`（10 回、同じ判定）、`mise run test:mutation`、`mise run test:e2e`（3 エンジン）、`mise run audit`、`mise run secret-scan` を実行し、結果を research.md に引用する。失敗が M3 以前から存在する場合は、新しい失敗と分けて報告する
   _Boundary:_ `specs/003-domain-agents/research.md`
   _Depends:_ 41.4
   _Requirements:_ 1.5, 3.9
@@ -448,4 +448,4 @@ _Traces:_ REQ-001, REQ-003, REQ-006, C16
 ### Implementation Notes
 - 境界の例外（人が承認または決定済み）: `pnpm-workspace.yaml` と `pnpm-lock.yaml`（`typed-rest-client>qs` の override を `^6.16.1` へ。`audit` の解消）、`specs/003-domain-agents/plan.md`（C9 を「ソフトな上限」へ）。
 - 42.2 は 42.1 より先に確かめた（ミューテーション 86.19 ≥ 70、plan の 12 対象はすべて `mutate` に含まれる）。`council.ts` は plan の対象に無いため追加しない（W6 2 回目 F-13 の判断）。
-- 42.1 と 42.3 は未完: `audit` が `qs` の勧告で失敗（既存の override `^6.16.0` を `^6.16.1` へ上げる依存の変更で、人の判断）、3 エンジンの E2E は緑の全体実行を得られていない（research.md「W8 の最終統合の実測」）。タグ（42.3）は、これらと CI の `ci-status` を人が確かめるまで付けない。W8 の敵対的レビューは `.sdd/reviews/003-domain-agents-impl-w8-review-2026-10-29.md`（REQUEST_CHANGES）で、対応は同ファイルの「Responses」にある。
+- 42.1 は完了（2026-10-29 の再実行で E2E 735 件成功、`audit` は override 引き上げ後に成功。research.md 参照）。以下は完了前の記録: 42.1 と 42.3 は未完: `audit` が `qs` の勧告で失敗（既存の override `^6.16.0` を `^6.16.1` へ上げる依存の変更で、人の判断）、3 エンジンの E2E は緑の全体実行を得られていない（research.md「W8 の最終統合の実測」）。タグ（42.3）は、これらと CI の `ci-status` を人が確かめるまで付けない。W8 の敵対的レビューは `.sdd/reviews/003-domain-agents-impl-w8-review-2026-10-29.md`（REQUEST_CHANGES）で、対応は同ファイルの「Responses」にある。
