@@ -15,6 +15,12 @@ overrides:
   # GHSA-6pq8-jhm2-2vcw. Remove once Stryker ships a typed-rest-client release that depends on
   # qs >=6.16.1.
   "typed-rest-client>qs": "^6.16.1"
+  # GHSA-3g3m-2fjr-6pw4 (glob >=9 <=14.0.1, via e2b) and GHSA-g3hv-75wg-m249 (minimatch <11.0.1,
+  # via @stryker-mutator/core, e2b > glob). Both patched lines are one major above what the parents
+  # declare (e2b ^13.0.6, stryker ~10.2.4); glob 14 / minimatch 11 keep the same named exports.
+  # Remove once e2b and Stryker depend on glob >=14.0.2 / minimatch >=11.0.1 themselves.
+  "glob@<14.0.2": "^14.0.2"
+  "minimatch@<11.0.1": "^11.0.1"
 
 # @stryker-mutator/vitest-runner 10.0.0 joins suite and test names with a space when it builds the
 # per-mutant testNamePattern, but Vitest 5 matches the pattern against "suite > test". Every
