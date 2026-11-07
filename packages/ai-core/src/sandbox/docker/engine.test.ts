@@ -298,11 +298,11 @@ describe("createDockerEngine", () => {
 	});
 
 	describe("a daemon that never answers", () => {
-		const SILENT = () => ({ status: 200, silent: true });
+		const silentDaemon = () => ({ status: 200, silent: true });
 		const FAST = { requestTimeoutMs: 60, quickTimeoutMs: 60 };
 
 		it("lets ping give up and report false, so a hung daemon is simply not there", async () => {
-			expect(await setup(SILENT, FAST).engine.ping()).toBe(false);
+			expect(await setup(silentDaemon, FAST).engine.ping()).toBe(false);
 		});
 
 		it.each([
@@ -313,7 +313,7 @@ describe("createDockerEngine", () => {
 			["logs", (engine: DockerEngine) => engine.logs(ID)],
 			["remove", (engine: DockerEngine) => engine.remove(ID)],
 		])("fails %s with provider-unavailable instead of waiting forever", async (_name, call) => {
-			const failure = await call(setup(SILENT, FAST).engine).catch((error: unknown) => error);
+			const failure = await call(setup(silentDaemon, FAST).engine).catch((error: unknown) => error);
 
 			expect(failure).toMatchObject({ code: "provider-unavailable" });
 		});
@@ -341,7 +341,7 @@ describe("createDockerEngine", () => {
 
 		it("keeps the longer limit for the calls that move data and the shorter one for the quick checks", async () => {
 			// ping and imageExists give up at quickTimeoutMs; createContainer is still waiting then.
-			const slow = setup(SILENT, { requestTimeoutMs: 400, quickTimeoutMs: 40 });
+			const slow = setup(silentDaemon, { requestTimeoutMs: 400, quickTimeoutMs: 40 });
 			const started = Date.now();
 
 			await slow.engine.ping();

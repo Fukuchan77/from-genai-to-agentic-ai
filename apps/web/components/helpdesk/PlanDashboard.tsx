@@ -82,7 +82,7 @@ function Empty({ children }: { readonly children: string }) {
 	return <p className="text-sm text-muted-foreground">{children}</p>;
 }
 
-function describe(tasks: readonly PlanTaskView[] | undefined, id: string): string | undefined {
+function describeTask(tasks: readonly PlanTaskView[] | undefined, id: string): string | undefined {
 	return tasks?.find((task) => task.id === id)?.description;
 }
 
@@ -106,7 +106,7 @@ function PlanChanges({
 					<ul aria-label="追加されたタスク" className="flex flex-col gap-1">
 						{diff.added.map((id) => (
 							<li key={id} className="text-sm">
-								<span className="font-mono font-medium">{id}</span> {describe(plan.tasks, id)}
+								<span className="font-mono font-medium">{id}</span> {describeTask(plan.tasks, id)}
 							</li>
 						))}
 					</ul>
@@ -118,7 +118,8 @@ function PlanChanges({
 					<ul aria-label="削除されたタスク" className="flex flex-col gap-1">
 						{diff.removed.map((id) => (
 							<li key={id} className="text-sm line-through">
-								<span className="font-mono font-medium">{id}</span> {describe(previousTasks, id)}
+								<span className="font-mono font-medium">{id}</span>{" "}
+								{describeTask(previousTasks, id)}
 							</li>
 						))}
 					</ul>
@@ -129,7 +130,7 @@ function PlanChanges({
 					<p className="text-xs font-medium">変更</p>
 					<ul aria-label="変更されたタスク" className="flex flex-col gap-1">
 						{diff.changed.map((id) => {
-							const before = describe(previousTasks, id);
+							const before = describeTask(previousTasks, id);
 							return (
 								<li key={id} className="flex flex-col gap-0.5 text-sm">
 									<span className="font-mono font-medium">{id}</span>
@@ -141,7 +142,7 @@ function PlanChanges({
 									)}
 									<span>
 										{before === undefined ? null : <span className="text-xs">変更後: </span>}
-										<span>{describe(plan.tasks, id)}</span>
+										<span>{describeTask(plan.tasks, id)}</span>
 									</span>
 								</li>
 							);
