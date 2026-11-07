@@ -1,0 +1,41 @@
+name: Security daily
+
+# Scheduled dependency audit. The `audit` job in ci.yml only runs when a commit
+# lands, but an advisory can go from green to red against an unchanged lockfile,
+# so the same audit also runs once a day. A failure here means a new advisory
+# affects the committed dependency graph; triage it like a failing `audit` job
+# in ci.yml (fix by upgrade, or record a reviewed `auditConfig` ignore).
+on:
+  schedule:
+    # 17:20 UTC = 02:20 JST
+    - cron: "20 17 * * *"
+  workflow_dispatch:
+
+# A manual dispatch racing the schedule should not run twice.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    name: Dependency audit
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install mise and toolchain
+        uses: jdx/mise-action@6612f0ef07ed2a736cd1e00a94a065522dd41195 # v5.2.5
+        with:
+          version: 2026.9.14
+          install: true
+          cache: true
+      - name: Install dependencies
+        run: mise run setup
+      - name: Audit dependencies
+        run: mise run audit
