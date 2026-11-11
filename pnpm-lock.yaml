@@ -333,7 +333,7 @@ importers:
         version: 7.0.166(zod@4.6.7)
       drizzle-orm:
         specifier: 0.45.4
-        version: 0.45.4(@electric-sql/pglite@0.5.11)(postgres@3.4.9)
+        version: 0.45.4(@electric-sql/pglite@0.5.11)(postgres@4.1.0)
       fast-xml-parser:
         specifier: 5.11.2
         version: 5.11.2
@@ -347,8 +347,8 @@ importers:
         specifier: 4.1.0
         version: 4.1.0(ai@7.0.166(zod@4.6.7))(zod@4.6.7)
       postgres:
-        specifier: 3.4.9
-        version: 3.4.9
+        specifier: 4.1.0
+        version: 4.1.0
       unpdf:
         specifier: 1.9.1
         version: 1.9.1
@@ -3180,9 +3180,9 @@ packages:
     resolution: {integrity: sha512-LJlKCCAUFKOuZxipUdYw1NzIITEsPcgyOG9LkvRJvuKj/bRzbuRY0ARXvL0pWGpsZvn8jku+LMep2eU0seHp8g==}
     engines: {node: ^10 || ^12 || >=14}
 
-  postgres@3.4.9:
-    resolution: {integrity: sha512-GD3qdB0x1z9xgFI6cdRD6xu2Sp2WCOEoe3mtnyB5Ee0XrrL5Pe+e4CCnJrRMnL1zYtRDZmQQVbvOttLnKDLnaw==}
-    engines: {node: '>=12'}
+  postgres@4.1.0:
+    resolution: {integrity: sha512-s+0WH67YAyLdBQUb6XczbziBhY+C9uiQsg9S8R5RHdZhk6sdyK6202E+T2tXpiInSEEjDLRSJ3OpYBe3PN6MsQ==}
+    engines: {node: '>=18'}
 
   pretty-format@27.5.1:
     resolution: {integrity: sha512-Qb1gy5OrP5+zDf2Bvnzdl3jsTf1qXVMazbvCoKhtKqVs4/YK4ozX4gKQJJVyNe+cajNPn0KoC0MC3FUmaHWEmQ==}
@@ -5688,10 +5688,10 @@ snapshots:
 
   dom-accessibility-api@0.5.16: {}
 
-  drizzle-orm@0.45.4(@electric-sql/pglite@0.5.11)(postgres@3.4.9):
+  drizzle-orm@0.45.4(@electric-sql/pglite@0.5.11)(postgres@4.1.0):
     optionalDependencies:
       '@electric-sql/pglite': 0.5.11
-      postgres: 3.4.9
+      postgres: 4.1.0
 
   dunder-proto@1.0.1:
     dependencies:
@@ -6173,7 +6173,7 @@ snapshots:
       picocolors: 1.1.1
       source-map-js: 1.2.2
 
-  postgres@3.4.9: {}
+  postgres@4.1.0: {}
 
   pretty-format@27.5.1:
     dependencies:
