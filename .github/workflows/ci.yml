@@ -78,7 +78,11 @@ jobs:
 
   mutation:
     name: Mutation tests
-    timeout-minutes: 45
+    # The run takes 33-45 minutes and the number varies with runner load (main at
+    # 43 min on 2026-11-11; a Dependabot PR finished the Stryker run in 44m48s and was
+    # then cancelled by the 45-minute limit, failing `CI status`). 60 leaves headroom
+    # without hiding a hang for long.
+    timeout-minutes: 60
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
