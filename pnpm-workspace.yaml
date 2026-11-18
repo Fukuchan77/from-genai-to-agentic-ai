@@ -28,3 +28,13 @@ overrides:
 # with " > " in both places that build test names. Remove once Stryker supports Vitest 5.
 patchedDependencies:
   '@stryker-mutator/vitest-runner@10.0.0': patches/@stryker-mutator__vitest-runner@10.0.0.patch
+
+# GHSA-fc5q-39xc-vjpf (picomatch <=4.0.7, ReDoS via single-branch repeated extglobs, high):
+# NO patched release exists (4.0.7 is the latest on npm), so an override cannot fix it.
+# Reachable only through dev/test tooling (vitest > vite > picomatch / tinyglobby > fdir),
+# which matches our own committed globs; no untrusted input is used as a glob pattern.
+# Recorded 2026-11-18. Retire when picomatch publishes a release above 4.0.7 (clear the
+# entry, re-resolve, `pnpm audit --audit-level=moderate` stays clean).
+auditConfig:
+  ignoreGhsas:
+    - GHSA-fc5q-39xc-vjpf
