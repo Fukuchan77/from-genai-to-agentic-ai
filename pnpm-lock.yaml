@@ -350,8 +350,8 @@ importers:
         specifier: 4.1.1
         version: 4.1.1
       unpdf:
-        specifier: 1.9.1
-        version: 1.9.1
+        specifier: 2.2.2
+        version: 2.2.2
       youtubei.js:
         specifier: 18.3.0
         version: 18.3.0
@@ -3510,13 +3510,16 @@ packages:
     resolution: {integrity: sha512-+QBBXBCvifc56fsbuxZQ6Sic3wqqc3WWaqxs58gvJrcOuN83HGTCwz3oS5phzU9LthRNE9VrJCFCLUgHeeFnfA==}
     engines: {node: '>=18'}
 
-  unpdf@1.9.1:
-    resolution: {integrity: sha512-nO1npM2kNyd4hj1fKzUVU6bvnWjDSxI97eycM/DgzI83dYyW+pNRI9NeMQVEfef8fI3Q06i9lkMeE1HxrQqKoA==}
-    engines: {node: '>=22'}
+  unpdf@2.2.2:
+    resolution: {integrity: sha512-oYnk0gwtIFVtkDbrll9SOEpXT4yCpCVkqQ/pxgxm9oNZ0GwpkEtRsrJZdyAvXHjaerrQTDFMaGWKWG+CKnb4cw==}
+    engines: {node: '>=24'}
     peerDependencies:
       '@napi-rs/canvas': ^0.1.69 || ^1.0.0
+      pdfjs-dist: '*'
     peerDependenciesMeta:
       '@napi-rs/canvas':
+        optional: true
+      pdfjs-dist:
         optional: true
 
   update-browserslist-db@1.3.3:
@@ -6606,7 +6609,7 @@ snapshots:
 
   unicorn-magic@0.3.0: {}
 
-  unpdf@1.9.1: {}
+  unpdf@2.2.2: {}
 
   update-browserslist-db@1.3.3(browserslist@4.29.1):
     dependencies:

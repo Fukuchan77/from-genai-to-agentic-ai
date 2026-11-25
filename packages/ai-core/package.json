@@ -52,7 +52,7 @@
 		"jsdom": "30.1.3",
 		"ollama-ai-provider-v2": "4.1.0",
 		"postgres": "4.1.1",
-		"unpdf": "1.9.1",
+		"unpdf": "2.2.2",
 		"youtubei.js": "18.3.0",
 		"zod": "4.6.7"
 	},
