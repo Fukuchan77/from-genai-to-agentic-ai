@@ -41,7 +41,7 @@
 		"@ai-sdk/openai": "4.0.122",
 		"@e2b/code-interpreter": "2.9.1",
 		"@electric-sql/pglite": "0.5.11",
-		"@electric-sql/pglite-pgvector": "0.0.16",
+		"@electric-sql/pglite-pgvector": "0.1.0",
 		"@modelcontextprotocol/server": "2.4.0",
 		"@mozilla/readability": "0.6.0",
 		"@tavily/core": "0.7.14",
