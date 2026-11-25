@@ -317,8 +317,8 @@ importers:
         specifier: 0.5.11
         version: 0.5.11
       '@electric-sql/pglite-pgvector':
-        specifier: 0.0.16
-        version: 0.0.16(@electric-sql/pglite@0.5.11)
+        specifier: 0.1.0
+        version: 0.1.0(@electric-sql/pglite@0.5.11)
       '@modelcontextprotocol/server':
         specifier: 2.4.0
         version: 2.4.0
@@ -825,10 +825,10 @@ packages:
     resolution: {integrity: sha512-05xv2gW5JRlHe/AJK6bpO7ux/+1CQDKT27icQWeH1caqq7YySfQ7NwuN4WHRe5rM2jCJH79fML0JWXTkbn4d6A==}
     engines: {node: '>=22'}
 
-  '@electric-sql/pglite-pgvector@0.0.16':
-    resolution: {integrity: sha512-3usbMM/Zkn0h7wpSft1rsa8lcXz77Q+rGdTpm7UORwtISg4CSGprinmu5qnF23GE0FHLH0LxEyKoPPteHuZPIg==}
+  '@electric-sql/pglite-pgvector@0.1.0':
+    resolution: {integrity: sha512-2iSQwI8av+BI8rnsq6NUT6coXX/Yrc6Qu5unfS9Z4znkUQjk3KS31DsCoU+uQKsb73YUPQ60e8+ZsFAcTecX/A==}
     peerDependencies:
-      '@electric-sql/pglite': 0.5.15
+      '@electric-sql/pglite': 0.6.0
 
   '@electric-sql/pglite@0.5.11':
     resolution: {integrity: sha512-SWuqsTjA4DDWqgZ05PC1RJaq8e00p5KACxbqaikDFQ8dIGA0SLRzuPniky7IW+q/c5RDNMdEXwv7mFBWIx9Hxw==}
@@ -4132,7 +4132,7 @@ snapshots:
 
   '@e2b/dockerfile-utils@0.1.2': {}
 
-  '@electric-sql/pglite-pgvector@0.0.16(@electric-sql/pglite@0.5.11)':
+  '@electric-sql/pglite-pgvector@0.1.0(@electric-sql/pglite@0.5.11)':
     dependencies:
       '@electric-sql/pglite': 0.5.11
 
