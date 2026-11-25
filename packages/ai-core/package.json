@@ -33,33 +33,33 @@
 		"typecheck": "tsc -p tsconfig.json --noEmit"
 	},
 	"dependencies": {
-		"@ai-sdk/anthropic": "4.0.99",
-		"@ai-sdk/azure": "4.0.119",
-		"@ai-sdk/cohere": "4.0.78",
-		"@ai-sdk/google": "4.0.114",
-		"@ai-sdk/mcp": "2.0.93",
-		"@ai-sdk/openai": "4.0.111",
-		"@e2b/code-interpreter": "2.9.0",
+		"@ai-sdk/anthropic": "4.0.107",
+		"@ai-sdk/azure": "4.0.130",
+		"@ai-sdk/cohere": "4.0.86",
+		"@ai-sdk/google": "4.0.125",
+		"@ai-sdk/mcp": "2.0.104",
+		"@ai-sdk/openai": "4.0.122",
+		"@e2b/code-interpreter": "2.9.1",
 		"@electric-sql/pglite": "0.5.11",
 		"@electric-sql/pglite-pgvector": "0.0.16",
 		"@modelcontextprotocol/server": "2.4.0",
 		"@mozilla/readability": "0.6.0",
 		"@tavily/core": "0.7.14",
-		"ai": "7.0.166",
+		"ai": "7.0.181",
 		"drizzle-orm": "0.45.4",
-		"fast-xml-parser": "5.12.0",
-		"gpt-tokenizer": "4.1.0",
+		"fast-xml-parser": "5.12.1",
+		"gpt-tokenizer": "4.1.2",
 		"jsdom": "30.1.3",
 		"ollama-ai-provider-v2": "4.1.0",
-		"postgres": "4.1.0",
+		"postgres": "4.1.1",
 		"unpdf": "1.9.1",
 		"youtubei.js": "18.3.0",
 		"zod": "4.6.7"
 	},
 	"devDependencies": {
 		"@types/node": "26.6.6",
-		"@vitest/coverage-v8": "5.1.0",
+		"@vitest/coverage-v8": "5.1.1",
 		"typescript": "7.1.0-dev.20261106.1",
-		"vitest": "5.1.0"
+		"vitest": "5.1.1"
 	}
 }
